@@ -3,6 +3,9 @@ import Foundation
 import MarkdownEngine
 
 final class LocalImageStore: EmbeddedImageFileProvider, @unchecked Sendable {
+    /// Magic bytes every PNG file starts with (8-byte signature).
+    private static let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+
     private struct ImageAssetRecord: Codable {
         var id: String
         var displayName: String
@@ -28,12 +31,21 @@ final class LocalImageStore: EmbeddedImageFileProvider, @unchecked Sendable {
         records = Self.loadRecords(from: manifestURL)
     }
 
+    private func saveImageFileData(_ data: Data) -> Data {
+        // Already-PNG payloads skip re-encoding: NSImage→TIFF→PNG wastes CPU
+        // and drops original metadata such as color profile chunks.
+        if data.starts(with: Self.pngSignature) {
+            return data
+        }
+        return pngData(fromImageData: data) ?? data
+    }
+
     func saveImage(from pasteboard: NSPasteboard) -> String? {
         if let fileURL = PasteboardImageReader.imageFileURL(from: pasteboard),
            let data = try? Data(contentsOf: fileURL),
            NSImage(data: data) != nil {
             return save(
-                data: pngData(fromImageData: data) ?? data,
+                data: saveImageFileData(data),
                 originalName: fileURL.deletingPathExtension().lastPathComponent,
                 originalFileURL: fileURL,
                 sourceKind: "file"
@@ -169,7 +181,7 @@ final class LocalImageStore: EmbeddedImageFileProvider, @unchecked Sendable {
             return [:]
         }
 
-        return Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
+        return Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     private func saveRecords(_ records: [String: ImageAssetRecord]) {

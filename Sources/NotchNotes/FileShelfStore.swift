@@ -50,27 +50,21 @@ final class FileShelfStore: ObservableObject {
         let fileURLs = FileDropPayload.normalizedFileURLs(from: urls)
         guard !fileURLs.isEmpty else { return false }
 
-        _ = add(fileURLs)
+        add(fileURLs)
         return true
     }
 
     @discardableResult
     func add(_ urls: [URL]) -> Int {
-        let existingPaths = Set(items.compactMap { resolvedURL(for: $0)?.standardizedFileURL.path })
-        var knownPaths = existingPaths
+        // knownPaths seeds with every existing shelf path, so a failed insert
+        // means "already on shelf" and no second linear scan is needed.
+        var knownPaths = Set(items.compactMap { resolvedURL(for: $0)?.standardizedFileURL.path })
         var addedItems: [FileShelfItem] = []
 
         for url in urls where url.isFileURL {
             let standardizedURL = url.standardizedFileURL
-
-            if items.contains(where: {
-                resolvedURL(for: $0)?.standardizedFileURL.path == standardizedURL.path
-            }) {
-                continue
-            }
-
-            guard items.count + addedItems.count < Self.maximumItemCount else { break }
             guard knownPaths.insert(standardizedURL.path).inserted else { continue }
+            guard items.count + addedItems.count < Self.maximumItemCount else { break }
             addedItems.append(FileShelfItem(url: standardizedURL))
         }
 

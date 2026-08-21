@@ -24,7 +24,7 @@ extension NSScreen {
     }
 
     var measuredNotchSize: NSSize {
-        guard #available(macOS 12.0, *), safeAreaInsets.top > 0 else {
+        guard safeAreaInsets.top > 0 else {
             return .zero
         }
 
@@ -80,6 +80,15 @@ enum NotchGeometry {
         return topCenteredFrame(
             for: activationSize,
             topY: screenFrame.maxY + layout.compactTopOffset,
+            in: screenFrame
+        )
+    }
+
+    /// Frame of the fully expanded drawer panel for the given screen.
+    static func expandedFrame(for layout: NotchLayout, in screenFrame: NSRect) -> NSRect {
+        topCenteredFrame(
+            for: layout.expandedSize,
+            topY: screenFrame.maxY + layout.expandedTopOffset,
             in: screenFrame
         )
     }

@@ -10,8 +10,15 @@ final class NotchPanel: NSPanel {
     override var canBecomeMain: Bool { true }
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, event.keyCode == 53 {
-            onEscape?()
+        // Consume only plain Escape: IME users need Esc to cancel marked text
+        // inside the editor, and modified Esc combos must reach the system.
+        if event.type == .keyDown, event.keyCode == 53,
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+            if let editor = firstResponder as? NSTextView, editor.hasMarkedText() {
+                super.sendEvent(event)
+            } else {
+                onEscape?()
+            }
             return
         }
 
@@ -114,7 +121,9 @@ final class NotchPanelController: NSObject {
     private var globalMouseDownMonitor: Any?
     private var globalMouseDragMonitor: Any?
     private var globalMouseUpMonitor: Any?
-    private var isExpanded = false
+    // drawerState.isExpanded is the single source of truth; exposing it as a
+    // computed alias keeps window logic and SwiftUI hit-testing in sync.
+    private var isExpanded: Bool { drawerState.isExpanded }
     private var isRevealedForFileDrag = false
     private var activeMenuTrackingCount = 0
     private var collapseTask: DispatchWorkItem?
@@ -147,10 +156,8 @@ final class NotchPanelController: NSObject {
     func showDocked() {
         let layout = currentLayout()
         rebuildContent(layout: layout)
-        isExpanded = false
         isRevealedForFileDrag = false
-        drawerState.isExpanded = false
-        drawerState.revealProgress = 0
+        setDrawerExpanded(false, animated: false)
         hotPanel.setFrame(hotFrame(for: layout), display: true)
         hotPanel.orderFrontRegardless()
         drawerPanel.setFrame(drawerFrame(for: layout), display: true)
@@ -167,7 +174,6 @@ final class NotchPanelController: NSObject {
         }
         let layout = currentLayout()
         cancelCollapse()
-        isExpanded = true
         isRevealedForFileDrag = false
         rebuildContent(layout: layout)
         drawerPanel.setFrame(drawerFrame(for: layout), display: true)
@@ -189,11 +195,8 @@ final class NotchPanelController: NSObject {
 
     func collapse(animated: Bool) {
         guard isExpanded else { return }
-        if let range = editorInteractionState.currentSelectionRange() {
-            store.updateSelection(for: store.activeTabID, range: range)
-        }
+        persistActiveSelection()
         store.flush(waitForDisk: false)
-        isExpanded = false
         isRevealedForFileDrag = false
         workspaceState.isShelfDropTargeted = false
         setDrawerExpanded(false, animated: animated)
@@ -209,11 +212,17 @@ final class NotchPanelController: NSObject {
     }
 
     func createNote() {
+        persistActiveSelection()
+        store.addTab()
+        expand(animated: true, activate: true)
+    }
+
+    /// Persists the live text selection into the active tab before operations
+    /// that can tear down the editor hierarchy.
+    private func persistActiveSelection() {
         if let range = editorInteractionState.currentSelectionRange() {
             store.updateSelection(for: store.activeTabID, range: range)
         }
-        store.addTab()
-        expand(animated: true, activate: true)
     }
 
     private func configurePanel(_ panel: NotchPanel) {
@@ -533,7 +542,11 @@ final class NotchPanelController: NSObject {
             revealDrawerForFileDrag()
         } else {
             DispatchQueue.main.async { [weak self] in
-                self?.finishFileDragRevealIfNeeded()
+                // A fast exit/re-enter may have re-revealed the drawer between
+                // the untargeted callback and this delayed finish; only finish
+                // when the drag has really left.
+                guard let self, !self.workspaceState.isShelfDropTargeted else { return }
+                self.finishFileDragRevealIfNeeded()
             }
         }
     }
@@ -550,7 +563,6 @@ final class NotchPanelController: NSObject {
 
         let layout = currentLayout()
         cancelCollapse()
-        isExpanded = true
         isRevealedForFileDrag = true
         drawerPanel.setFrame(drawerFrame(for: layout), display: true)
         drawerPanel.orderFrontRegardless()
@@ -598,13 +610,7 @@ final class NotchPanelController: NSObject {
     }
 
     private func drawerFrame(for layout: NotchLayout) -> NSRect {
-        let screenFrame = targetScreenFrame()
-        let topY = screenFrame.maxY + layout.expandedTopOffset
-        return NotchGeometry.topCenteredFrame(
-            for: layout.expandedSize,
-            topY: topY,
-            in: screenFrame
-        )
+        NotchGeometry.expandedFrame(for: layout, in: targetScreenFrame())
     }
 
     private func targetScreenFrame() -> NSRect {

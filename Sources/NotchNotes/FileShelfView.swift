@@ -1,5 +1,8 @@
 import AppKit
-import QuickLookThumbnailing
+// QLThumbnailRepresentation is not annotated Sendable; @preconcurrency downgrades
+// its false-positive diagnostics so the async overload can hand the thumbnail
+// straight back to us without a TIFF encode/decode round-trip.
+@preconcurrency import QuickLookThumbnailing
 import QuickLookUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -18,100 +21,130 @@ struct FileShelfView: View {
     private let selectionCoordinateSpace = "file-shelf-selection"
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            FileShelfKeyboardFocusView(
-                focusGeneration: keyboardFocusGeneration,
-                onSelectAll: selectAllItems,
-                onPreview: { previewSelection() },
-                onDelete: removeSelectedItems
+        content
+            .frame(width: size.width, height: size.height)
+            .coordinateSpace(name: selectionCoordinateSpace)
+            .contentShape(Rectangle())
+            .background(panelBackground)
+            .overlay { panelStroke }
+            .shadow(
+                color: .black.opacity(workspaceState.isShelfDropTargeted ? 0.24 : 0),
+                radius: 18,
+                y: 8
             )
-            .allowsHitTesting(false)
-
-            if !store.items.isEmpty {
-                shelfItems
-                    .padding(.horizontal, 6)
+            .animation(.spring(response: 0.30, dampingFraction: 0.84), value: workspaceState.isShelfDropTargeted)
+            .animation(.spring(response: 0.32, dampingFraction: 0.82), value: store.items)
+            .onPreferenceChange(FileShelfItemFramePreferenceKey.self) { frames in
+                Task { @MainActor in
+                    itemFrames = frames
+                }
             }
+            .onChange(of: store.items.map(\.id)) { _, itemIDs in
+                selection.retainValidIDs(itemIDs)
+            }
+            .onChange(of: workspaceState.isDraggingShelfItem) { _, isDragging in
+                if isDragging {
+                    cancelMarqueeSelection()
+                }
+            }
+            .onChange(of: workspaceState.isShelfDropTargeted) { _, isTargeted in
+                if isTargeted {
+                    cancelMarqueeSelection()
+                }
+            }
+            .onDisappear {
+                cancelMarqueeSelection()
+                previewController.close()
+            }
+            .contextMenu {
+                removeAllMenuButton
+            }
+    }
 
+    private var content: some View {
+        ZStack(alignment: .topLeading) {
+            keyboardFocusLayer
+            shelfItemsLayer
             marqueeEdgeZones
                 .allowsHitTesting(!workspaceState.isShelfDropTargeted)
-
-            if workspaceState.isShelfDropTargeted, store.items.isEmpty {
-                dropPrompt
-                    .frame(
-                        width: size.width,
-                        height: size.height,
-                        alignment: .center
-                    )
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-            }
-
-            if let selectionRect,
-               selectionRect.width >= 3,
-               selectionRect.height >= 3 {
-                Rectangle()
-                    .fill(Color.white.opacity(0.055))
-                    .overlay {
-                        Rectangle()
-                            .stroke(Color.white.opacity(0.34), lineWidth: 1)
-                    }
-                    .frame(width: selectionRect.width, height: selectionRect.height)
-                    .offset(x: selectionRect.minX, y: selectionRect.minY)
-                    .allowsHitTesting(false)
-            }
+            dropPromptLayer
+            selectionRectLayer
         }
-        .frame(width: size.width, height: size.height)
-        .coordinateSpace(name: selectionCoordinateSpace)
-        .contentShape(Rectangle())
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(.white.opacity(workspaceState.isShelfDropTargeted ? 0.055 : 0.025))
+    }
+
+    private var keyboardFocusLayer: some View {
+        FileShelfKeyboardFocusView(
+            focusGeneration: keyboardFocusGeneration,
+            onSelectAll: selectAllItems,
+            onPreview: { previewSelection() },
+            onDelete: removeSelectedItems
         )
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(
-                    .white.opacity(workspaceState.isShelfDropTargeted ? 0.16 : 0),
-                    lineWidth: 1
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var shelfItemsLayer: some View {
+        if !store.items.isEmpty {
+            shelfItems
+                .padding(.horizontal, 6)
+        }
+    }
+
+    @ViewBuilder
+    private var dropPromptLayer: some View {
+        if workspaceState.isShelfDropTargeted, store.items.isEmpty {
+            dropPrompt
+                .frame(
+                    width: size.width,
+                    height: size.height,
+                    alignment: .center
                 )
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
         }
-        .shadow(
-            color: .black.opacity(workspaceState.isShelfDropTargeted ? 0.24 : 0),
-            radius: 18,
-            y: 8
-        )
-        .animation(.spring(response: 0.30, dampingFraction: 0.84), value: workspaceState.isShelfDropTargeted)
-        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: store.items)
-        .onPreferenceChange(FileShelfItemFramePreferenceKey.self) { frames in
-            Task { @MainActor in
-                itemFrames = frames
-            }
-        }
-        .onChange(of: store.items.map(\.id)) { _, itemIDs in
-            selection.retainValidIDs(Set(itemIDs))
-        }
-        .onChange(of: workspaceState.isDraggingShelfItem) { _, isDragging in
-            if isDragging {
-                cancelMarqueeSelection()
-            }
-        }
-        .onChange(of: workspaceState.isShelfDropTargeted) { _, isTargeted in
-            if isTargeted {
-                cancelMarqueeSelection()
-            }
-        }
-        .onDisappear {
-            cancelMarqueeSelection()
-            previewController.close()
-        }
-        .contextMenu {
-            Button(role: .destructive) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                    store.removeAll()
+    }
+
+    @ViewBuilder
+    private var selectionRectLayer: some View {
+        if let selectionRect,
+           selectionRect.width >= 3,
+           selectionRect.height >= 3 {
+            Rectangle()
+                .fill(Color.white.opacity(0.055))
+                .overlay {
+                    Rectangle()
+                        .stroke(Color.white.opacity(0.34), lineWidth: 1)
                 }
-            } label: {
-                Label("Remove All Shelf Items", systemImage: "xmark.circle")
-            }
-            .disabled(store.items.isEmpty)
+                .frame(width: selectionRect.width, height: selectionRect.height)
+                .offset(x: selectionRect.minX, y: selectionRect.minY)
+                .allowsHitTesting(false)
         }
+    }
+
+    private var panelBackground: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(.white.opacity(workspaceState.isShelfDropTargeted ? 0.055 : 0.025))
+    }
+
+    private var panelStroke: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .stroke(
+                .white.opacity(workspaceState.isShelfDropTargeted ? 0.16 : 0),
+                lineWidth: 1
+            )
+    }
+
+    private var removeAllMenuButton: some View {
+        Button(role: .destructive) {
+            // Keep Quick Look consistent with removeSelectedItems(): the
+            // panel must not keep showing files no longer on the shelf.
+            previewController.close()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                store.removeAll()
+            }
+        } label: {
+            Label("Remove All Shelf Items", systemImage: "xmark.circle")
+        }
+        .disabled(store.items.isEmpty)
     }
 
     private var dropPrompt: some View {
@@ -631,15 +664,11 @@ private final class FileDragSourceNSView: NSView, NSDraggingSource {
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.command),
-           event.charactersIgnoringModifiers?.lowercased() == "a" {
-            onSelectAll?()
-        } else if event.keyCode == 49 {
-            onPreview?()
-        } else if event.keyCode == 51 || event.keyCode == 117 {
-            onDeleteSelected?()
-        } else {
-            super.keyDown(with: event)
+        switch ShelfKeyAction(from: event) {
+        case .selectAll: onSelectAll?()
+        case .preview: onPreview?()
+        case .delete: onDeleteSelected?()
+        case nil: super.keyDown(with: event)
         }
     }
 
@@ -789,20 +818,37 @@ private final class FileShelfKeyboardNSView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.command),
-           event.charactersIgnoringModifiers?.lowercased() == "a" {
-            onSelectAll?()
-        } else if event.keyCode == 49 {
-            onPreview?()
-        } else if event.keyCode == 51 || event.keyCode == 117 {
-            onDelete?()
-        } else {
-            super.keyDown(with: event)
+        switch ShelfKeyAction(from: event) {
+        case .selectAll: onSelectAll?()
+        case .preview: onPreview?()
+        case .delete: onDelete?()
+        case nil: super.keyDown(with: event)
         }
     }
 
     override func selectAll(_ sender: Any?) {
         onSelectAll?()
+    }
+}
+
+/// Shared key dispatch for shelf views: Cmd+A select-all, Space preview,
+/// Delete/Forward-Delete remove. Both keyboard surfaces must stay in sync.
+private enum ShelfKeyAction {
+    case selectAll
+    case preview
+    case delete
+
+    init?(from event: NSEvent) {
+        if event.modifierFlags.contains(.command),
+           event.charactersIgnoringModifiers?.lowercased() == "a" {
+            self = .selectAll
+        } else if event.keyCode == 49 {
+            self = .preview
+        } else if event.keyCode == 51 || event.keyCode == 117 {
+            self = .delete
+        } else {
+            return nil
+        }
     }
 }
 
@@ -871,13 +917,14 @@ private enum FileShelfThumbnailLoader {
             representationTypes: .thumbnail
         )
 
-        let imageData: Data? = await withCheckedContinuation { continuation in
-            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
-                continuation.resume(returning: representation?.nsImage.tiffRepresentation)
-            }
+        // SE-0414 region isolation lets the non-Sendable NSImage move straight
+        // back to the caller, so no TIFF encode/decode round-trip is needed to
+        // carry it across the concurrency boundary.
+        guard let representation = try? await QLThumbnailGenerator.shared
+            .generateBestRepresentation(for: request) else {
+            return nil
         }
-        guard let imageData else { return nil }
-        return NSImage(data: imageData)
+        return representation.nsImage
     }
 }
 

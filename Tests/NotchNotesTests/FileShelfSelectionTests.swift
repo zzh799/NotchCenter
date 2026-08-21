@@ -64,8 +64,11 @@ final class FileShelfSelectionTests: XCTestCase {
         var selection = FileShelfSelection()
         selection.selectAll(ids)
 
-        selection.retainValidIDs(Set(ids[1...2]))
+        selection.retainValidIDs(Array(ids[1...2]))
 
         XCTAssertEqual(selection.selectedIDs, Set(ids[1...2]))
+        // Anchor must re-anchor to the first surviving item in display order,
+        // not an arbitrary Set member.
+        XCTAssertEqual(selection.anchorID, ids[1])
     }
 }
