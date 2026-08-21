@@ -3,21 +3,21 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>NotchNotes</string>
+  <string>NotchCenter</string>
   <key>CFBundleExecutable</key>
-  <string>NotchNotes</string>
+  <string>NotchCenter</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
-  <string>io.github.oiloil.NotchNotes</string>
+  <string>com.notchcenter.app</string>
   <key>CFBundleName</key>
-  <string>NotchNotes</string>
+  <string>NotchCenter</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.2.0</string>
+  <string>1.0.0</string>
   <key>CFBundleVersion</key>
-  <string>3</string>
+  <string>1</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>LSUIElement</key>

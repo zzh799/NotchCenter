@@ -1,30 +1,90 @@
 // swift-tools-version: 6.0
+// NotchCenter — 刘海交互插件宿主（由 NotchNotes 重构而来，见 docs/NotchCenter 架构设计文档.md）
 
 import PackageDescription
 
 let package = Package(
-    name: "NotchNotes",
+    name: "NotchCenter",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "NotchNotes", targets: ["NotchNotes"])
+        .executable(name: "NotchCenter", targets: ["NotchCenter"]),
+        // 官方插件，构建后由 Scripts 组装为独立 .bundle（内置路径 Contents/PlugIns）
+        .library(name: "NotesPlugin", type: .dynamic, targets: ["NotesPlugin"]),
+        .library(name: "ScratchpadPlugin", type: .dynamic, targets: ["ScratchpadPlugin"]),
+        .library(name: "CaffeinatePlugin", type: .dynamic, targets: ["CaffeinatePlugin"])
     ],
     dependencies: [
+        // 共享 API 动态库：宿主与插件以「产品」方式链接同一份 Kit 代码（架构文档 §2.2 / §15）。
+        .package(path: "Sources/NotchCenterKit"),
+        // 仅 NotesPlugin 使用（Markdown 编辑器）。核心不再依赖任何业务组件。
         .package(path: "Vendor/swift-markdown-engine")
     ],
     targets: [
+        // 宿主主 App：刘海交互、窗口管理、插件生命周期、布局引擎、插件管理窗口
         .executableTarget(
-            name: "NotchNotes",
+            name: "NotchCenter",
             dependencies: [
+                .product(name: "NotchCenterKit", package: "NotchCenterKit")
+            ],
+            path: "Sources/NotchCenter",
+            linkerSettings: [
+                // 打包后宿主位于 NotchCenter.app/Contents/MacOS，通过 @rpath 找到 Frameworks/NotchCenterKit.dylib
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"
+                ])
+            ]
+        ),
+        // 官方插件 bundle 目标（动态库）。打包后位于 Contents/PlugIns/<Name>.bundle/Contents/MacOS，
+        // 相对宿主 Frameworks 目录需要上溯 4 级。
+        .target(
+            name: "NotesPlugin",
+            dependencies: [
+                .product(name: "NotchCenterKit", package: "NotchCenterKit"),
                 .product(name: "MarkdownEngine", package: "swift-markdown-engine")
             ],
-            path: "Sources/NotchNotes"
+            path: "Plugins/NotesPlugin",
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../../../../Frameworks"
+                ])
+            ]
+        ),
+        .target(
+            name: "ScratchpadPlugin",
+            dependencies: [
+                .product(name: "NotchCenterKit", package: "NotchCenterKit")
+            ],
+            path: "Plugins/ScratchpadPlugin",
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../../../../Frameworks"
+                ])
+            ]
+        ),
+        .target(
+            name: "CaffeinatePlugin",
+            dependencies: [
+                .product(name: "NotchCenterKit", package: "NotchCenterKit")
+            ],
+            path: "Plugins/CaffeinatePlugin",
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../../../../Frameworks"
+                ])
+            ]
         ),
         .testTarget(
-            name: "NotchNotesTests",
-            dependencies: ["NotchNotes"],
-            path: "Tests/NotchNotesTests"
+            name: "NotchCenterTests",
+            dependencies: [
+                .product(name: "NotchCenterKit", package: "NotchCenterKit"),
+                "NotchCenter",
+                "NotesPlugin",
+                "ScratchpadPlugin",
+                "CaffeinatePlugin"
+            ],
+            path: "Tests/NotchCenterTests"
         )
     ]
 )

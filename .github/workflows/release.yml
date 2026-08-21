@@ -49,11 +49,11 @@ jobs:
         run: |
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             RELEASE_TAG="$GITHUB_REF_NAME"
-            RELEASE_TITLE="NotchNotes $GITHUB_REF_NAME"
+            RELEASE_TITLE="NotchCenter $GITHUB_REF_NAME"
             RELEASE_NOTES="由版本标签 $GITHUB_REF_NAME 自动构建。"
           else
             RELEASE_TAG="latest"
-            RELEASE_TITLE="NotchNotes 最新版"
+            RELEASE_TITLE="NotchCenter 最新版"
             RELEASE_NOTES="由 main 分支提交 $GITHUB_SHA 自动构建。测试通过后才会覆盖本附件。"
             git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
             git push --force origin "refs/tags/$RELEASE_TAG"
@@ -61,13 +61,13 @@ jobs:
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" \
-              dist.noindex/NotchNotes.zip \
-              dist.noindex/NotchNotes.zip.sha256 \
+              dist.noindex/NotchCenter.zip \
+              dist.noindex/NotchCenter.zip.sha256 \
               --clobber
           else
             gh release create "$RELEASE_TAG" \
-              dist.noindex/NotchNotes.zip \
-              dist.noindex/NotchNotes.zip.sha256 \
+              dist.noindex/NotchCenter.zip \
+              dist.noindex/NotchCenter.zip.sha256 \
               --verify-tag \
               --title "$RELEASE_TITLE" \
               --notes "$RELEASE_NOTES"
