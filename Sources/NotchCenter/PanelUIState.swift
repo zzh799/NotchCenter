@@ -11,11 +11,13 @@ final class PanelUIState: ObservableObject {
     @Published var isPinned = false
     @Published var isEditing = false
 
-    /// 抽屉揭示进度（0 = 刘海尺寸，1 = 完整抽屉）：驱动“从刘海展开”的
-    /// 灵动岛式变形动画（窗口尺寸不变，视图内遮罩插值缩放）。
-    @Published var revealProgress: CGFloat = 0
+    /// 可见面板尺寸（参考 codex-island 的 model.size：唯一动画真源）：
+    /// 收起 = 紧凑带尺寸（宽=带、高=0 内容），展开 = 完整抽屉。一切尺寸
+    /// 变化都在 withAnimation 里发生，容器 frame 直接绑定它做 spring 变形
+    /// ——窗口 frame 永不参与动画（固定满高窗口）。
+    @Published var drawerWindowSize: CGSize = .zero
 
-    /// 抽屉是否展开（用于内容命中测试开关）。
+    /// 抽屉是否展开（内容存在性与命中测试开关）。
     @Published var isDrawerExpanded = false
 
     /// 紧凑区元素（随屏幕切换/布局编辑变化）。紧凑带几何（刘海尺寸、
@@ -27,8 +29,8 @@ final class PanelUIState: ObservableObject {
     @Published var showsClickModeHint = false
 
     /// 抽屉网格内容与 AddBlock 目录条（编辑模式）。
+    /// 可见面板尺寸见上方 `drawerWindowSize`（唯一动画真源）。
     @Published var drawerContentSize: CGSize = .zero
-    @Published var drawerWindowSize: CGSize = .zero
     @Published var drawerElements: [DrawerElement] = []
     @Published var catalogPlugins: [CatalogPluginGroup] = []
 }

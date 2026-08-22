@@ -196,38 +196,26 @@ enum ResizeHysteresis {
     }
 }
 
-/// 抽屉内容实际渲染尺寸的逐帧上报（含 spring 动画中间帧）。
-private struct DrawerContentSizePreferenceKey: PreferenceKey {
-    static let defaultValue = CGSize.zero
-
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
-        value = nextValue()
-    }
-}
-
 struct DrawerPanelView: View {
     @ObservedObject var ui: PanelUIState
-    /// 抽屉展开所在屏幕的几何（岛顶紧凑带、揭示动画起点宽度都按该屏
-    /// 刘海计算；抽屉只会在 activePair 上展示，故用所属 pair 的布局）。
+    /// 抽屉展开所在屏幕的几何（岛顶紧凑带、收起尺寸都按该屏刘海计算；
+    /// 抽屉只会在 activePair 上展示，故用所属 pair 的布局）。
     var layout: NotchLayout
     /// 岛顶的紧凑区（刘海高度带）：随抽屉一起作为“岛体”展示，视觉融合。
     var compactView: CompactPanelView
     let actions: DrawerActions
-    /// 内容几何逐帧上报（含 spring 动画过程中的每一帧）：控制器据此把
-    /// 窗口 frame 贴合内容——窗口与内容共用 SwiftUI spring，严丝合缝。
-    /// 注意：沙箱化进程上 preference 不传播（诊断须在非沙箱环境运行）。
-    var onContentSizeChange: ((CGSize) -> Void)?
+
+    /// 抽屉内容淡入淡出（参考 codex-island 的 contentVisible 节奏：
+    /// 展开后段淡入、收起时先淡出再缩形）。
+    @State private var contentVisible = false
 
     private let cornerRadius: CGFloat = 18
 
-    /// 抽屉窗口总高 = 紧凑带 + 内容。
-    private var totalHeight: CGFloat {
-        ui.drawerWindowSize.height + layout.compactSize.height
-    }
-
     var body: some View {
-        // 灵动岛式展开：窗口固定为最终尺寸（含顶部紧凑带），内容经遮罩
-        // 从刘海尺寸插值放大，随进度淡入（沿用旧版 revealProgress 方案）。
+        // 参考codex-island 的 model.size 模式：容器 frame 直接绑定
+        // `ui.drawerWindowSize`（唯一动画真源，收起 = 紧凑带尺寸），展开/
+        // 收起/增删块的一切尺寸变化都是这个 frame 的 spring 变形；抽屉
+        // 内容条件存在并延迟淡入。窗口 frame 永不参与动画（固定满高）。
         VStack(spacing: 0) {
             // 与独立紧凑面板完全相同的尺寸并水平居中：
             // 保证展开动画前后图标在屏幕上的绝对位置不变。
@@ -237,35 +225,53 @@ struct DrawerPanelView: View {
                     height: layout.compactSize.height
                 )
                 .frame(maxWidth: .infinity)
-            content
+
+            if ui.isDrawerExpanded {
+                content
+                    .opacity(contentVisible ? 1 : 0)
+                    .frame(maxWidth: .infinity, alignment: .top)
+            }
         }
-        .frame(width: ui.drawerWindowSize.width, height: totalHeight)
-        .background(Color(red: 0.02, green: 0.02, blue: 0.025).opacity(0.98))
-        .mask(alignment: .top) {
-            TopAttachedRoundedShape(radius: revealCornerRadius)
-                .frame(width: revealWidth, height: revealHeight)
-        }
+        .frame(
+            width: ui.drawerWindowSize.width,
+            height: ui.drawerWindowSize.height + layout.compactSize.height,
+            // 顶缘钉死：收起时 content 退出布局（其快照在移除过渡期间仍
+            // 挂在树里），VStack 与仍在收缩的容器高度不一致——默认的
+            // .center 会把只剩紧凑带的 VStack 居中/顶出容器，图标随之下坠。
+            // .top 让岛顶紧凑带（及图标）在展开/收起全程保持屏幕绝对位置不变。
+            alignment: .top
+        )
+        .background(
+            TopAttachedRoundedShape(radius: cornerRadius)
+                .fill(Color(red: 0.02, green: 0.02, blue: 0.025).opacity(0.98))
+        )
+        .clipShape(TopAttachedRoundedShape(radius: cornerRadius))
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
         .overlay(alignment: .top) {
-            TopAttachedRoundedShape(radius: revealCornerRadius)
+            TopAttachedRoundedShape(radius: cornerRadius)
                 .stroke(.white.opacity(0.09), lineWidth: 1)
-                .frame(width: revealWidth, height: revealHeight)
                 .allowsHitTesting(false)
         }
         .allowsHitTesting(ui.isDrawerExpanded)
-        // 逐帧上报内容几何（固定 frame 的实际渲染尺寸，含动画中间帧），
-        // 控制器据此同步窗口 frame —— 窗口与内容共用同一 SwiftUI spring。
-        .background {
-            GeometryReader { proxy in
-                Color.clear.preference(key: DrawerContentSizePreferenceKey.self, value: proxy.size)
+        // 固定高度窗口（屏高上限）内顶对齐：窗口比可见面板高的部分永远
+        // 在底部（透明区、命中测试穿透），面板顶缘钉死窗口顶缘。
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: ui.isDrawerExpanded) { expanded in
+            if expanded {
+                // 先让容器形变启动，内容在后段淡入（形变 commit → 内容到达）。
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    guard ui.isDrawerExpanded else { return }
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        contentVisible = true
+                    }
+                }
+            } else {
+                // 收起：内容立即淡出（与缩形重叠 20ms 起步，避免黑块闪现）。
+                withAnimation(.easeOut(duration: 0.1)) {
+                    contentVisible = false
+                }
             }
         }
-        .onPreferenceChange(DrawerContentSizePreferenceKey.self) { size in
-            onContentSizeChange?(size)
-        }
-        // 宿主视图内顶对齐：窗口与内容高度的瞬时差只落在窗口底部
-        // （透明区、不可见），内容顶部（菜单栏覆盖带）永不下坠。
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var content: some View {
@@ -283,7 +289,6 @@ struct DrawerPanelView: View {
         }
         .padding(.horizontal, NotchGridMetrics.contentPadding)
         .padding(.bottom, NotchGridMetrics.contentPadding)
-        .opacity(revealedContentOpacity)
     }
 
     /// 高度 0 ↔ 目标值的弹性过渡：目录条淡入淡出，网格同步下移
@@ -300,41 +305,6 @@ struct DrawerPanelView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.86), value: ui.isEditing)
-    }
-
-    // MARK: 揭示动画几何
-
-    private var strip: CompactStripLayout {
-        layout.compactStrip
-    }
-
-    /// 起点：紧凑黑色带的宽度与刘海高度（与常驻紧凑区完全重合）。
-    private var revealedStartSize: CGSize {
-        CGSize(
-            width: strip.rightPanelX + strip.rightPanelWidth,
-            height: layout.compactSize.height
-        )
-    }
-
-    private var revealWidth: CGFloat {
-        interpolate(from: revealedStartSize.width, to: ui.drawerWindowSize.width)
-    }
-
-    private var revealHeight: CGFloat {
-        interpolate(from: revealedStartSize.height, to: totalHeight)
-    }
-
-    private var revealCornerRadius: CGFloat {
-        interpolate(from: 11, to: cornerRadius)
-    }
-
-    /// 内容在揭示后段淡入（进度 0.42 → 0.76）。
-    private var revealedContentOpacity: CGFloat {
-        min(max((ui.revealProgress - 0.42) / 0.34, 0), 1)
-    }
-
-    private func interpolate(from start: CGFloat, to end: CGFloat) -> CGFloat {
-        start + (end - start) * ui.revealProgress
     }
 
     private var topBar: some View {

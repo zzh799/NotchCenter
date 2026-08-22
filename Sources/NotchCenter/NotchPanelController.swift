@@ -40,6 +40,27 @@ class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
+/// 固定高度（屏高上限）抽屉窗口的宿主视图：窗口比当前内容高的部分
+/// 永远是透明区，命中测试只放行可见矩形（紧凑带 + 当前面板高度），
+/// 其余穿透到下层应用与系统菜单栏。
+/// 注意：hitTest 的 point 是父视图（窗口）坐标、y 自底向上（与视图是否
+/// flipped 无关）——可见面板贴窗口顶缘，穿透判定为 y < 高度差，
+/// 与 codex-island 的 `b.maxY - size.height` 同一算式。
+@MainActor
+class DrawerHostingView<Content: View>: FirstMouseHostingView<Content> {
+    /// 可见面板高度，由控制器按当前内容状态提供。
+    var visibleHeightProvider: (() -> CGFloat)?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard bounds.contains(point) else { return nil }
+        if let visibleHeight = visibleHeightProvider?(),
+           point.y < bounds.height - visibleHeight {
+            return nil
+        }
+        return super.hitTest(point) ?? self
+    }
+}
+
 @MainActor
 class TransparentHitHostingView<Content: View>: FirstMouseHostingView<Content> {
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -123,6 +144,8 @@ final class NotchPanelController: NSObject {
     private(set) var isExpanded = false
 
     private var isRevealedForFileDrag = false
+    /// 收起态进入编辑的等待期（揭示→编辑两段式之间）：悬停判定视为停留。
+    private var isEditEntryPending = false
     private var activeMenuTrackingCount = 0
     private var collapseTask: DispatchWorkItem?
     private var mousePollingTimer: Timer?
@@ -218,7 +241,7 @@ final class NotchPanelController: NSObject {
     func showDocked() {
         rebuildContent()
         isExpanded = false
-        uiState.revealProgress = 0
+        setCollapsedSize()
         isRevealedForFileDrag = false
         for pair in pairs {
             positionCompactPanel(pair)
@@ -246,19 +269,9 @@ final class NotchPanelController: NSObject {
         isRevealedForFileDrag = false
         rebuildContent()
         positionCompactPanel(pair)
-        // 窗口直接摆到最终尺寸，“从刘海展开”由视图内遮罩插值完成
-        // （沿用 NotchNotes 的 DrawerState.revealProgress 方案）。
-        #if DEBUG
-        if ResizeProbeLog.isEnabled {
-            NSLog("expand setFrame -> %@ (isEditing=%@)", NSStringFromRect(drawerFrame(for: pair)), String(describing: isEditing))
-        }
-        #endif
+        // 参考codex-island：窗口固定尺寸，只上线不动画；可见面板经
+        // `drawerWindowSize`（唯一动画真源）从紧凑带 spring 变形到全尺寸。
         pair.drawerPanel.setFrame(drawerFrame(for: pair), display: true)
-        var t = Transaction()
-        t.disablesAnimations = true
-        withTransaction(t) {
-            uiState.revealProgress = 0
-        }
         if activate {
             NSApp.activate(ignoringOtherApps: true)
             pair.drawerPanel.makeKeyAndOrderFront(nil)
@@ -283,24 +296,59 @@ final class NotchPanelController: NSObject {
             positionCompactPanel(pair!)
         }
         if animated {
-            // 与 easeOut(0.16) 收起动画匹配，等遮罩缩回刘海再隐藏窗口。
+            // 与 easeOut(0.16) 收起动画匹配，等面板缩回刘海再隐藏窗口。
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: completion)
         } else {
             completion()
         }
     }
 
-    /// 灵动岛式展开/收起：动画 revealProgress，视图内遮罩随之缩放
-    /// （展开 spring、收起 easeOut，参数与旧版 NotchNotes 一致）。
+    /// 展开/收起 = `drawerWindowSize`（model.size 模式）在紧凑带尺寸与
+    /// 完整抽屉尺寸之间的 withAnimation 变形；容器 frame 绑定它随之
+    /// spring 缩放，窗口 frame 不参与（固定满高）。
     private func setDrawerRevealed(_ revealed: Bool, animated: Bool) {
-        uiState.isDrawerExpanded = revealed
+        let target: CGSize
+        if revealed {
+            target = drawerWindowSize(for: activePair)
+        } else {
+            target = collapsedPanelSize()
+        }
         guard animated else {
-            uiState.revealProgress = revealed ? 1 : 0
+            uiState.isDrawerExpanded = revealed
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                uiState.drawerWindowSize = target
+            }
             return
         }
-        withAnimation(revealed ? .spring(response: 0.28, dampingFraction: 0.86) : .easeOut(duration: 0.16)) {
-            uiState.revealProgress = revealed ? 1 : 0
+        // 先无动画贴到起点（rebuildContent 可能已把尺寸写成全量），再在
+        // 同一节拍内 spring 到目标——用户看到的是从紧凑带“长出”。
+        // 只有展开需要贴起点；收起的起点就是当前（全量）尺寸：若也在
+        // 这里无动画写成目标，收起会瞬跳到紧凑带，且过渡中布局错位
+        // （图标下坠），easeOut(0.16) 收起动画也随之丢失。
+        if revealed {
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                uiState.drawerWindowSize = collapsedPanelSize()
+            }
         }
+        withAnimation(revealed ? .spring(response: 0.28, dampingFraction: 0.86) : .easeOut(duration: 0.16)) {
+            uiState.isDrawerExpanded = revealed
+            uiState.drawerWindowSize = target
+        }
+    }
+
+    /// 收起态的可见面板尺寸：紧凑带宽度 × 0 内容高（容器总高 = 带高）。
+    private func collapsedPanelSize() -> CGSize {
+        let strip = activePair?.layout.compactStrip ?? primaryLayout().compactStrip
+        return CGSize(width: strip.bandWidth, height: 0)
+    }
+
+    private func setCollapsedSize() {
+        uiState.isDrawerExpanded = false
+        uiState.drawerWindowSize = collapsedPanelSize()
     }
 
     /// 退出前落盘（AppDelegate 调用）。
@@ -355,7 +403,11 @@ final class NotchPanelController: NSObject {
     func startEditMode() {
         if !isExpanded {
             expand(animated: true, activate: false)
+            // 揭示完成后再进入编辑（两段式，各自走已验证路径）；等待期内
+            // 悬停判定视为停留（否则鼠标不在停留区会在揭示中途收起）。
+            isEditEntryPending = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) { [weak self] in
+                self?.isEditEntryPending = false
                 self?.applyEditMode()
             }
         } else {
@@ -363,7 +415,7 @@ final class NotchPanelController: NSObject {
         }
     }
 
-    /// 进入编辑状态的内容过渡（内容 spring 增高、窗口由跟随器贴合）。
+    /// 进入编辑状态的内容过渡（`drawerWindowSize` spring 增高，窗口不动）。
     private func applyEditMode() {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
             isEditing = true
@@ -444,7 +496,7 @@ final class NotchPanelController: NSObject {
         }
 
         if pair.drawerHostingView == nil {
-            let host = FirstMouseHostingView(
+            let host = DrawerHostingView(
                 rootView: DrawerPanelView(
                     ui: uiState,
                     layout: pair.layout,
@@ -455,12 +507,13 @@ final class NotchPanelController: NSObject {
                         actions: compactActions(),
                         showsBand: false
                     ),
-                    actions: drawerActions(),
-                    onContentSizeChange: { [weak self, weak pair] size in
-                        self?.syncDrawerFrame(toContentSize: size, pair: pair)
-                    }
+                    actions: drawerActions()
                 )
             )
+            host.visibleHeightProvider = { [weak self, weak pair] in
+                guard let self, let pair else { return 0 }
+                return pair.layout.compactSize.height + self.uiState.drawerWindowSize.height
+            }
             host.translatesAutoresizingMaskIntoConstraints = true
             host.autoresizingMask = [.width, .height]
             host.wantsLayer = true
@@ -772,6 +825,36 @@ final class NotchPanelController: NSObject {
 
     @objc private func mousePollingTick(_ timer: Timer) {
         handleMouseLocation(NSEvent.mouseLocation)
+        updateDrawerMouseEvents(cursor: NSEvent.mouseLocation)
+    }
+
+    /// 参考codex-island 的双机制穿透：满高抽屉窗口常开 `ignoresMouseEvents`，
+    /// 按光标是否在可见面板矩形内翻转——hitTest 穿透必要但不充分（窗口
+    /// 仍会在点击时抢焦点），必须配合窗口级开关。
+    private func updateDrawerMouseEvents(cursor: NSPoint) {
+        guard isExpanded, let pair = activePair else { return }
+        var size = uiState.drawerWindowSize
+        size.height += pair.layout.compactSize.height
+        let visibleFrame = NotchGeometry.topCenteredFrame(
+            for: size,
+            topY: pair.screenFrame.maxY,
+            in: pair.screenFrame
+        )
+        let inside = visibleFrame.contains(cursor)
+        #if DEBUG
+        if ResizeProbeLog.isEnabled {
+            NSLog(
+                "click-probe cursor=%@ visible=%@ inside=%@ ignoring=%@",
+                NSStringFromPoint(cursor),
+                NSStringFromRect(visibleFrame),
+                String(describing: inside),
+                String(describing: pair.drawerPanel.ignoresMouseEvents)
+            )
+        }
+        #endif
+        if pair.drawerPanel.ignoresMouseEvents == inside {
+            pair.drawerPanel.ignoresMouseEvents = !inside
+        }
     }
 
     @objc private func screenParametersChanged(_ notification: Notification) {
@@ -817,7 +900,7 @@ final class NotchPanelController: NSObject {
             cancelCollapse()
             return
         }
-        if isEditing || isPinned {
+        if isEditing || isEditEntryPending || isPinned {
             cancelCollapse()
             return
         }
@@ -854,12 +937,21 @@ final class NotchPanelController: NSObject {
         collapseTask = nil
     }
 
-    /// 停留区域：当前抽屉窗口附近，或任一屏幕的紧凑热区。
+    /// 停留区域：当前抽屉可见矩形附近，或任一屏幕的紧凑热区。
+    /// 方案 E 窗口为固定满高，不能用窗口 frame——按内容状态计算可见矩形。
     private func isPointInExpandedStayRegion(_ point: NSPoint) -> Bool {
         let margin: CGFloat = 10
-        if let frame = activePair?.drawerPanel.frame,
-           frame.insetBy(dx: -margin, dy: -margin).contains(point) {
-            return true
+        if let pair = activePair {
+            var size = uiState.drawerWindowSize
+            size.height += pair.layout.compactSize.height
+            let visibleFrame = NotchGeometry.topCenteredFrame(
+                for: size,
+                topY: pair.screenFrame.maxY,
+                in: pair.screenFrame
+            )
+            if visibleFrame.insetBy(dx: -margin, dy: -margin).contains(point) {
+                return true
+            }
         }
         return pairs.contains { $0.hotFrame.contains(point) }
     }
@@ -906,31 +998,17 @@ final class NotchPanelController: NSObject {
         return size
     }
 
-    /// 窗口作为内容几何的逐帧跟随者：`DrawerPanelView` 经 preference 上报
-    /// 实际渲染尺寸（含 spring 动画的每一帧），窗口 frame 直接贴合（顶缘
-    /// 钉死屏幕顶端、底缘与内容严丝合缝）——窗口与内容共用同一
-    /// SwiftUI spring。注意：沙箱化进程上 preference 不传播，诊断须在
-    /// 非沙箱环境运行（此前在沙箱中误判为“不触发”并将其移除，导致
-    /// 解析 spring 等替代方案的曲线/时钟偏差）。
-    private func syncDrawerFrame(toContentSize contentSize: CGSize, pair: ScreenPanelPair?) {
-        guard isExpanded, let pair, contentSize.height > 0, contentSize.width > 0 else { return }
-        var size = contentSize
-        size.height += pair.layout.compactSize.height
-        let frame = NotchGeometry.topCenteredFrame(
-            for: size,
-            topY: pair.screenFrame.maxY,
-            in: pair.screenFrame
-        )
-        guard pair.drawerPanel.frame != frame else { return }
-        pair.drawerPanel.setFrame(frame, display: true)
-    }
-
-    /// 抽屉窗口：从屏幕顶端开始（包含刘海高度带的岛顶区域），
-    /// 展开动画时遮罩从紧凑带尺寸放大到完整窗口，与刘海视觉融合。
+    /// 抽屉窗口（方案 E：固定高度）：顶缘钉死屏幕顶端，高度一次摆到
+    /// 屏高上限 —— 编辑切换/增删块/缩放全部不动窗口，高度动画完全由
+    /// SwiftUI 遮罩 + 内容 spring 承担（与揭示动画同一机制）。仅列数或
+    /// 屏幕变化时重设宽度。命中测试由 `DrawerHostingView` 限定在可见
+    /// 矩形内，透明区穿透。
     private func drawerFrame(for pair: ScreenPanelPair) -> NSRect {
         let screenFrame = pair.screenFrame
-        var size = drawerWindowSize(for: pair)
-        size.height += pair.layout.compactSize.height
+        let size = CGSize(
+            width: layoutEngine.drawerWindowSize().width,
+            height: min(screenFrame.height - 8, screenFrame.height)
+        )
         return NotchGeometry.topCenteredFrame(
             for: size,
             topY: screenFrame.maxY,
@@ -938,10 +1016,11 @@ final class NotchPanelController: NSObject {
         )
     }
 
-    /// 拖拽/缩放预览期间面板按需增高：以预览布局的最低行为准直接设置窗口
-    /// （紧跟指针、不做动画）；提交后由 `refreshAfterEdit` 的 spring 回落
-    /// 到压实尺寸。`resized` 为正在缩放块的新行数（底层块长高时唯一能
-    /// 反映增高的来源）。
+    /// 拖拽/缩放预览期间面板按需增高（方案 E：纯 SwiftUI）：只更新
+    /// `uiState.drawerWindowSize`，遮罩/内容即时随预览布局的最低行扩展
+    /// （窗口高度固定，无需任何 frame 操作）；提交后由 `refreshAfterEdit`
+    /// 的 spring 回落到压实尺寸。`resized` 为正在缩放块的新行数（底层块
+    /// 长高时唯一能反映增高的来源）。
     private func applyPreviewWindowSize(
         _ origins: [String: LayoutEngine.GridOrigin],
         resized: (placementID: String, heightRows: Int)? = nil
@@ -953,20 +1032,10 @@ final class NotchPanelController: NSObject {
         )
         guard uiState.drawerWindowSize != size else { return }
         uiState.drawerWindowSize = size
-        var frameSize = size
-        frameSize.height += pair.layout.compactSize.height
-        pair.drawerPanel.setFrame(
-            NotchGeometry.topCenteredFrame(
-                for: frameSize,
-                topY: pair.screenFrame.maxY,
-                in: pair.screenFrame
-            ),
-            display: true
-        )
     }
 
-    /// 编辑操作提交后的刷新：内容 spring 重建，窗口按同参数解析 spring
-    /// 贴合新高度（无空行、面板贴合内容）。
+    /// 编辑操作提交后的刷新：内容 spring 重建（窗口高度固定，
+    /// 无空行、面板贴合内容）。
     private func refreshAfterEdit() {
         rebuildContent(animated: true)
     }
@@ -995,7 +1064,7 @@ final class NotchPanelController: NSObject {
             writePNG(of: pair.drawerPanel.contentView, to: "/tmp/nc_drawer\(tag).png")
             print("debug[\(index)] \(pair.screen.localizedName) hot=\(pair.hotPanel.frame) drawer=\(pair.drawerPanel.frame)")
         }
-        print("debug reveal=\(uiState.revealProgress) expanded=\(isExpanded) screens=\(pairs.count)")
+        print("debug expanded=\(isExpanded) screens=\(pairs.count)")
         print("debug sizes: content=\(layoutEngine.drawerContentSize()) window=\(layoutEngine.drawerWindowSize()) blocks=\(layoutEngine.drawerBlocks.count)")
         let layout = primaryLayout()
         print("debug compact: layout.compact=\(layout.compactSize) notch=\(layout.notchSize)")

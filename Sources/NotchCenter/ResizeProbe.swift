@@ -212,6 +212,78 @@ private struct ResizeProbeView: View {
 // MARK: - 自动化缩放复现（向自身事件队列合成鼠标事件，无需辅助功能权限）
 
 extension NotchPanelController {
+    /// 收起动画期间逐帧 dump 抽屉宿主视图的 layer 树（model 与 presentation
+    /// 位置对照）：presentation 是合成器实际显示的位置，能区分“布局跳变”
+    /// 与“仍在动画中的层”。
+    func dumpDrawerLayerTreeSamples(
+        count: Int = 8,
+        interval: TimeInterval = 0.033
+    ) {
+        guard let host = (activePair ?? pairs.first)?.drawerHostingView, let root = host.layer else {
+            return
+        }
+        for i in 0..<count {
+            DispatchQueue.main.asyncAfter(deadline: .now() + interval * Double(i)) { [weak self] in
+                guard self != nil else { return }
+                NSLog("collapse-probe layers sample %d", i)
+                func walk(_ layer: CALayer, depth: Int) {
+                    guard depth < 12 else { return }
+                    let pres = layer.presentation()
+                    func fmt(_ p: CGPoint?) -> String {
+                        p.map { String(format: "(%.1f,%.1f)", $0.x, $0.y) } ?? "nil"
+                    }
+                    NSLog(
+                        "collapse-probe L d=%d %@ bounds=%@ pos=%@ presPos=%@ presBounds=%@",
+                        depth,
+                        String(describing: type(of: layer)),
+                        NSStringFromRect(NSRect(origin: .zero, size: layer.bounds.size)),
+                        fmt(layer.position),
+                        fmt(pres?.position),
+                        pres.map { NSStringFromRect(NSRect(origin: .zero, size: $0.bounds.size)) } ?? "nil"
+                    )
+                    layer.sublayers?.forEach { walk($0, depth: 1 + depth) }                }
+                walk(root, depth: 0)
+            }
+        }
+    }
+
+    /// 收起动画逐帧像素采样（NOTCHCENTER_COLLAPSE_PROBE=1，配 AppDelegate
+    /// 的 runCollapseProbe 序列）：CGWindowListCreateImage 抓合成器表现层
+    /// （含动画中帧；cacheDisplay 只能渲染布局终态，抓不到过渡）。自拍本
+    /// 进程窗口不需要屏幕录制权限。
+    func captureDrawerWindowSamples(
+        count: Int = 12,
+        interval: TimeInterval = 0.033,
+        prefix: String = "live"
+    ) {
+        guard let pair = activePair ?? pairs.first else { return }
+        let windowID = CGWindowID(pair.drawerPanel.windowNumber)
+        for i in 0..<count {
+            DispatchQueue.main.asyncAfter(deadline: .now() + interval * Double(i)) {
+                // 窗口收起 orderOut 后采样返回 nil，属预期。
+                guard let cgImage = CGWindowListCreateImage(
+                    .null,
+                    [.optionIncludingWindow],
+                    windowID,
+                    [.bestResolution]
+                ) else {
+                    NSLog("collapse-probe live %@%d: window offscreen", prefix, i)
+                    return
+                }
+                let rep = NSBitmapImageRep(cgImage: cgImage)
+                guard let data = rep.representation(using: .png, properties: [:]) else { return }
+                try? data.write(to: URL(fileURLWithPath: "/tmp/nc_\(prefix)\(i).png"))
+                NSLog(
+                    "collapse-probe live %@%d: %dx%d",
+                    prefix,
+                    i,
+                    cgImage.width,
+                    cgImage.height
+                )
+            }
+        }
+    }
+
     /// `NOTCHCENTER_RESIZE_AUTO=1`：展开抽屉 → 进入编辑模式 → 合成鼠标
     /// 按下/拖动/抬起驱动真实缩放握把，逐步打印候选跨度、推挤结果与
     /// 窗口尺寸；配合 `NOTCHCENTER_RESIZE_LOG=1` 观察完整管线，
@@ -223,22 +295,53 @@ extension NotchPanelController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.startEditMode()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-            self.dumpResizeDiagnosticState(tag: "before-drag")
-            // 真实用户点击会经 onMouseEvent 激活应用并置 key；手势系统对
-            // 非激活窗口可能忽略事件，诊断序列显式对齐该状态。
-            NSApp.activate(ignoringOtherApps: true)
-            pair.drawerPanel.makeKeyAndOrderFront(nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                self.driveSyntheticResize(on: pair)
-            }
+        // 点击链路验证：向铅笔按钮注入真实点击，观察编辑切换是否发生。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
+            self.injectSyntheticClick(on: pair, atContentX: 608, contentYFromTop: 50)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+            self.dumpResizeDiagnosticState(tag: "after-pencil-click")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) {
+            self.driveSyntheticResize(on: pair)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.6) {
             self.capturePanelsForDebug(suffix: "_resizecommit")
             self.dumpResizeDiagnosticState(tag: "after-commit")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
             NSApp.terminate(nil)
+        }
+    }
+
+    /// 注入单次点击（HID tap）。先注入 mouseMoved 停留 ~150ms 让 30Hz
+    /// 光标轮询翻转 `ignoresMouseEvents`（真实用户是连续移入，合成事件
+    /// 是跳变，直接点击会与轮询竞态被穿透丢掉），再按下/抬起。
+    private func injectSyntheticClick(on pair: ScreenPanelPair, atContentX vx: CGFloat, contentYFromTop vy: CGFloat) {
+        let primaryFrame = NSScreen.screens.first { $0.frame.origin == .zero }?.frame
+            ?? NSScreen.main?.frame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let frame = pair.drawerPanel.frame
+        let x = frame.minX + vx
+        let y = frame.maxY - vy
+        let cg = CGPoint(x: x, y: primaryFrame.maxY - y)
+        NSLog("click-probe injecting click at screen=%@ cg=%@", NSStringFromPoint(NSPoint(x: x, y: y)), NSStringFromPoint(cg))
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let events: [(CGEventType, Double)] = [
+            (.mouseMoved, 0.0),
+            (.leftMouseDown, 0.18),
+            (.leftMouseUp, 0.26),
+        ]
+        for (type, offset) in events {
+            DispatchQueue.main.asyncAfter(deadline: .now() + offset) {
+                let event = CGEvent(
+                    mouseEventSource: source,
+                    mouseType: type,
+                    mouseCursorPosition: cg,
+                    mouseButton: .left
+                )
+                event?.post(tap: .cghidEventTap)
+            }
         }
     }
 

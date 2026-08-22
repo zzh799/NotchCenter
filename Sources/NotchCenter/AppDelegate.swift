@@ -83,11 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         func dump(_ tag: String) {
             guard let pair = panelController.activePair else { return }
             NSLog(
-                "edit-first[%@] drawer=%@ uiWindow=%@ reveal=%.2f",
+                "edit-first[%@] drawer=%@ visible=%@ expanded=%@",
                 tag,
                 NSStringFromRect(pair.drawerPanel.frame),
                 NSStringFromSize(panelController.uiState.drawerWindowSize),
-                panelController.uiState.revealProgress
+                String(describing: panelController.uiState.isDrawerExpanded)
             )
         }
         func capture(_ suffix: String, at deadline: DispatchTime) {
@@ -130,6 +130,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 收起动画中帧诊断（NOTCHCENTER_COLLAPSE_PROBE=1）：展开抽屉（钉住防
+    /// 自动收起）→ 收起 → 抓收起过程中帧。验证岛顶紧凑带是否钉死容器顶缘：
+    /// 收起时 `content` 退出布局后，若动画容器 frame 的对齐为默认垂直居中，
+    /// 只剩紧凑带的 VStack 会坠到仍在收缩的容器中部（图标从上往下掉）。
+    private func runCollapseProbe(_ panelController: NotchPanelController) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            // preference 日志在非激活窗口上不传播，诊断须对齐真实点击的前提。
+            NSApp.activate(ignoringOtherApps: true)
+            panelController.expand(animated: true, activate: false)
+            // 展开过渡同样逐帧自拍：图标应在展开全程保持静止。
+            panelController.captureDrawerWindowSamples(prefix: "live_open")
+            // 钉住避免 hover 模式下鼠标不在停留区被自动收起。
+            panelController.debugTogglePin()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+            panelController.capturePanelsForDebug(suffix: "_open")
+        }
+        let collapse = DispatchTime.now() + 2.0
+        DispatchQueue.main.asyncAfter(deadline: collapse) {
+            panelController.collapse(animated: true)
+            // 逐帧自拍抽屉窗口：观察紧凑带在收起过渡中的实际位置（像素）。
+            panelController.captureDrawerWindowSamples(prefix: "live_coll")
+            // 需要几何对照（model vs presentation 层位置）时再开 layer dump。
+            if ProcessInfo.processInfo.environment["NOTCHCENTER_COLLAPSE_LAYERS"] == "1" {
+                panelController.dumpDrawerLayerTreeSamples()
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+            NSApp.terminate(nil)
+        }
+    }
+
     private func maybeRunSmokeTest() {
         guard ProcessInfo.processInfo.environment["NOTCHCENTER_SMOKE_TEST"] == "1" else { return }
         guard let panelController else { return }
@@ -140,6 +172,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if ProcessInfo.processInfo.environment["NOTCHCENTER_EDIT_FIRST"] == "1" {
             runFirstEditDiagnostic(panelController)
+            return
+        }
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_COLLAPSE_PROBE"] == "1" {
+            runCollapseProbe(panelController)
             return
         }
         #endif
