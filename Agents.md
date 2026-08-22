@@ -26,7 +26,7 @@ NotchCenter/
 │   ├── main.swift / AppDelegate.swift
 │   ├── NotchPanelController.swift   # 核心控制器（hostController 实现）：面板、展开/收起、鼠标轮询、编辑模式、多显示器跟随
 │   ├── HostPanelViews.swift         # 紧凑 3 槽面板 + 抽屉网格视图 + 编辑模式 + 添加块目录侧边栏
-│   ├── NotchGeometry.swift          # 刘海/回退几何（紧凑 3 槽 44×44）
+│   ├── NotchGeometry.swift          # 刘海/回退几何（紧凑 3 槽分列刘海两侧：左2右1，28×28）
 │   ├── PluginManager.swift          # 插件发现/加载/启用禁用/安装卸载（双目录）
 │   ├── PluginMetadata.swift         # Info.plist 元数据（文档 §3.2）
 │   ├── LayoutEngine.swift           # 布局模型与持久化（layout.json、网格放置/重叠检测/列数约束）

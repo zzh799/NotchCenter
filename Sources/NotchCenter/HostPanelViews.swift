@@ -33,59 +33,52 @@ struct CompactCatalogItem: Identifiable {
 }
 
 struct CompactPanelView: View {
-    let layout: NotchLayout
-    let elements: [CompactElement]
-    let isEditing: Bool
-    let showsClickModeHint: Bool
-    let compactCatalog: [CompactCatalogItem]
-    let canAddCompact: Bool
+    @ObservedObject var ui: PanelUIState
     let actions: CompactActions
+    /// 是否自绘黑色底衬（独立热区窗口为 true；嵌入抽屉岛顶时为 false，
+    /// 由抽屉统一背景提供，避免叠加描边/阴影）。
+    var showsBand = true
 
     @State private var isHovering = false
 
-    private let cornerRadius: CGFloat = 16
+    private let cornerRadius: CGFloat = 11
 
     var body: some View {
         GeometryReader { proxy in
-            // 编辑模式需要容纳“+”添加按钮：面板略加宽（仍在窗口内），槽位行左移让位。
-            let editExtras: CGFloat = isEditing ? 48 : 0
-            let panelWidth = min(layout.compactSize.width + editExtras, proxy.size.width - 8)
+            let isEditing = ui.isEditing
+            let strip = ui.compactLayout.compactStrip
             let panelHeight = proxy.size.height
-            // 面板在窗口内的水平原点（面板水平居中于刘海下方）。
-            let panelOriginX = (proxy.size.width - panelWidth) / 2
-            let slotRowWidth =
-                (CGFloat(NotchGeometry.compactSlotCount)
-                    * (NotchGeometry.compactSlotSize.width + NotchGeometry.compactSlotSpacing))
-                - NotchGeometry.compactSlotSpacing
-            let slotRowX = panelOriginX + (panelWidth - slotRowWidth) / 2 - (isEditing ? 22 : 0)
-            let slotY = panelHeight - NotchGeometry.compactSlotSize.height - 1
 
+            // .top 对齐让黑色带在窗口内水平居中（其余元素均为绝对定位），
+            // 与抽屉遮罩的中心对称展开、刘海位置保持一致。
             ZStack(alignment: .top) {
-                // 常驻的黑色紧凑面板（贴近刘海观感，与抽屉同款配色）。
-                TopAttachedRoundedShape(radius: cornerRadius)
-                    .fill(
-                        Color(red: 0.02, green: 0.02, blue: 0.025)
-                            .opacity(isHovering ? 0.99 : 0.96)
-                    )
-                    .overlay {
-                        TopAttachedRoundedShape(radius: cornerRadius)
-                            .stroke(.white.opacity(isHovering ? 0.15 : 0.09), lineWidth: 1)
-                    }
-                    .shadow(
-                        color: .black.opacity(isHovering ? 0.32 : 0.18),
-                        radius: 16,
-                        y: 7
-                    )
-                    .frame(width: panelWidth, height: panelHeight)
-                    .position(x: proxy.size.width / 2, y: panelHeight / 2)
+                // 整条黑色填充带：横跨左右面板并覆盖刘海区域，
+                // 与刘海融为一体（灵动岛观感，文档 §5.2）。
+                if showsBand {
+                    TopAttachedRoundedShape(radius: cornerRadius)
+                        .fill(
+                            Color(red: 0.02, green: 0.02, blue: 0.025)
+                                .opacity(isHovering ? 0.99 : 0.96)
+                        )
+                        .overlay {
+                            TopAttachedRoundedShape(radius: cornerRadius)
+                                .stroke(.white.opacity(isHovering ? 0.15 : 0.09), lineWidth: 1)
+                        }
+                        .shadow(
+                            color: .black.opacity(isHovering ? 0.32 : 0.18),
+                            radius: 12,
+                            y: 5
+                        )
+                        .frame(width: strip.rightPanelX + strip.rightPanelWidth, height: panelHeight)
+                }
 
-                // click 模式下的悬停指示条（沿用旧版 CompactNotchView 的提示方式）。
-                if showsClickModeHint, isHovering, !isEditing {
+                // click 模式下的悬停指示条（位于刘海中央）。
+                if ui.showsClickModeHint, isHovering, !isEditing {
                     Capsule()
                         .fill(.white.opacity(0.72))
                         .frame(width: 48, height: 2)
                         .shadow(color: .white.opacity(0.32), radius: 4)
-                        .position(x: proxy.size.width / 2, y: 7)
+                        .position(x: strip.notchCenterX, y: 7)
                         .transition(.opacity.combined(with: .scale(scale: 0.82)))
                 }
 
@@ -94,10 +87,9 @@ struct CompactPanelView: View {
                     .contentShape(Rectangle())
                     .onTapGesture(perform: actions.onTapBackground)
 
-                ForEach(elements) { element in
+                ForEach(ui.compactElements) { element in
                     if let view = element.view {
-                        let slotX = slotRowX
-                            + CGFloat(element.slotIndex) * (NotchGeometry.compactSlotSize.width + NotchGeometry.compactSlotSpacing)
+                        let rect = strip.slotRect(at: element.slotIndex) ?? .zero
                         CompactBlockContainer(
                             element: element,
                             view: view,
@@ -105,20 +97,14 @@ struct CompactPanelView: View {
                             onRemove: { actions.onRemoveBlock(element.slotIndex) },
                             onExpand: actions.onExpand
                         )
-                        .position(
-                            x: slotX + NotchGeometry.compactSlotSize.width / 2,
-                            y: slotY + NotchGeometry.compactSlotSize.height / 2
-                        )
+                        .position(x: rect.midX, y: rect.midY)
                     }
                 }
 
-                // 编辑模式：槽位旁“+”添加紧凑块（贴在面板右缘，垂直对齐槽位行）。
+                // 编辑模式：“+”添加紧凑块（右侧面板之外的预留区）。
                 if isEditing {
                     addCompactButton
-                        .position(
-                            x: panelOriginX + panelWidth - 20,
-                            y: slotY + NotchGeometry.compactSlotSize.height / 2
-                        )
+                        .position(strip.editButtonPoint)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -129,7 +115,7 @@ struct CompactPanelView: View {
 
     private var addCompactButton: some View {
         Menu {
-            ForEach(compactCatalog) { item in
+            ForEach(ui.compactCatalog) { item in
                 Button {
                     actions.onAddCompact(item.pluginID, item.blockID)
                 } label: {
@@ -138,23 +124,32 @@ struct CompactPanelView: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.8))
-                .frame(width: 44, height: 44)
+                .frame(
+                    width: NotchGeometry.compactSlotSize.width,
+                    height: NotchGeometry.compactSlotSize.height
+                )
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(.white.opacity(0.22), lineWidth: 1)
                         .fill(.white.opacity(0.05))
                 )
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .disabled(!canAddCompact || compactCatalog.isEmpty)
-        .help(canAddCompact ? "Add compact block" : "All compact slots are full")
+        // macOS Menu 会按菜单项内容撑宽标签，需显式约束为槽位大小，
+        // 否则 .position 定位时图标会偏离（标签左对齐于超宽 frame）。
+        .frame(
+            width: NotchGeometry.compactSlotSize.width,
+            height: NotchGeometry.compactSlotSize.height
+        )
+        .disabled(!ui.canAddCompact || ui.compactCatalog.isEmpty)
+        .help(ui.canAddCompact ? "Add compact block" : "All compact slots are full")
     }
 }
 
-/// 紧凑块容器：44×44 槽位内的块视图 + 默认点击展开（文档 §6.2）+ 编辑模式移除。
+/// 紧凑块容器：槽位内的块视图 + 默认点击展开（文档 §6.2）+ 编辑模式移除。
 private struct CompactBlockContainer: View {
     let element: CompactElement
     let view: AnyView
@@ -221,23 +216,50 @@ struct DrawerActions {
 }
 
 struct DrawerPanelView: View {
-    let contentWidth: CGFloat
-    let contentHeight: CGFloat
-    /// 窗口内容尺寸（与 layoutEngine.drawerWindowSize() 一致；根视图固定为它，
-    /// 避免 NSHostingView 按 SwiftUI 理想尺寸把窗口/内容撑宽）。
-    let windowSize: CGSize
-    let elements: [DrawerElement]
-    let catalogPlugins: [CatalogPluginGroup]
-    let isPinned: Bool
-    let isEditing: Bool
+    @ObservedObject var ui: PanelUIState
+    /// 岛顶的紧凑区（刘海高度带）：随抽屉一起作为“岛体”展示，视觉融合。
+    var compactView: CompactPanelView
     let actions: DrawerActions
 
     private let cornerRadius: CGFloat = 18
 
-    var body: some View {
-        ZStack(alignment: .top) {
-            RoundedTopBackground(cornerRadius: cornerRadius)
+    /// 抽屉窗口总高 = 紧凑带 + 内容。
+    private var totalHeight: CGFloat {
+        ui.drawerWindowSize.height + ui.compactLayout.compactSize.height
+    }
 
+    var body: some View {
+        // 灵动岛式展开：窗口固定为最终尺寸（含顶部紧凑带），内容经遮罩
+        // 从刘海尺寸插值放大，随进度淡入（沿用旧版 revealProgress 方案）。
+        VStack(spacing: 0) {
+            // 与独立紧凑面板完全相同的尺寸并水平居中：
+            // 保证展开动画前后图标在屏幕上的绝对位置不变。
+            compactView
+                .frame(
+                    width: ui.compactLayout.compactSize.width,
+                    height: ui.compactLayout.compactSize.height
+                )
+                .frame(maxWidth: .infinity)
+            content
+        }
+        .frame(width: ui.drawerWindowSize.width, height: totalHeight)
+        .background(Color(red: 0.02, green: 0.02, blue: 0.025).opacity(0.98))
+        .mask(alignment: .top) {
+            TopAttachedRoundedShape(radius: revealCornerRadius)
+                .frame(width: revealWidth, height: revealHeight)
+        }
+        .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
+        .overlay(alignment: .top) {
+            TopAttachedRoundedShape(radius: revealCornerRadius)
+                .stroke(.white.opacity(0.09), lineWidth: 1)
+                .frame(width: revealWidth, height: revealHeight)
+                .allowsHitTesting(false)
+        }
+        .allowsHitTesting(ui.isDrawerExpanded)
+    }
+
+    private var content: some View {
+        ZStack(alignment: .topLeading) {
             VStack(spacing: 0) {
                 topBar
                     .frame(height: NotchGridMetrics.drawerTopBarHeight)
@@ -249,16 +271,50 @@ struct DrawerPanelView: View {
             .padding(.horizontal, NotchGridMetrics.contentPadding)
             .padding(.bottom, NotchGridMetrics.contentPadding)
 
-            if isEditing {
+            if ui.isEditing {
                 PluginCatalogSidebar(
-                    plugins: catalogPlugins,
+                    plugins: ui.catalogPlugins,
                     onAddBlock: actions.onAddBlock
                 )
                 .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
-        .frame(width: windowSize.width, height: windowSize.height)
-        .clipped()
+        .opacity(revealedContentOpacity)
+    }
+
+    // MARK: 揭示动画几何
+
+    private var strip: CompactStripLayout {
+        ui.compactLayout.compactStrip
+    }
+
+    /// 起点：紧凑黑色带的宽度与刘海高度（与常驻紧凑区完全重合）。
+    private var revealedStartSize: CGSize {
+        CGSize(
+            width: strip.rightPanelX + strip.rightPanelWidth,
+            height: ui.compactLayout.compactSize.height
+        )
+    }
+
+    private var revealWidth: CGFloat {
+        interpolate(from: revealedStartSize.width, to: ui.drawerWindowSize.width)
+    }
+
+    private var revealHeight: CGFloat {
+        interpolate(from: revealedStartSize.height, to: totalHeight)
+    }
+
+    private var revealCornerRadius: CGFloat {
+        interpolate(from: 11, to: cornerRadius)
+    }
+
+    /// 内容在揭示后段淡入（进度 0.42 → 0.76）。
+    private var revealedContentOpacity: CGFloat {
+        min(max((ui.revealProgress - 0.42) / 0.34, 0), 1)
+    }
+
+    private func interpolate(from start: CGFloat, to end: CGFloat) -> CGFloat {
+        start + (end - start) * ui.revealProgress
     }
 
     private var topBar: some View {
@@ -270,17 +326,17 @@ struct DrawerPanelView: View {
             Spacer(minLength: 0)
 
             topBarButton(
-                systemImage: isPinned ? "pin.fill" : "pin",
-                help: isPinned ? "Unpin drawer" : "Pin drawer open",
+                systemImage: ui.isPinned ? "pin.fill" : "pin",
+                help: ui.isPinned ? "Unpin drawer" : "Pin drawer open",
                 action: actions.onTogglePin,
-                tint: isPinned ? .white.opacity(0.9) : .white.opacity(0.65)
+                tint: ui.isPinned ? .white.opacity(0.9) : .white.opacity(0.65)
             )
 
             topBarButton(
-                systemImage: isEditing ? "pencil.slash" : "pencil",
-                help: isEditing ? "Done editing layout" : "Edit layout",
+                systemImage: ui.isEditing ? "pencil.slash" : "pencil",
+                help: ui.isEditing ? "Done editing layout" : "Edit layout",
                 action: actions.onToggleEdit,
-                tint: isEditing ? .white.opacity(0.9) : .white.opacity(0.65)
+                tint: ui.isEditing ? .white.opacity(0.9) : .white.opacity(0.65)
             )
 
             topBarButton(
@@ -316,12 +372,18 @@ struct DrawerPanelView: View {
 
     private var grid: some View {
         ZStack(alignment: .topLeading) {
-            ForEach(elements) { element in
+            ForEach(ui.drawerElements) { element in
                 let origin = resolveOrigin(for: element)
                 DrawerBlockContainer(
                     element: element,
-                    isEditing: isEditing,
+                    isEditing: ui.isEditing,
                     isDragging: draggingPlacementID == element.id,
+                    previewColumns: resizingPlacementID == element.id ? resizePreviewColumns : nil,
+                    previewRows: resizingPlacementID == element.id ? resizePreviewRows : nil,
+                    onResizeChanged: { translation in
+                        handleResizeTranslate(translation, for: element)
+                    },
+                    onResizeCommit: { commitResize(for: element) },
                     onRemove: { actions.onRemoveBlock(element.id) },
                     onDragChanged: { translation in
                         draggingPlacementID = element.id
@@ -335,8 +397,7 @@ struct DrawerPanelView: View {
                         }
                         draggingPlacementID = nil
                         actions.onCommitDrag(element.id, target.0, target.1)
-                    },
-                    onResize: actions.onResizeBlock
+                    }
                 )
                 .frame(
                     width: element.placement.widthColumns > 0
@@ -354,13 +415,86 @@ struct DrawerPanelView: View {
                 )
             }
         }
-        .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
-        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: elements.map(\.id))
+        .frame(
+            width: ui.drawerContentSize.width,
+            height: ui.drawerContentSize.height,
+            alignment: .topLeading
+        )
+        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: ui.drawerElements.map(\.id))
         .animation(.spring(response: 0.3, dampingFraction: 0.86), value: previewPositions)
+
     }
 
     @State private var previewPositions: [String: LayoutEngine.GridOrigin] = [:]
     @State private var draggingPlacementID: String?
+    /// 缩放预览：正在调整的块及其目标格数（由父视图持有，跨手势中断稳定）。
+    @State private var resizingPlacementID: String?
+    @State private var resizePreviewColumns: Int?
+    @State private var resizePreviewRows: Int?
+    /// 缩放手势基准与上次位移（用于检测手势中断重启）。
+    @State private var resizeBaseColumns: Int?
+    @State private var resizeBaseRows: Int?
+    @State private var lastResizeTranslation: CGSize = .zero
+
+    /// 缩放位移 → 目标格数。按下瞬间位移为零，目标即当前尺寸（不会瞬间缩小）；
+    /// 检测到手势被中断重启（位移突然回退）时以当前预览为新的基准，
+    /// 从当前大小继续缩放——既无跳变也无"当前 ↔ 原始"闪烁。
+    private func handleResizeTranslate(_ translation: CGSize, for element: DrawerElement) {
+        let absW = abs(translation.width)
+        let absH = abs(translation.height)
+        if resizingPlacementID != element.id
+            || absW < lastResizeTranslation.width - 4
+            || absH < lastResizeTranslation.height - 4 {
+            resizeBaseColumns = resizePreviewColumns ?? element.placement.widthColumns
+            resizeBaseRows = resizePreviewRows ?? element.placement.heightRows
+            resizingPlacementID = element.id
+        }
+        lastResizeTranslation = CGSize(width: absW, height: absH)
+
+        let stepW = NotchGridMetrics.cellWidth + NotchGridMetrics.spacing
+        let stepH = NotchGridMetrics.cellHeight + NotchGridMetrics.spacing
+        let rawColumns = min(
+            max((resizeBaseColumns ?? 1) + Int((translation.width / stepW).rounded()), 1),
+            4
+        )
+        let rawRows = min(
+            max((resizeBaseRows ?? 1) + Int((translation.height / stepH).rounded()), 1),
+            6
+        )
+
+        // 预览直接吸附到最近的支持尺寸：所见即所得，松手必定生效，
+        // 不会出现"拖到中间尺寸、松手又恢复原大小"的落差。
+        if let nearest = element.supportedSizes.min(by: { lhs, rhs in
+            let leftDistance = abs(lhs.gridSpan.columns - rawColumns)
+                + abs(lhs.gridSpan.rows - rawRows)
+            let rightDistance = abs(rhs.gridSpan.columns - rawColumns)
+                + abs(rhs.gridSpan.rows - rawRows)
+            return leftDistance < rightDistance
+        }) {
+            resizePreviewColumns = nearest.gridSpan.columns
+            resizePreviewRows = nearest.gridSpan.rows
+        }
+    }
+
+    /// 松手时在支持的尺寸等级间吸附；无匹配尺寸则回退原尺寸。
+    private func commitResize(for element: DrawerElement) {
+        defer {
+            resizingPlacementID = nil
+            resizePreviewColumns = nil
+            resizePreviewRows = nil
+            resizeBaseColumns = nil
+            resizeBaseRows = nil
+            lastResizeTranslation = .zero
+        }
+        guard let columns = resizePreviewColumns,
+              let rows = resizePreviewRows,
+              let size = element.supportedSizes.first(where: {
+                  $0.gridSpan.columns == columns && $0.gridSpan.rows == rows
+              }), size != element.currentSize else {
+            return
+        }
+        actions.onResizeBlock(element.id, size)
+    }
 
     private func resolveOrigin(for element: DrawerElement) -> LayoutEngine.GridOrigin {
         if let preview = previewPositions[element.id],
@@ -404,205 +538,154 @@ struct DrawerPanelView: View {
     }
 }
 
-/// 抽屉背景：近黑半透明 + 顶部圆角 + 细描边。
-private struct RoundedTopBackground: View {
-    let cornerRadius: CGFloat
-
-    var body: some View {
-        TopAttachedRoundedShape(radius: cornerRadius)
-            .fill(Color(red: 0.02, green: 0.02, blue: 0.025).opacity(0.98))
-            .overlay {
-                TopAttachedRoundedShape(radius: cornerRadius)
-                    .stroke(.white.opacity(0.09), lineWidth: 1)
-            }
-    }
-}
-
 /// 抽屉块容器：稳定身份 + 块视图 + 编辑模式（文档 §5.5）。
 /// - 拖动整块移动：拖动中实时预览（被占用块向下推挤自动重排），松手提交；
-/// - 高亮边缘 + 拖动右/下边缘与右下角调整尺寸（在支持的尺寸等级间吸附）；
+/// - 右下角握把拖动调整尺寸，缩放过程中组件左上角保持不动；
 /// - 移除按钮跟随块一起移动。
 private struct DrawerBlockContainer: View {
     let element: DrawerElement
     let isEditing: Bool
     let isDragging: Bool
+    /// 缩放预览目标（由父视图持有；nil 表示未在缩放）。
+    let previewColumns: Int?
+    let previewRows: Int?
+    let onResizeChanged: (CGSize) -> Void
+    let onResizeCommit: () -> Void
     let onRemove: () -> Void
     let onDragChanged: (CGSize) -> Void
     let onDragEnded: (CGSize) -> Void
-    let onResize: (String, BlockSize) -> Void
 
     @State private var dragOffset: CGSize = .zero
-    @State private var resizeColumns: Int?
-    @State private var resizeRows: Int?
 
     private let cornerRadius: CGFloat = 12
-    private let handleThickness: CGFloat = 10
 
     var body: some View {
-        let columns = resizeColumns ?? element.placement.widthColumns
-        let rows = resizeRows ?? element.placement.heightRows
+        let columns = previewColumns ?? element.placement.widthColumns
+        let rows = previewRows ?? element.placement.heightRows
+        let width = NotchGridMetrics.contentWidth(columns: columns)
+        let height = NotchGridMetrics.contentHeight(rows: rows)
+        // 缩放预览补偿：容器被外层按旧尺寸居中定位，内部变大会以中心对称扩张。
+        // 把增长量的一半平移回来，使组件左上角始终锚定在原点（原点不随缩放改变）。
+        let deltaWidth = width - NotchGridMetrics.contentWidth(columns: element.placement.widthColumns)
+        let deltaHeight = height - NotchGridMetrics.contentHeight(rows: element.placement.heightRows)
 
-        ZStack(alignment: .topTrailing) {
-            element.view
-                .background(isEditing ? Color.white.opacity(0.03) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .overlay {
-                    if isEditing {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .stroke(
-                                .white.opacity(isDragging ? 0.62 : 0.45),
-                                lineWidth: isDragging ? 1.5 : 1
-                            )
-                    }
+        // 预览尺寸必须显式套在内容上（含所有 overlay），否则块永远按外层
+        // 提案的原始尺寸渲染，补偿偏移会退化成纯位移（上移/下移半行的来源）。
+        return element.view
+            .frame(width: width, height: height)
+            .background(isEditing ? Color.white.opacity(0.03) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                if isEditing {
+                    // 编辑模式高亮组件边缘。
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(
+                            .white.opacity(isDragging || isResizing ? 0.75 : 0.4),
+                            lineWidth: isDragging || isResizing ? 1.5 : 1
+                        )
                 }
-                .frame(
-                    width: NotchGridMetrics.contentWidth(columns: columns),
-                    height: NotchGridMetrics.contentHeight(rows: rows)
-                )
-
-            if isEditing {
-                controls
             }
-        }
-        .contentShape(Rectangle())
-        .offset(dragOffset)
-        .gesture(
-            isEditing && resizeColumns == nil && resizeRows == nil
-                ? DragGesture(minimumDistance: 2)
-                    .onChanged { value in
-                        dragOffset = value.translation
-                        onDragChanged(value.translation)
+            // 编辑模式交互层：屏蔽块内容自身手势（如文本选中），
+            // 让拖动/缩放在所有块上行为一致。所有层都用 overlay——
+            // 尺寸严格等于内容本身，不会被外层的旧尺寸 proposal 撑大
+            // （此前用 ZStack + 弹性子视图，缩小到 1 行时位置会上偏半行）。
+            .overlay {
+                if isEditing {
+                    Color.clear.contentShape(Rectangle())
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if isEditing {
+                    Button(action: onRemove) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .shadow(color: .black.opacity(0.6), radius: 2)
                     }
-                    .onEnded { value in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-                            dragOffset = .zero
+                    .buttonStyle(.plain)
+                    .help("Remove block")
+                    .padding(6)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if isEditing {
+                    // 右下角缩放握把：唯一的调整尺寸入口，向右下拖动扩大、
+                    // 左上角原点保持不动，松手在支持的尺寸等级间吸附。
+                    resizeHandle
+                }
+            }
+            .contentShape(Rectangle())
+            .offset(x: deltaWidth / 2, y: deltaHeight / 2)
+            .offset(dragOffset)
+            .gesture(
+                isEditing && !isResizing
+                    ? DragGesture(minimumDistance: 2)
+                        .onChanged { value in
+                            dragOffset = value.translation
+                            onDragChanged(value.translation)
                         }
-                        onDragEnded(value.translation)
-                    }
-                : nil
-        )
+                        .onEnded { value in
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                                dragOffset = .zero
+                            }
+                            onDragEnded(value.translation)
+                        }
+                    : nil
+            )
+    }
+
+    private var isResizing: Bool {
+        previewColumns != nil || previewRows != nil
     }
 
     // MARK: 编辑控件（跟随块移动）
 
-    @ViewBuilder
-    private var controls: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .shadow(color: .black.opacity(0.6), radius: 2)
+    @State private var isResizeHandleHovering = false
+
+    /// 右下角缩放握把：对角双箭头图标 + 圆形底衬，悬停/拖动中增亮放大。
+    private var resizeHandle: some View {
+        Image(systemName: "arrow.up.left.and.arrow.down.right")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white.opacity(isResizing ? 0.95 : 0.7))
+            .frame(width: 22, height: 22)
+            .background {
+                Circle()
+                    .fill(.white.opacity(isResizing ? 0.28 : 0.14))
+                    .overlay {
+                        Circle()
+                            .stroke(
+                                .white.opacity(isResizing ? 0.55 : 0.25),
+                                lineWidth: 1
+                            )
+                    }
             }
-            .buttonStyle(.plain)
-            .help("Remove block")
-            .padding(6)
-        }
-
-        // 边缘调整尺寸手柄（拖动右缘/下缘/右下角）。
-        resizeHandles
-            .allowsHitTesting(resizeColumns == nil && resizeRows == nil)
-    }
-
-    @ViewBuilder
-    private var resizeHandles: some View {
-        if isEditing {
-            GeometryReader { proxy in
-                let w = proxy.size.width
-                let h = proxy.size.height
-                ZStack(alignment: .bottomTrailing) {
-                    // 右缘：上下留出移除按钮区域。
-                    Rectangle()
-                        .fill(.white.opacity(0.55))
-                        .frame(width: handleThickness)
-                        .position(x: w - handleThickness / 2, y: h / 2 + 10)
-                        .contentShape(Rectangle())
-                        .highPriorityGesture(
-                            resizeWidthGesture
-                        )
-                        .help("Drag to resize width")
-
-                    // 下缘。
-                    Rectangle()
-                        .fill(.white.opacity(0.55))
-                        .frame(height: handleThickness)
-                        .position(x: w / 2, y: h - handleThickness / 2)
-                        .contentShape(Rectangle())
-                        .highPriorityGesture(
-                            resizeHeightGesture
-                        )
-                        .help("Drag to resize height")
-
-                    // 右下角。
-                    Rectangle()
-                        .fill(.white.opacity(0.8))
-                        .frame(width: 18, height: 18)
-                        .position(x: w - 9, y: h - 9)
-                        .contentShape(Rectangle())
-                        .highPriorityGesture(
-                            resizeCornerGesture
-                        )
-                        .help("Drag to resize")
+            .scaleEffect(isResizing ? 1.12 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.72), value: isResizing)
+            .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+            .padding(5)
+            .contentShape(Rectangle())
+            .onHover { isResizeHandleHovering = $0 }
+            .background {
+                if isResizeHandleHovering, !isResizing {
+                    Circle()
+                        .fill(.white.opacity(0.08))
+                        .padding(2)
                 }
             }
-            .allowsHitTesting(true)
-        }
+            .highPriorityGesture(resizeGesture)
+            .help("Drag to resize")
     }
 
-    private var resizeWidthGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
+    /// 缩放手势：基于位移增量的目标格数。手势重启的检测与重基准在父视图完成，
+    /// 保证中断后从当前预览尺寸继续，不会跳回原始大小或瞬间缩小。
+    private var resizeGesture: some Gesture {
+        DragGesture(minimumDistance: 1)
             .onChanged { value in
-                let cell = NotchGridMetrics.cellWidth + NotchGridMetrics.spacing
-                let startColumns = element.placement.widthColumns
-                let delta = Int((value.translation.width / cell).rounded())
-                resizeColumns = min(max(startColumns + delta, 1), 4)
+                onResizeChanged(value.translation)
             }
             .onEnded { _ in
-                commitResize()
+                onResizeCommit()
             }
-    }
-
-    private var resizeHeightGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                let cell = NotchGridMetrics.cellHeight + NotchGridMetrics.spacing
-                let startRows = element.placement.heightRows
-                let delta = Int((value.translation.height / cell).rounded())
-                resizeRows = min(max(startRows + delta, 1), 6)
-            }
-            .onEnded { _ in
-                commitResize()
-            }
-    }
-
-    private var resizeCornerGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                let cellW = NotchGridMetrics.cellWidth + NotchGridMetrics.spacing
-                let cellH = NotchGridMetrics.cellHeight + NotchGridMetrics.spacing
-                let deltaColumns = Int((value.translation.width / cellW).rounded())
-                let deltaRows = Int((value.translation.height / cellH).rounded())
-                resizeColumns = min(max(element.placement.widthColumns + deltaColumns, 1), 4)
-                resizeRows = min(max(element.placement.heightRows + deltaRows, 1), 6)
-            }
-            .onEnded { _ in
-                commitResize()
-            }
-    }
-
-    /// 松手时在支持的尺寸等级间吸附；无匹配尺寸则回退原尺寸。
-    private func commitResize() {
-        let columns = resizeColumns ?? element.placement.widthColumns
-        let rows = resizeRows ?? element.placement.heightRows
-        resizeColumns = nil
-        resizeRows = nil
-
-        guard let size = element.supportedSizes.first(where: {
-            $0.gridSpan.columns == columns && $0.gridSpan.rows == rows
-        }), size != element.currentSize else {
-            return
-        }
-        onResize(element.id, size)
     }
 }
 

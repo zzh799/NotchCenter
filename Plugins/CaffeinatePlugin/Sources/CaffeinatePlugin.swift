@@ -79,18 +79,20 @@ private struct KeepAwakeCompactView: View {
     }
 
     var body: some View {
-        Button {
+        // 跟随宿主分配的槽位尺寸（紧凑区为刘海高度带内的小槽位）。
+        let slot = context.layoutInfo.frame.size
+        return Button {
             store.toggleKeepAwake()
         } label: {
             ZStack {
                 Image(systemName: store.isKeepingAwake ? "cup.and.saucer.fill" : "cup.and.saucer")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white.opacity(store.isKeepingAwake ? 0.95 : 0.72))
             }
-            .frame(width: 44, height: 44)
+            .frame(width: slot.width, height: slot.height)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(
                         store.isKeepingAwake
                             ? Color(red: 0.17, green: 0.3, blue: 0.2).opacity(0.5)

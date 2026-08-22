@@ -71,15 +71,17 @@ import SwiftUI
     }
 }
 
-/// 插件内共享模型：多个块视图共享同一 NotesStore / NotesImageStore；
-/// 每个放置实例（placementID）显示自己的标签页与编辑器交互状态
-/// （数据仍是同一份，文档 §4.3 多实例语义）。
+/// 插件内共享模型：多个块视图共享同一 NotesStore / NotesImageStore（数据同步）；
+/// 每个放置实例（placementID）显示自己的标签页与编辑器交互状态，
+/// 标签页选择经 StateStore 持久化（重启后仍保持，文档 §4.3 多实例语义）。
 @MainActor
 final class NotesModel {
     static let shared = NotesModel()
 
     private(set) var store: NotesStore?
     private(set) var imageStore: NotesImageStore?
+    /// 注入的插件状态存储（持久化每个放置实例的标签页选择）。
+    private var stateStore: StateStore?
     /// 默认编辑器交互状态（设置界面/菜单等无放置上下文的入口使用）。
     let editorInteractionState = EditorInteractionState()
     /// placementID → 该实例当前显示的标签页。
@@ -88,6 +90,7 @@ final class NotesModel {
     private var editorStateByPlacement: [String: EditorInteractionState] = [:]
 
     func resolve(stateStore: StateStore) -> NotesStore {
+        self.stateStore = stateStore
         if store == nil {
             store = NotesStore(stateStore: stateStore)
             imageStore = try? NotesImageStore(stateStore: stateStore)
@@ -95,14 +98,24 @@ final class NotesModel {
         return store!
     }
 
-    /// 某放置实例当前显示的标签页；无记录时用全局当前标签页。
+    /// 某放置实例当前显示的标签页；优先取内存记录，其次从持久化恢复，
+    /// 均无时由调用方回退到全局当前标签页。
     func activeTab(for placementID: String) -> UUID? {
-        activeTabByPlacement[placementID]
+        if let cached = activeTabByPlacement[placementID] {
+            return cached
+        }
+        guard let stateStore,
+              let restored: UUID = stateStore.object(UUID.self, forKey: Self.activeTabKey(placementID)) else {
+            return nil
+        }
+        activeTabByPlacement[placementID] = restored
+        return restored
     }
 
-    /// 记录某放置实例的标签页选择（实例存活期间有效）。
+    /// 记录某放置实例的标签页选择并持久化。
     func rememberActiveTab(_ tabID: UUID, for placementID: String) {
         activeTabByPlacement[placementID] = tabID
+        try? stateStore?.setObject(tabID, forKey: Self.activeTabKey(placementID))
     }
 
     /// 每个放置实例独立的编辑器交互状态。
@@ -114,6 +127,11 @@ final class NotesModel {
         editorStateByPlacement[placementID] = state
         return state
     }
+
+    private static func activeTabKey(_ placementID: String) -> String {
+        // placementID 为宿主生成的 UUID 字符串，仅含合法键字符。
+        "activeTab." + placementID
+    }
 }
 
 /// 紧凑块：笔记图标；点击由核心默认展开抽屉。
@@ -121,10 +139,12 @@ private struct NotesCompactView: View {
     let context: BlockContext
 
     var body: some View {
-        Image(systemName: "note.text")
-            .font(.system(size: 15, weight: .medium))
+        // 跟随宿主分配的槽位尺寸（紧凑区为刘海高度带内的小槽位）。
+        let slot = context.layoutInfo.frame.size
+        return Image(systemName: "note.text")
+            .font(.system(size: 13, weight: .medium))
             .foregroundStyle(.white.opacity(0.72))
-            .frame(width: 44, height: 44)
+            .frame(width: slot.width, height: slot.height)
             .contentShape(Rectangle())
             .help("Notes")
             .accessibilityLabel("Notes")

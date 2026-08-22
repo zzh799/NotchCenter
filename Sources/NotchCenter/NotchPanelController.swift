@@ -43,33 +43,21 @@ class TransparentHitHostingView<Content: View>: FirstMouseHostingView<Content> {
     }
 }
 
-// MARK: - 宿主控制器
+// MARK: - 屏幕面板对
 
-/// 核心控制器：刘海交互、窗口管理、插件生命周期编排、布局渲染（文档 §2.1 / §5 / §6 / §7）。
+/// 每个物理屏幕一套（紧凑热区 + 抽屉）窗口对；内容状态由共享的
+/// PanelUIState 驱动，几何按各自屏幕独立计算（文档 §6.3 多显示器：
+/// 每个屏幕单独显示一个 NotchCenter）。
 @MainActor
-final class NotchPanelController: NSObject {
-    let settingsStore = SettingsStore()
-    private(set) var layoutEngine: LayoutEngine!
-    private(set) var pluginManager: PluginManager!
+final class ScreenPanelPair {
+    let screen: NSScreen
+    let hotPanel: NotchPanel
+    let drawerPanel: NotchPanel
+    var hotHostingView: TransparentHitHostingView<CompactPanelView>?
+    var drawerHostingView: NSHostingView<DrawerPanelView>?
 
-    private let hotPanel: NotchPanel
-    private let drawerPanel: NotchPanel
-    private var hotHostingView: TransparentHitHostingView<CompactPanelView>?
-    private var drawerHostingView: NSHostingView<DrawerPanelView>?
-
-    private var isExpanded = false
-    private var isPinned = false
-    private var isEditing = false
-    private var isRevealedForFileDrag = false
-    private var activeMenuTrackingCount = 0
-    private var collapseTask: DispatchWorkItem?
-    private var mousePollingTimer: Timer?
-    private var globalMouseDownMonitor: Any?
-    private var globalMouseUpMonitor: Any?
-    private var lastTargetScreen: NSScreen?
-    private var pluginManagerWindowController: PluginManagerWindowController?
-
-    override init() {
+    init(screen: NSScreen, configure: (NotchPanel) -> Void) {
+        self.screen = screen
         hotPanel = NotchPanel(
             contentRect: .zero,
             styleMask: [.borderless, .fullSizeContentView],
@@ -82,10 +70,63 @@ final class NotchPanelController: NSObject {
             backing: .buffered,
             defer: false
         )
+        configure(hotPanel)
+        configure(drawerPanel)
+    }
+
+    /// 该屏幕的刘海/回退布局。
+    var layout: NotchLayout { NotchGeometry.layout(for: screen) }
+    var screenFrame: NSRect { screen.frame }
+    /// 紧凑热区在该屏幕上的 frame。
+    var hotFrame: NSRect { NotchGeometry.activationFrame(for: layout, in: screenFrame) }
+}
+
+// MARK: - 宿主控制器
+
+/// 核心控制器：刘海交互、窗口管理、插件生命周期编排、布局渲染（文档 §2.1 / §5 / §6 / §7）。
+/// 每个连接的屏幕都有一套自己的面板；抽屉同一时刻只在鼠标所在的屏幕展开。
+@MainActor
+final class NotchPanelController: NSObject {
+    let settingsStore = SettingsStore()
+    private(set) var layoutEngine: LayoutEngine!
+    private(set) var pluginManager: PluginManager!
+
+    /// 面板 UI 状态（所有屏幕的 SwiftUI 视图共享此对象；root 视图只在创建时设置一次）。
+    let uiState: PanelUIState
+
+    /// 每个屏幕的面板对。
+    private var pairs: [ScreenPanelPair] = []
+    /// 当前展开抽屉的屏幕面板对。
+    private var activePair: ScreenPanelPair?
+
+    /// 钉住状态（抽屉是否保持常开）。经 uiState 发布，顶部按钮即时同步。
+    private var isPinned: Bool {
+        get { uiState.isPinned }
+        set { uiState.isPinned = newValue }
+    }
+
+    /// 编辑模式。经 uiState 发布；编辑期间抽屉不会自动收起（与钉住无关，
+    /// 固定按钮只反映用户的显式选择）。
+    private(set) var isEditing: Bool {
+        get { uiState.isEditing }
+        set { uiState.isEditing = newValue }
+    }
+
+    /// 抽屉是否处于展开状态（纯控制器逻辑，不进 UI 状态）。
+    private(set) var isExpanded = false
+
+    private var isRevealedForFileDrag = false
+    private var activeMenuTrackingCount = 0
+    private var collapseTask: DispatchWorkItem?
+    private var mousePollingTimer: Timer?
+    private var globalMouseDownMonitor: Any?
+    private var globalMouseUpMonitor: Any?
+    private var pluginManagerWindowController: PluginManagerWindowController?
+
+    override init() {
+        uiState = PanelUIState(compactLayout: NotchGeometry.layout(for: NotchGeometry.targetScreen()))
 
         super.init()
-        configurePanel(hotPanel)
-        configurePanel(drawerPanel)
 
         pluginManager = PluginManager(hostController: self)
         layoutEngine = LayoutEngine(blockResolver: { [weak self] pluginID, blockID in
@@ -98,7 +139,8 @@ final class NotchPanelController: NSObject {
             self.rebuildContent()
         }
 
-        layoutEngine.updateScreenConstraint(width: targetScreenFrame().width)
+        syncScreens()
+        updateScreenConstraint()
 
         // 启用状态恢复（文档 §5.4）：layout.json 记录 enabledPluginIDs。
         if layoutEngine.didLoadFromDisk {
@@ -110,55 +152,108 @@ final class NotchPanelController: NSObject {
         rebuildContent()
         startMousePolling()
         observeScreenChanges()
-        observePanelMouseEvents()
         observeGlobalMouseEvents()
         observeMenuTracking()
+    }
+
+    // MARK: - 多屏幕管理（文档 §6.3：每个屏幕单独显示一个 NotchCenter）
+
+    /// 同步屏幕与面板对：新屏幕创建、断开的屏幕移除，并重新定位全部面板。
+    private func syncScreens() {
+        let screens = NSScreen.screens.isEmpty ? [NSScreen.main].compactMap { $0 } : NSScreen.screens
+
+        // 移除已断开屏幕的面板对。
+        pairs.removeAll { pair in !screens.contains { $0 === pair.screen } }
+
+        // 为新接入的屏幕创建面板对。
+        for screen in screens where !pairs.contains(where: { $0.screen === screen }) {
+            let pair = ScreenPanelPair(screen: screen) { Self.configurePanel($0) }
+            wirePairEvents(pair)
+            pairs.append(pair)
+        }
+
+        // 各自定位紧凑热区；展开中的那块同时定位抽屉。
+        for pair in pairs {
+            positionCompactPanel(pair)
+        }
+        if let active = activePair, isExpanded {
+            active.drawerPanel.setFrame(drawerFrame(for: active), display: true)
+        }
+
+        if activePair == nil || !pairs.contains(where: { $0 === activePair }) {
+            activePair = pairs.first
+        }
+    }
+
+    /// 把某屏幕的紧凑面板摆到其刘海位置。
+    private func positionCompactPanel(_ pair: ScreenPanelPair) {
+        pair.hotPanel.setFrame(pair.hotFrame, display: true)
+        pair.hotPanel.orderFrontRegardless()
+    }
+
+    /// 主屏布局（用于共享渲染内容；窗口几何按各屏自身计算）。
+    private func primaryLayout() -> NotchLayout {
+        NotchGeometry.layout(for: pairs.first?.screen)
+    }
+
+    /// 鼠标所在屏幕的面板对；不在任何激活区时返回 nil。
+    private func pairContainingLocation(_ point: NSPoint) -> ScreenPanelPair? {
+        pairs.first { $0.hotFrame.contains(point) }
+    }
+
+    private func updateScreenConstraint() {
+        let width = pairs.first?.screenFrame.width ?? 1440
+        layoutEngine.updateScreenConstraint(width: width)
     }
 
     // MARK: - 对外入口
 
     func showDocked() {
-        let layout = currentLayout()
-        rebuildContent(layout: layout)
+        rebuildContent()
         isExpanded = false
-        hotPanel.setFrame(hotFrame(for: layout), display: true)
-        drawerPanel.alphaValue = 1
-        hotPanel.orderFrontRegardless()
-        drawerPanel.orderOut(nil)
+        uiState.revealProgress = 0
+        isRevealedForFileDrag = false
+        for pair in pairs {
+            positionCompactPanel(pair)
+            pair.drawerPanel.orderOut(nil)
+        }
     }
 
     func expand(animated: Bool, activate: Bool = true) {
         if isExpanded {
             if activate {
                 NSApp.activate(ignoringOtherApps: true)
-                drawerPanel.makeKeyAndOrderFront(nil)
+                activePair?.drawerPanel.makeKeyAndOrderFront(nil)
             }
             return
         }
-        let layout = currentLayout()
+        // 在鼠标所在屏幕展开；不在任何激活区则沿用上次的屏幕。
+        guard let pair = pairContainingLocation(NSEvent.mouseLocation) ?? activePair ?? pairs.first else {
+            return
+        }
+        activePair = pair
+        layoutEngine.updateScreenConstraint(width: pair.screenFrame.width)
+
         cancelCollapse()
         isExpanded = true
         isRevealedForFileDrag = false
-        rebuildContent(layout: layout)
-        // 紧凑 UI 常驻顶部：展开后仍显示（文档 §5.1 紧凑区始终可见），抽屉位于其下方。
-        hotPanel.setFrame(hotFrame(for: layout), display: true)
-        hotPanel.orderFrontRegardless()
-        drawerPanel.setFrame(drawerFrame(for: layout), display: true)
-        drawerPanel.alphaValue = 0
+        rebuildContent()
+        positionCompactPanel(pair)
+        // 窗口直接摆到最终尺寸，“从刘海展开”由视图内遮罩插值完成
+        // （沿用 NotchNotes 的 DrawerState.revealProgress 方案）。
+        pair.drawerPanel.setFrame(drawerFrame(for: pair), display: true)
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            uiState.revealProgress = 0
+        }
         if activate {
             NSApp.activate(ignoringOtherApps: true)
-            drawerPanel.makeKeyAndOrderFront(nil)
+            pair.drawerPanel.makeKeyAndOrderFront(nil)
         } else {
-            drawerPanel.orderFrontRegardless()
+            pair.drawerPanel.orderFrontRegardless()
         }
-        // 抽屉浮在紧凑面板之上（保持紧凑区可交互用于编辑添加，但视觉仍在顶部）。
-        hotPanel.orderFrontRegardless()
-        let duration: TimeInterval = animated ? 0.16 : 0
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = duration
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            self.drawerPanel.animator().alphaValue = 1
-        })
+        setDrawerRevealed(true, animated: animated)
     }
 
     func collapse(animated: Bool) {
@@ -168,22 +263,31 @@ final class NotchPanelController: NSObject {
         if isEditing {
             isEditing = false
         }
-        let layout = currentLayout()
+        setDrawerRevealed(false, animated: animated)
+        let pair = activePair
         let completion = { [weak self] in
             guard let self, !self.isExpanded else { return }
-            self.drawerPanel.orderOut(nil)
-            self.hotPanel.setFrame(self.hotFrame(for: layout), display: true)
-            self.hotPanel.orderFrontRegardless()
+            pair?.drawerPanel.orderOut(nil)
+            positionCompactPanel(pair!)
         }
         if animated {
-            NSAnimationContext.runAnimationGroup({ context in
-                context.duration = 0.14
-                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-                self.drawerPanel.animator().alphaValue = 0
-            }, completionHandler: completion)
+            // 与 easeOut(0.16) 收起动画匹配，等遮罩缩回刘海再隐藏窗口。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: completion)
         } else {
-            drawerPanel.orderOut(nil)
             completion()
+        }
+    }
+
+    /// 灵动岛式展开/收起：动画 revealProgress，视图内遮罩随之缩放
+    /// （展开 spring、收起 easeOut，参数与旧版 NotchNotes 一致）。
+    private func setDrawerRevealed(_ revealed: Bool, animated: Bool) {
+        uiState.isDrawerExpanded = revealed
+        guard animated else {
+            uiState.revealProgress = revealed ? 1 : 0
+            return
+        }
+        withAnimation(revealed ? .spring(response: 0.28, dampingFraction: 0.86) : .easeOut(duration: 0.16)) {
+            uiState.revealProgress = revealed ? 1 : 0
         }
     }
 
@@ -199,9 +303,8 @@ final class NotchPanelController: NSObject {
     /// 布局配置（如列数）变化后的刷新：重建内容并在展开时重设抽屉窗口 frame。
     func refreshAfterLayoutChange() {
         rebuildContent()
-        if isExpanded {
-            let layout = currentLayout()
-            drawerPanel.setFrame(drawerFrame(for: layout), display: true)
+        if isExpanded, let pair = activePair {
+            pair.drawerPanel.setFrame(drawerFrame(for: pair), display: true)
         }
     }
 
@@ -237,7 +340,6 @@ final class NotchPanelController: NSObject {
             expand(animated: true, activate: false)
         }
         isEditing = true
-        isPinned = true
         rebuildContent()
     }
 
@@ -253,52 +355,63 @@ final class NotchPanelController: NSObject {
 
     // MARK: - 视图构建
 
+    /// 刷新面板内容：把布局与元素写入 `uiState`（@Published 驱动 SwiftUI 刷新），
+    /// 所有屏幕的宿主视图共享同一份状态。宿主视图只创建一次，之后不再重新赋值
+    /// rootView——在透明无边框 NSPanel 上 rootView 重赋值不能保证立即重绘。
     private func rebuildContent(layout: NotchLayout? = nil) {
-        let layout = layout ?? currentLayout()
-        let compactView = CompactPanelView(
-            layout: layout,
-            elements: buildCompactElements(layout: layout),
-            isEditing: isEditing,
-            showsClickModeHint: settingsStore.triggerMode == .click,
-            compactCatalog: buildCompactCatalog(),
-            canAddCompact: layoutEngine.compactSlots.contains(where: { $0 == nil }),
-            actions: compactActions()
-        )
+        let layout = layout ?? primaryLayout()
+        uiState.compactLayout = layout
+        uiState.showsClickModeHint = settingsStore.triggerMode == .click
+        uiState.compactElements = buildCompactElements(layout: layout)
+        uiState.compactCatalog = buildCompactCatalog()
+        uiState.canAddCompact = layoutEngine.compactSlots.contains(where: { $0 == nil })
 
-        if let hotHostingView {
-            hotHostingView.rootView = compactView
-        } else {
-            let host = TransparentHitHostingView(rootView: compactView)
+        uiState.drawerContentSize = layoutEngine.drawerContentSize()
+        uiState.drawerWindowSize = layoutEngine.drawerWindowSize()
+        uiState.drawerElements = buildDrawerElements()
+        uiState.catalogPlugins = buildCatalogPlugins()
+
+        for pair in pairs {
+            buildViewsIfNeeded(pair)
+            // 显式标记重绘：应用未激活时也保证状态变化立即上屏。
+            pair.hotHostingView?.needsDisplay = true
+            pair.drawerHostingView?.needsDisplay = true
+        }
+    }
+
+    /// 为某个屏幕的面板对创建宿主视图（每屏一份，共享 uiState）。
+    private func buildViewsIfNeeded(_ pair: ScreenPanelPair) {
+        if pair.hotHostingView == nil {
+            let host = TransparentHitHostingView(
+                rootView: CompactPanelView(ui: uiState, actions: compactActions())
+            )
             host.translatesAutoresizingMaskIntoConstraints = true
             host.autoresizingMask = [.width, .height]
             host.wantsLayer = true
             host.layer?.masksToBounds = true
-            hotPanel.contentView = host
-            hotHostingView = host
+            pair.hotPanel.contentView = host
+            pair.hotHostingView = host
         }
 
-        let contentSize = layoutEngine.drawerContentSize()
-        let drawerView = DrawerPanelView(
-            contentWidth: contentSize.width,
-            contentHeight: contentSize.height,
-            windowSize: layoutEngine.drawerWindowSize(),
-            elements: buildDrawerElements(),
-            catalogPlugins: buildCatalogPlugins(),
-            isPinned: isPinned,
-            isEditing: isEditing,
-            actions: drawerActions()
-        )
-
-        if let drawerHostingView {
-            drawerHostingView.rootView = drawerView
-        } else {
-            let host = FirstMouseHostingView(rootView: drawerView)
+        if pair.drawerHostingView == nil {
+            let host = FirstMouseHostingView(
+                rootView: DrawerPanelView(
+                    ui: uiState,
+                    // 岛顶嵌入紧凑区（不自绘底衬）：展开后刘海带与抽屉一体呈现。
+                    compactView: CompactPanelView(
+                        ui: uiState,
+                        actions: compactActions(),
+                        showsBand: false
+                    ),
+                    actions: drawerActions()
+                )
+            )
             host.translatesAutoresizingMaskIntoConstraints = true
             host.autoresizingMask = [.width, .height]
             host.wantsLayer = true
             host.layer?.masksToBounds = true
-            drawerPanel.contentView = host
-            drawerHostingView = host
+            pair.drawerPanel.contentView = host
+            pair.drawerHostingView = host
         }
     }
 
@@ -388,11 +501,15 @@ final class NotchPanelController: NSObject {
     private func buildCatalogPlugins() -> [CatalogPluginGroup] {
         pluginManager.entries
             .filter { $0.isEnabled && $0.instance != nil }
-            .map { entry in
-                CatalogPluginGroup(
+            .compactMap { entry -> CatalogPluginGroup? in
+                // 只列有抽屉块的插件：纯紧凑块插件（如防休眠）不出现在
+                // Add Block 目录里，避免空分组（紧凑块由紧凑区“+”添加）。
+                let drawerBlocks = entry.blocks.filter { $0.kind == .drawer }
+                guard !drawerBlocks.isEmpty else { return nil }
+                return CatalogPluginGroup(
                     pluginID: entry.id,
                     displayName: entry.metadata.displayName,
-                    drawerBlocks: entry.blocks.filter { $0.kind == .drawer }
+                    drawerBlocks: drawerBlocks
                 )
             }
     }
@@ -414,13 +531,9 @@ final class NotchPanelController: NSObject {
             }
     }
 
+    /// 槽位矩形（窗口内容坐标，左上原点）；与视图共享同一 strip 布局。
     private func compactSlotFrame(index: Int, layout: NotchLayout) -> CGRect {
-        let totalWidth = CGFloat(NotchGeometry.compactSlotCount) * NotchGeometry.compactSlotSize.width
-            + CGFloat(NotchGeometry.compactSlotCount - 1) * NotchGeometry.compactSlotSpacing
-        let x = (layout.compactSize.width - totalWidth) / 2
-            + CGFloat(index) * (NotchGeometry.compactSlotSize.width + NotchGeometry.compactSlotSpacing)
-        let y = layout.compactSize.height - NotchGeometry.compactSlotSize.height - 1
-        return CGRect(origin: CGPoint(x: x, y: y), size: NotchGeometry.compactSlotSize)
+        layout.compactStrip.slotRect(at: index) ?? .zero
     }
 
     private func compactActions() -> CompactActions {
@@ -509,7 +622,7 @@ final class NotchPanelController: NSObject {
 
     // MARK: - 面板配置与事件
 
-    private func configurePanel(_ panel: NotchPanel) {
+    private static func configurePanel(_ panel: NotchPanel) {
         panel.appearance = NSAppearance(named: .darkAqua)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -523,27 +636,26 @@ final class NotchPanelController: NSObject {
         panel.acceptsMouseMovedEvents = true
     }
 
-    private func observePanelMouseEvents() {
-        hotPanel.onMouseEvent = { [weak self] event in
-            guard let self else { return }
+    /// 接入每个屏幕面板对的交互事件（点击展开、Escape 收起等）。
+    private func wirePairEvents(_ pair: ScreenPanelPair) {
+        pair.hotPanel.onMouseEvent = { [weak self, weak pair] event in
+            guard let self, let pair else { return }
             guard event.type == .leftMouseDown else { return }
             // 块视图自身处理点击；仅当点击落在槽位之外才视为面板级展开。
             let location = NSEvent.mouseLocation
-            if !self.isPointInAnyCompactSlot(location, layout: self.currentLayout()) {
+            if !self.isPointInAnyCompactSlot(location, layout: pair.layout, hotFrame: pair.hotFrame) {
                 self.expand(animated: true, activate: true)
             }
         }
 
-        drawerPanel.onMouseEvent = { [weak self] event in
-            guard let self else { return }
-            if event.type == .leftMouseDown {
-                NSApp.activate(ignoringOtherApps: true)
-                self.drawerPanel.makeKeyAndOrderFront(nil)
-            }
+        pair.drawerPanel.onMouseEvent = { [weak pair] event in
+            guard event.type == .leftMouseDown else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            pair?.drawerPanel.makeKeyAndOrderFront(nil)
         }
 
-        hotPanel.onEscape = { [weak self] in self?.collapse(animated: true) }
-        drawerPanel.onEscape = { [weak self] in self?.collapse(animated: true) }
+        pair.hotPanel.onEscape = { [weak self] in self?.collapse(animated: true) }
+        pair.drawerPanel.onEscape = { [weak self] in self?.collapse(animated: true) }
     }
 
     private func observeGlobalMouseEvents() {
@@ -552,7 +664,7 @@ final class NotchPanelController: NSObject {
                 guard let self,
                       !self.isExpanded,
                       self.settingsStore.triggerMode == .click,
-                      self.activationFrame().contains(NSEvent.mouseLocation) else {
+                      self.pairContainingLocation(NSEvent.mouseLocation) != nil else {
                     return
                 }
                 self.expand(animated: true, activate: true)
@@ -608,18 +720,14 @@ final class NotchPanelController: NSObject {
     }
 
     @objc private func mousePollingTick(_ timer: Timer) {
-        let location = NSEvent.mouseLocation
-        let screen = NotchGeometry.targetScreen()
-        if screen !== lastTargetScreen {
-            lastTargetScreen = screen
-            relocateToScreen(screen)
-        }
-        handleMouseLocation(location)
+        handleMouseLocation(NSEvent.mouseLocation)
     }
 
     @objc private func screenParametersChanged(_ notification: Notification) {
-        lastTargetScreen = nil
-        relocateToScreen(NotchGeometry.targetScreen())
+        cancelCollapse()
+        syncScreens()
+        updateScreenConstraint()
+        rebuildContent()
     }
 
     @objc private func menuTrackingDidBegin(_ notification: Notification) {
@@ -647,7 +755,7 @@ final class NotchPanelController: NSObject {
 
             if settingsStore.triggerMode == .hover,
                NSEvent.pressedMouseButtons & 1 == 0,
-               activationFrame().contains(point) {
+               pairContainingLocation(point) != nil {
                 expand(animated: true, activate: false)
             }
             return
@@ -695,15 +803,18 @@ final class NotchPanelController: NSObject {
         collapseTask = nil
     }
 
+    /// 停留区域：当前抽屉窗口附近，或任一屏幕的紧凑热区。
     private func isPointInExpandedStayRegion(_ point: NSPoint) -> Bool {
         let margin: CGFloat = 10
-        return drawerPanel.frame.insetBy(dx: -margin, dy: -margin).contains(point)
-            || activationFrame().contains(point)
+        if let frame = activePair?.drawerPanel.frame,
+           frame.insetBy(dx: -margin, dy: -margin).contains(point) {
+            return true
+        }
+        return pairs.contains { $0.hotFrame.contains(point) }
     }
 
-    private func isPointInAnyCompactSlot(_ point: NSPoint, layout: NotchLayout) -> Bool {
-        let hotFrame = hotFrame(for: layout)
-        let slots = (0..<NotchGeometry.compactSlotCount).map { index in
+    private func isPointInAnyCompactSlot(_ point: NSPoint, layout: NotchLayout, hotFrame: NSRect) -> Bool {
+        let slots = (0..<NotchGeometry.compactSlotCount).map { index -> NSRect in
             let slot = compactSlotFrame(index: index, layout: layout)
             // 槽位 frame 是内容坐标（左上原点）；换算到屏幕坐标。
             return NSRect(
@@ -721,65 +832,39 @@ final class NotchPanelController: NSObject {
               FileDragDetector.containsFileURLs(NSPasteboard(name: .drag)) else {
             return false
         }
-        return activationFrame().contains(point)
+        return pairContainingLocation(point) != nil
     }
 
-    // MARK: - 多显示器（文档 §6.3 / §7.3）
+    // MARK: - 几何
 
-    private func relocateToScreen(_ screen: NSScreen?) {
-        let screenFrame = screen?.frame ?? targetScreenFrame()
-        layoutEngine.updateScreenConstraint(width: screenFrame.width)
-        let layout = currentLayout()
-        rebuildContent(layout: layout)
-        hotPanel.setFrame(hotFrame(for: layout), display: true)
-        if isExpanded {
-            drawerPanel.setFrame(drawerFrame(for: layout), display: true)
-        }
-    }
-
-    private func currentLayout() -> NotchLayout {
-        NotchGeometry.layout(for: NotchGeometry.targetScreen())
-    }
-
-    private func targetScreen() -> NSScreen? {
-        NotchGeometry.targetScreen()
-    }
-
-    private func targetScreenFrame() -> NSRect {
-        targetScreen()?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-    }
-
-    private func hotFrame(for layout: NotchLayout) -> NSRect {
-        NotchGeometry.activationFrame(for: layout, in: targetScreenFrame())
-    }
-
-    private func drawerFrame(for layout: NotchLayout) -> NSRect {
-        let screenFrame = targetScreenFrame()
+    /// 抽屉窗口：从屏幕顶端开始（包含刘海高度带的岛顶区域），
+    /// 展开动画时遮罩从紧凑带尺寸放大到完整窗口，与刘海视觉融合。
+    private func drawerFrame(for pair: ScreenPanelPair) -> NSRect {
+        let screenFrame = pair.screenFrame
+        let layout = pair.layout
         var size = layoutEngine.drawerWindowSize()
+        size.height += layout.compactSize.height
         // 文档 §5.3：达到屏幕可用高度上限后内容区域滚动（窗口高度封顶）。
         let maxHeight = screenFrame.height - 8
         if size.height > maxHeight {
             size.height = maxHeight
         }
-        if size.height > screenFrame.height - layout.compactSize.height - 4 {
-            size.height = max(screenFrame.height - layout.compactSize.height - 4, 120)
-        }
-        // 紧凑区常驻顶部：抽屉从紧凑面板下方开始展开（文档 §5.1 / §6）。
         return NotchGeometry.topCenteredFrame(
             for: size,
-            topY: screenFrame.maxY - layout.compactSize.height,
+            topY: screenFrame.maxY,
             in: screenFrame
         )
     }
 
-    private func activationFrame() -> NSRect {
-        hotFrame(for: currentLayout())
-    }
-
     // MARK: - 插件管理窗口
 
-    /// 开发期调试：把两个面板内容渲染为 PNG（无需屏幕录制权限）。
-    func capturePanelsForDebug() {
+    /// 开发期调试：模拟点击钉住按钮（走与视图相同的动作路径）。
+    func debugTogglePin() {
+        drawerActions().onTogglePin()
+    }
+
+    /// 开发期调试：把所有屏幕的面板内容渲染为 PNG（无需屏幕录制权限）。
+    func capturePanelsForDebug(suffix: String = "") {
         func writePNG(of view: NSView?, to path: String) {
             guard let view else { return }
             let bounds = view.bounds
@@ -789,18 +874,16 @@ final class NotchPanelController: NSObject {
                 try? data.write(to: URL(fileURLWithPath: path))
             }
         }
-        writePNG(of: hotPanel.contentView, to: "/tmp/nc_hot.png")
-        writePNG(of: drawerPanel.contentView, to: "/tmp/nc_drawer.png")
-        print("debug windows: hot=\(hotPanel.frame) drawer=\(drawerPanel.frame)")
+        for (index, pair) in pairs.enumerated() {
+            let tag = pairs.count > 1 ? "\(suffix)_\(index)" : suffix
+            writePNG(of: pair.hotPanel.contentView, to: "/tmp/nc_hot\(tag).png")
+            writePNG(of: pair.drawerPanel.contentView, to: "/tmp/nc_drawer\(tag).png")
+            print("debug[\(index)] \(pair.screen.localizedName) hot=\(pair.hotPanel.frame) drawer=\(pair.drawerPanel.frame)")
+        }
+        print("debug reveal=\(uiState.revealProgress) expanded=\(isExpanded) screens=\(pairs.count)")
         print("debug sizes: content=\(layoutEngine.drawerContentSize()) window=\(layoutEngine.drawerWindowSize()) blocks=\(layoutEngine.drawerBlocks.count)")
-        let layout = currentLayout()
-        print("debug compact: layout.compact=\(layout.compactSize) panelWidth=\(NotchGeometry.compactPanelWidth) notch=\(layout.notchSize)")
-        for index in 0..<NotchGeometry.compactSlotCount {
-            print("debug slot\(index): \(compactSlotFrame(index: index, layout: layout))")
-        }
-        if let hotContentView = hotPanel.contentView {
-            print("debug hot contentView frame: \(hotContentView.frame) bounds: \(hotContentView.bounds)")
-        }
+        let layout = primaryLayout()
+        print("debug compact: layout.compact=\(layout.compactSize) notch=\(layout.notchSize)")
     }
 
     func showPluginManager() {

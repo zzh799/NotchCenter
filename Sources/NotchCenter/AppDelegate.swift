@@ -101,6 +101,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panelController.capturePanelsForDebug()
                 print("panels captured")
             }
+            // 调试序列：展开动画中间帧 → 点击 pin → 截图；进入编辑模式 → 截图。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                panelController.capturePanelsForDebug(suffix: "_reveal")
+                print("reveal captured")
+            }
+            // 调试序列：点击 pin → 截图（验证图标是否立即刷新）；进入编辑模式 → 截图。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                panelController.debugTogglePin()
+                print("pin toggled")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                panelController.capturePanelsForDebug(suffix: "_pin")
+                print("pin captured")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+                panelController.startEditMode()
+                print("edit mode entered")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
+                panelController.capturePanelsForDebug(suffix: "_edit")
+                print("edit captured")
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
                 NSApp.terminate(nil)
             }

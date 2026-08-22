@@ -63,11 +63,13 @@ private struct ScratchpadCompactView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        // 跟随宿主分配的槽位尺寸（紧凑区为刘海高度带内的小槽位）。
+        let slot = context.layoutInfo.frame.size
+        return ZStack(alignment: .topTrailing) {
             Image(systemName: "tray")
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.72))
-                .frame(width: 44, height: 44)
+                .frame(width: slot.width, height: slot.height)
                 .contentShape(Rectangle())
 
             if itemCount > 0 {
