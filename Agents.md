@@ -24,16 +24,27 @@ NotchCenter/
 ├── Package.swift                 # SPM 清单：宿主 + 3 个官方插件 + 测试 target
 ├── Sources/NotchCenter/          # 宿主主 App（可执行 target）
 │   ├── main.swift / AppDelegate.swift
-│   ├── NotchPanelController.swift   # 核心控制器（hostController 实现）：每屏一对面板、展开/收起、鼠标轮询、编辑模式、多显示器跟随
+│   ├── NotchPanelController.swift   # 核心控制器（hostController 实现）：状态中枢 + 每屏一对面板 + 展开/收起 + 几何
+│   ├── NotchPanelContent.swift      # 控制器 extension：视图构建（rebuildContent/build*）+ 编辑模式两段式进入
+│   ├── NotchPanelInteraction.swift  # 控制器 extension：事件监听 + 鼠标轮询 + 收起协调（handleMouseLocation/scheduleCollapse）
+│   ├── NotchPanelDebugSupport.swift # 控制器 extension：调试（debugTogglePin/capturePanelsForDebug）+ 插件管理窗口
+│   ├── PanelWindows.swift           # 窗口类型：NotchPanel + 3 个 HostingView + ScreenPanelPair + configurePanel
 │   ├── PanelUIState.swift           # 面板 UI 状态（ObservableObject，@Published 驱动 SwiftUI 刷新）
-│   ├── HostPanelViews.swift         # 刘海两侧紧凑带 + 抽屉网格视图 + 编辑模式 + 添加块目录侧边栏
+│   ├── CompactPanelView.swift       # 刘海两侧紧凑带视图（含槽位容器）
+│   ├── DrawerPanelView.swift        # 抽屉面板主体（drawerWindowSize 绑定 + 顶缘钉死 + 拖拽/缩放手势状态机）
+│   ├── DrawerBlockContainer.swift   # 抽屉块容器（预览尺寸补偿 + 编辑 overlay + 缩放握把 .global 手势）
+│   ├── AddBlockArea.swift            # 添加块目录条（编辑模式，上栏紧凑块/下栏抽屉块）
+│   ├── ResizeHysteresis.swift        # 缩放跨度死区量化（纯函数，ResizeHysteresisTests 覆盖）
 │   ├── NotchGeometry.swift          # 刘海/回退几何与紧凑带布局（左右面板绕刘海对称，左2右1共 3 槽，28×28，右端编辑“+”预留区）
 │   ├── PluginManager.swift          # 插件发现/加载/启用禁用/安装卸载（双目录）
 │   ├── PluginMetadata.swift         # Info.plist 元数据（文档 §3.2）
-│   ├── LayoutEngine.swift           # 布局模型与持久化（layout.json、网格放置/重叠检测/列数约束/自由跨度缩放/一键重排/拖拽推挤与加载净化）
+│   ├── LayoutModel.swift            # 布局数据模型（NotchGridMetrics/CompactSlotReference/PlacedBlock/LayoutModel）
+│   ├── LayoutEngine.swift           # 布局引擎主体：网格放置/移动/缩放/推挤（pushDownOrigins/compactEmptyRows）/紧凑槽位/持久化
+│   ├── LayoutEngineGeometry.swift   # 布局引擎只读 extension：frame/内容尺寸/窗口尺寸/previewBottomRow
+│   ├── LayoutEngineValidation.swift # 布局引擎只读 extension：validate() 全量健康检查
 │   ├── PluginManagerWindow.swift    # 插件管理窗口
 │   ├── SettingsStore.swift          # 触发模式（hover/click）
-│   ├── CorePaths.swift / FileDragDetection.swift / PanelDecoration.swift
+│   ├── CorePaths.swift / FileDragDetection.swift / PanelDecoration.swift / ResizeProbe.swift
 ├── Sources/NotchCenterKit/       # 共享 API 动态库（**独立本地包**，宿主与插件以产品方式链接同一份代码）
 │   ├── Package.swift             # 产物：NotchCenterKit 动态库
 │   ├── NotchCenterPlugin.swift   # 协议：static blocks + init()；可选 settingsView / menuItems / 服务注入
@@ -112,4 +123,4 @@ open dist.noindex/NotchCenter.app
 
 1. 先读 `docs/NotchCenter 架构设计文档.md`，再读 `NotchCenterKit`（协议与类型）→ `Sources/NotchCenter/PluginManager.swift` → `LayoutEngine.swift` → `NotchPanelController.swift` 理解插件生命周期与面板协调。
 2. 插件开发：参照 `Plugins/NotesPlugin/Sources/NotesPlugin.swift` 的入口模式（`static var blocks` + `attachServices`）。
-3. UI 改动从 `HostPanelViews.swift`（紧凑区/抽屉/编辑模式）入手。
+3. UI 改动从 `CompactPanelView.swift` / `DrawerPanelView.swift` / `AddBlockArea.swift`（紧凑区/抽屉/编辑模式）入手。
