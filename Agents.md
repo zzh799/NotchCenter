@@ -24,12 +24,13 @@ NotchCenter/
 ├── Package.swift                 # SPM 清单：宿主 + 3 个官方插件 + 测试 target
 ├── Sources/NotchCenter/          # 宿主主 App（可执行 target）
 │   ├── main.swift / AppDelegate.swift
-│   ├── NotchPanelController.swift   # 核心控制器（hostController 实现）：面板、展开/收起、鼠标轮询、编辑模式、多显示器跟随
-│   ├── HostPanelViews.swift         # 紧凑 3 槽面板 + 抽屉网格视图 + 编辑模式 + 添加块目录侧边栏
-│   ├── NotchGeometry.swift          # 刘海/回退几何（紧凑 3 槽分列刘海两侧：左2右1，28×28）
+│   ├── NotchPanelController.swift   # 核心控制器（hostController 实现）：每屏一对面板、展开/收起、鼠标轮询、编辑模式、多显示器跟随
+│   ├── PanelUIState.swift           # 面板 UI 状态（ObservableObject，@Published 驱动 SwiftUI 刷新）
+│   ├── HostPanelViews.swift         # 刘海两侧紧凑带 + 抽屉网格视图 + 编辑模式 + 添加块目录侧边栏
+│   ├── NotchGeometry.swift          # 刘海/回退几何与紧凑带布局（左右面板绕刘海对称，左2右1共 3 槽，28×28，右端编辑“+”预留区）
 │   ├── PluginManager.swift          # 插件发现/加载/启用禁用/安装卸载（双目录）
 │   ├── PluginMetadata.swift         # Info.plist 元数据（文档 §3.2）
-│   ├── LayoutEngine.swift           # 布局模型与持久化（layout.json、网格放置/重叠检测/列数约束）
+│   ├── LayoutEngine.swift           # 布局模型与持久化（layout.json、网格放置/重叠检测/列数约束/自由跨度缩放/一键重排/拖拽推挤与加载净化）
 │   ├── PluginManagerWindow.swift    # 插件管理窗口
 │   ├── SettingsStore.swift          # 触发模式（hover/click）
 │   ├── CorePaths.swift / FileDragDetection.swift / PanelDecoration.swift
@@ -61,6 +62,7 @@ NotchCenter/
 swift run NotchCenter
 
 # 冒烟测试（开发期验证插件发现/加载/布局，1.5s 后自动退出）
+# NOTCHCENTER_EDIT=1 可让首启直接进入编辑模式
 NOTCHCENTER_SMOKE_TEST=1 swift run NotchCenter
 
 # 面板截图验证（0.8s 展开抽屉，2.5s 把两个面板渲染为 PNG 到 /tmp/nc_*.png，无需屏幕录制权限）
@@ -87,6 +89,9 @@ open dist.noindex/NotchCenter.app
 - **持久化**：插件状态一律走注入的 `StateStore`（文档 §4.6）；核心布局走 `layout.json`（`LayoutEngine.saveToDisk()`，原子写）。宿主退出时 `AppDelegate.applicationWillTerminate → panelController.flush() → layoutEngine.saveToDisk()`。
 - **文件暂存区只持有路径引用**：不复制、不移动、不删除用户原文件（`ScratchpadPlugin`）。新增文件操作时保持这一契约。
 - **保持唤醒需要管理员权限**：`SystemSleepGuard` 通过 `osascript with administrator privileges` 调用 `pmset disablesleep`。**不要在单元测试里触发真实休眠抑制**；测试只验证命令字符串与 shell 语法（见 `SystemSleepGuardTests`）。
+- **面板内容刷新走 `PanelUIState`**：透明无边框 `NSPanel` 上重新赋值 `NSHostingView.rootView` 不能保证立即重绘；宿主视图只在创建时设置一次 root，之后一律通过 `PanelUIState` 的 `@Published` 属性驱动 SwiftUI 刷新。新增面板状态时加到 `PanelUIState`，不要绕过它直接操作视图。
+- **块尺寸用 GridSpan 表达**：`BlockSize` 只是预设，真实约束是块的 `supportedSpans`（由 `supportedSizes` 派生 + `supportedGridSpans` 自由跨度）。编辑模式缩放走 `LayoutEngine.resizeBlock` 的任意跨度路径；新增尺寸能力时扩展 `supportedGridSpans` 而不是堆预设。
+- **拖拽推挤算法不能改回“同步 +1 行”**：`previewArrangement` 的逐块安放语义是历史 bug 的修复——旧实现让所有重叠块同步下移，相对位置不变、永不分离，靠次数上限退出并把残留重叠写盘，导致粘连块对与失控行号。改动推挤逻辑前先读 `DragReorderReproTests`；`LayoutEngine` 加载时会自动净化含重叠的损坏 layout.json，勿删除该路径。
 - **Chicken-and-egg 初始化**：`NotchPanelController.init` 在 `super.init()` 之后才构建 `pluginManager` / `layoutEngine`（属性是 `private(set) var ...!`）。改动核心初始化顺序时注意。
 - **UI 风格**：抽屉强制深色（`.environment(\.colorScheme, .dark)`），背景接近纯黑半透明，顶部圆角遮罩（`TopAttachedRoundedShape`）。改动视觉时保持“贴近刘海”的观感。
 - **命名 / 语言**：源码标识符与 UI 字符串用英文；注释可用中文。保持与现有文件一致的风格（缩进、分组、注释密度）。
@@ -95,7 +100,7 @@ open dist.noindex/NotchCenter.app
 ## 测试
 
 - 运行：`swift test`；单文件调试可 `swift test --filter <Name>`。
-- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`。
+- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）。
 - 涉及 `pmset` / 休眠的逻辑测试应确保**不真正改变系统睡眠状态**。
 - 涉及 AppKit 窗口/事件的逻辑依赖 App 运行环境，注意保持 `@MainActor` 测试隔离（`setUp`/`tearDown` 是非隔离上下文，不要在里面改 @MainActor 属性）。
 
