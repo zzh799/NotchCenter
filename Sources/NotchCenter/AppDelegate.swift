@@ -11,6 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController?.showDocked()
         buildStatusItem()
         buildMenu()
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_RESIZE_PROBE"] == "1" {
+            ResizeProbeWindowController.shared.show()
+        }
+        #endif
         maybeRunSmokeTest()
     }
 
@@ -71,9 +76,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Smoke test（开发期验证，非发布路径）
 
+    /// 首次/二次进入编辑模式的对照诊断（NOTCHCENTER_EDIT_FIRST=1）：
+    /// 收起态直接进入编辑（首次），逐步抓帧与窗口几何；退出后再次进入
+    /// （二次）对照。定位“仅首次出现”的过渡异常。
+    private func runFirstEditDiagnostic(_ panelController: NotchPanelController) {
+        func dump(_ tag: String) {
+            guard let pair = panelController.activePair else { return }
+            NSLog(
+                "edit-first[%@] drawer=%@ uiWindow=%@ reveal=%.2f",
+                tag,
+                NSStringFromRect(pair.drawerPanel.frame),
+                NSStringFromSize(panelController.uiState.drawerWindowSize),
+                panelController.uiState.revealProgress
+            )
+        }
+        func capture(_ suffix: String, at deadline: DispatchTime) {
+            DispatchQueue.main.asyncAfter(deadline: deadline) {
+                panelController.capturePanelsForDebug(suffix: suffix)
+                dump(suffix)
+            }
+        }
+
+        let enter = DispatchTime.now() + 1.0
+        DispatchQueue.main.asyncAfter(deadline: enter) {
+            NSLog("edit-first: enter #1 (from docked)")
+            // 真实点击伴随应用激活；非激活窗口上 preference 不传播，
+            // 诊断须对齐该前提。
+            NSApp.activate(ignoringOtherApps: true)
+            panelController.startEditMode()
+        }
+        for (i, dt) in [0.08, 0.18, 0.30, 0.45, 0.70, 1.00].enumerated() {
+            capture("_first\(i)", at: enter + dt)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+            NSLog("edit-first: exit")
+            // 钉住抽屉避免自动收起：二次进入走“展开态”路径（与用户操作一致）。
+            panelController.debugTogglePin()
+            panelController.stopEditMode()
+        }
+        let reenter = DispatchTime.now() + 4.0
+        DispatchQueue.main.asyncAfter(deadline: reenter) {
+            NSLog("edit-first: enter #2 (from expanded)")
+            NSApp.activate(ignoringOtherApps: true)
+            panelController.startEditMode()
+        }
+        for (i, dt) in [0.15, 0.35, 0.70].enumerated() {
+            capture("_second\(i)", at: reenter + dt)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
+            NSApp.terminate(nil)
+        }
+    }
+
     private func maybeRunSmokeTest() {
         guard ProcessInfo.processInfo.environment["NOTCHCENTER_SMOKE_TEST"] == "1" else { return }
         guard let panelController else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_RESIZE_AUTO"] == "1" {
+            panelController.runResizeAutoDiagnostic()
+            return
+        }
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_EDIT_FIRST"] == "1" {
+            runFirstEditDiagnostic(panelController)
+            return
+        }
+        #endif
         print("=== NotchCenter smoke test ===")
         print("bundleURL: \(Bundle.main.bundleURL.path)")
         print("builtInPlugIns: \(CorePaths.builtInPlugInsDirectory.path)")
@@ -118,6 +187,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
                 panelController.startEditMode()
                 print("edit mode entered")
+            }
+            // 编辑过渡中帧：窗口 frame（AppKit 0.35s）接近完成、内容 spring
+            // （约 0.55s 收尾）仍落后的错位期抓图，验证内容顶对齐
+            // （紧凑带不下坠、菜单栏不漏出）。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.78) {
+                panelController.capturePanelsForDebug(suffix: "_editmid")
+                print("edit mid captured")
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
                 panelController.capturePanelsForDebug(suffix: "_edit")

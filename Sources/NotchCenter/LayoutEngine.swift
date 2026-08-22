@@ -347,6 +347,7 @@ final class LayoutEngine: ObservableObject {
 
     func removeDrawerBlock(placementID: String) {
         model.drawerBlocks.removeAll { $0.placementID == placementID }
+        compactEmptyRows()
         saveToDisk()
     }
 
@@ -428,11 +429,12 @@ final class LayoutEngine: ObservableObject {
         target.originColumn = min(max(target.originColumn, 0), max(0, columns - target.widthColumns))
         target.originRow = max(target.originRow, 0)
         model.drawerBlocks[index] = target
+        compactEmptyRows()
         saveToDisk()
         return true
     }
 
-    /// 在支持的尺寸等级间切换块尺寸（编辑模式，文档 §5.5）。重叠或越界时回退。
+    /// 在支持的尺寸等级间切换块尺寸（编辑模式，文档 §5.5）。
     @discardableResult
     func resizeDrawerBlock(placementID: String, to size: BlockSize) -> Bool {
         resizeDrawerBlock(
@@ -442,8 +444,10 @@ final class LayoutEngine: ObservableObject {
         )
     }
 
-    /// 缩放块到任意声明的跨度（编辑模式）：跨度必须在块的 supportedSpans 内，
-    /// 重叠时回退。左上角原点保持不变（仅越界列数时向左收紧）。
+    /// 缩放块到任意声明的跨度（编辑模式）：跨度必须在块的 supportedSpans 内。
+    /// 扩大与下方块重叠时不再回退，而是按阅读顺序推挤下移（与拖拽同一
+    /// 逐块安放语义）；缩小留下的空行随后压实。左上角原点保持不变
+    /// （仅越界列数时向左收紧）。
     @discardableResult
     func resizeDrawerBlock(placementID: String, toColumns: Int, toRows: Int) -> Bool {
         guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
@@ -460,13 +464,12 @@ final class LayoutEngine: ObservableObject {
         resized.heightRows = toRows
 
         let columns = effectiveMaxColumns()
-        resized.originColumn = min(resized.originColumn, max(0, columns - resized.widthColumns))
+        resized.originColumn = min(max(resized.originColumn, 0), max(0, columns - resized.widthColumns))
         resized.originRow = max(resized.originRow, 0)
 
-        guard !overlaps(resized, with: occupiedRects(excluding: placementID)) else {
-            return false
-        }
         model.drawerBlocks[index] = resized
+        applyOrigins(pushDownOrigins(changed: resized))
+        compactEmptyRows()
         saveToDisk()
         return true
     }
@@ -479,34 +482,54 @@ final class LayoutEngine: ObservableObject {
 
     /// 拖拽实时预览（不落盘，文档 §5.5）：把 `placementID` 放到目标格子，
     /// 被占用的块向下推挤（自动重排），返回全体块的新位置，key 为 placementID。
+    func previewArrangement(moving placementID: String, toColumn: Int, toRow: Int) -> [String: GridOrigin] {
+        guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
+            return [:]
+        }
+        var changed = model.drawerBlocks[index]
+        let columns = effectiveMaxColumns()
+        changed.originColumn = min(max(toColumn, 0), max(0, columns - changed.widthColumns))
+        changed.originRow = max(toRow, 0)
+        return pushDownOrigins(changed: changed)
+    }
+
+    /// 缩放实时预览（不落盘）：把 `placementID` 视为已改到目标跨度（原点不动，
+    /// 仅按列宽 clamp 到网格内），其余块推挤下移——上方块扩大时下方整块下移、
+    /// 面板随之增高的实时依据。跨度不在 supportedSpans 内返回空。
+    func previewArrangement(resizing placementID: String, toColumns: Int, toRows: Int) -> [String: GridOrigin] {
+        guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
+            return [:]
+        }
+        var changed = model.drawerBlocks[index]
+        guard let definition = blockResolver(changed.pluginID, changed.blockID),
+              definition.supportedSpans.contains(GridSpan(columns: toColumns, rows: toRows)) else {
+            return [:]
+        }
+        let columns = effectiveMaxColumns()
+        changed.widthColumns = toColumns
+        changed.heightRows = toRows
+        changed.originColumn = min(max(changed.originColumn, 0), max(0, columns - changed.widthColumns))
+        changed.originRow = max(changed.originRow, 0)
+        return pushDownOrigins(changed: changed)
+    }
+
+    /// 推挤重排核心（逐块安放）：把 `changed`（已改到目标原点/跨度的块）
+    /// 作为初始固定集合，其余块按（行,列,placementID）阅读顺序依次下移到
+    /// 与所有已固定块都不重叠的首个位置后立即固定；未受影响的块零次移动，
+    /// 保持原位（最小扰动）。
     ///
-    /// 推挤采用「逐块安放」：以被拖块为初始已固定集合，其余块按（行,列）顺序
-    /// 依次下移到与所有已固定块都不重叠的首个位置后立即固定。
     /// 不能改为「每一轮让所有重叠块同步 +1 行」：重叠块同步移动时相对位置
     /// 不变、永不分离，循环只能靠次数上限退出，会把残留重叠写回布局；
     /// 粘连块对随后每次拖拽提交又被整体再推若干行，行号失控增长（历史 bug）。
-    func previewArrangement(moving placementID: String, toColumn: Int, toRow: Int) -> [String: GridOrigin] {
-        var placements = model.drawerBlocks
-        guard let index = placements.firstIndex(where: { $0.placementID == placementID }) else {
-            return [:]
-        }
-
-        let columns = effectiveMaxColumns()
-        placements[index].originColumn = min(max(toColumn, 0), max(0, columns - placements[index].widthColumns))
-        placements[index].originRow = max(toRow, 0)
-
-        // 固定集合从被拖块开始；其余按原（行,列）排序处理，未受影响的块
-        // 在循环中零次移动，保持原位（最小扰动）。
-        var fixed = [placements[index]]
-        let orderedOthers = placements.indices
-            .filter { $0 != index }
+    private func pushDownOrigins(changed: PlacedBlock) -> [String: GridOrigin] {
+        var fixed = [changed]
+        let orderedOthers = model.drawerBlocks
+            .filter { $0.placementID != changed.placementID }
             .sorted { lhs, rhs in
-                let l = placements[lhs], r = placements[rhs]
-                if l.originRow != r.originRow { return l.originRow < r.originRow }
-                if l.originColumn != r.originColumn { return l.originColumn < r.originColumn }
-                return l.placementID < r.placementID
+                if lhs.originRow != rhs.originRow { return lhs.originRow < rhs.originRow }
+                if lhs.originColumn != rhs.originColumn { return lhs.originColumn < rhs.originColumn }
+                return lhs.placementID < rhs.placementID
             }
-            .map { placements[$0] }
 
         for var block in orderedOthers {
             // 终止性：每次迭代 originRow 严格递增，超过当前最深占用行后
@@ -524,25 +547,57 @@ final class LayoutEngine: ObservableObject {
         return result
     }
 
-    /// 提交拖拽预览结果（与 previewArrangement 同一算法，保证所见即所得）。
-    @discardableResult
-    func commitArrangement(_ origins: [String: GridOrigin]) -> Bool {
-        guard !origins.isEmpty else { return false }
+    /// 把推挤结果写回模型（clamp 到网格内）。
+    private func applyOrigins(_ origins: [String: GridOrigin]) {
         let columns = effectiveMaxColumns()
-        var changed = false
-
         for index in model.drawerBlocks.indices {
             let block = model.drawerBlocks[index]
             guard let target = origins[block.placementID] else { continue }
             let clampedColumn = min(max(target.column, 0), max(0, columns - block.widthColumns))
             let clampedRow = max(target.row, 0)
-            if block.originColumn != clampedColumn || block.originRow != clampedRow {
-                model.drawerBlocks[index].originColumn = clampedColumn
-                model.drawerBlocks[index].originRow = clampedRow
-                changed = true
-            }
+            model.drawerBlocks[index].originColumn = clampedColumn
+            model.drawerBlocks[index].originRow = clampedRow
         }
+    }
 
+    /// 垂直压实（编辑模式契约：不留空行）：自上而下找到首个完全空置的行，
+    /// 把其下所有块整体上移一行，重复直到没有空行。行内的部分留白保留
+    /// （只消整行空洞）；下方块整体上移、相对位置不变，不产生新重叠。
+    /// 仅由变更路径调用（移动/移除/缩放/提交后），加载净化不经过这里
+    /// （无重叠布局的留白受 `sanitized` 保护）。
+    @discardableResult
+    private func compactEmptyRows() -> Bool {
+        var changed = false
+        while true {
+            let maxRow = model.drawerBlocks.map { $0.originRow + $0.heightRows }.max() ?? 0
+            guard maxRow > 0 else { break }
+            var occupiedRows = Set<Int>()
+            for block in model.drawerBlocks {
+                for row in block.originRow..<block.originRow + block.heightRows {
+                    occupiedRows.insert(row)
+                }
+            }
+            // 空行必在其上有块（maxRow 内）且其下有块（否则推不出 maxRow），
+            // 上移后该行被填充，每轮严格减少总行数——必然终止。
+            guard let emptyRow = (0..<maxRow).first(where: { !occupiedRows.contains($0) }) else { break }
+            for index in model.drawerBlocks.indices where model.drawerBlocks[index].originRow > emptyRow {
+                model.drawerBlocks[index].originRow -= 1
+            }
+            changed = true
+        }
+        return changed
+    }
+
+    /// 提交拖拽预览结果（与 previewArrangement 同一算法，保证所见即所得），
+    /// 随后压实空行（拖走后遗留的整行空洞由下方块上移闭合）。
+    @discardableResult
+    func commitArrangement(_ origins: [String: GridOrigin]) -> Bool {
+        guard !origins.isEmpty else { return false }
+        let before = model.drawerBlocks.map { "\($0.placementID):\($0.originColumn),\($0.originRow)" }
+        applyOrigins(origins)
+        compactEmptyRows()
+        let after = model.drawerBlocks.map { "\($0.placementID):\($0.originColumn),\($0.originRow)" }
+        let changed = before != after
         if changed {
             saveToDisk()
         }
@@ -573,15 +628,38 @@ final class LayoutEngine: ObservableObject {
     }
 
     /// 抽屉窗口尺寸：列数受屏幕约束；高度随行数增长。
-    func drawerWindowSize() -> CGSize {
-        let content = drawerContentSize()
+    /// `contentRows` 用于拖拽/缩放预览（按预览布局的最低行临时增高）。
+    func drawerWindowSize(contentRows: Int? = nil) -> CGSize {
+        let rows = max(contentRows ?? drawerContentRows(), 1)
         return CGSize(
-            width: content.width + NotchGridMetrics.contentPadding * 2,
+            width: NotchGridMetrics.contentWidth(columns: effectiveMaxColumns())
+                + NotchGridMetrics.contentPadding * 2,
             height: NotchGridMetrics.contentPadding
                 + NotchGridMetrics.drawerTopBarHeight
-                + content.height
+                + NotchGridMetrics.contentHeight(rows: rows)
                 + NotchGridMetrics.contentPadding
         )
+    }
+
+    /// 预览布局的最低占用行（面板预览期间按需增高的依据；无预览回落到
+    /// 提交布局行数）。`resized` 携带被缩放块的新行数——模型里的
+    /// heightRows 仍是旧值，且最底层的块长高时不推挤任何块、新行号
+    /// 不会经 origins 体现，必须显式计入。
+    func previewBottomRow(
+        origins: [String: GridOrigin],
+        resized: (placementID: String, heightRows: Int)? = nil
+    ) -> Int {
+        let committed = drawerContentRows()
+        let preview = model.drawerBlocks
+            .map { block -> Int in
+                let row = origins[block.placementID]?.row ?? block.originRow
+                let height = block.placementID == resized?.placementID
+                    ? resized!.heightRows
+                    : block.heightRows
+                return row + height
+            }
+            .max() ?? committed
+        return max(committed, preview, 1)
     }
 
     private func drawerContentRows() -> Int {

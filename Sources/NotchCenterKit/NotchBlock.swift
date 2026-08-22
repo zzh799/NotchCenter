@@ -71,6 +71,9 @@ public struct NotchBlock: Identifiable {
     public let defaultSize: BlockSize?
     /// 紧凑块点击行为（仅紧凑块有意义）。默认 `.expandDrawer`。
     public let interaction: BlockInteraction
+    /// 目录条目图标（SF Symbol 名称，可选）。宿主在“添加块”目录里渲染
+    /// “图标 + 块名”；未声明时回退纯文本条目（向后兼容第三方插件）。
+    public let symbolName: String?
     /// 视图工厂：携带 `BlockContext` 构建块视图。
     public let makeView: @MainActor (BlockContext) -> AnyView
 
@@ -81,6 +84,7 @@ public struct NotchBlock: Identifiable {
         supportedSizes: Set<BlockSize> = [],
         defaultSize: BlockSize? = nil,
         interaction: BlockInteraction = .expandDrawer,
+        symbolName: String? = nil,
         makeView: @escaping @MainActor (BlockContext) -> AnyView
     ) {
         self.init(
@@ -91,6 +95,7 @@ public struct NotchBlock: Identifiable {
             defaultSize: defaultSize,
             supportedGridSpans: [],
             interaction: interaction,
+            symbolName: symbolName,
             makeView: makeView
         )
     }
@@ -103,6 +108,7 @@ public struct NotchBlock: Identifiable {
         defaultSize: BlockSize?,
         supportedGridSpans: Set<GridSpan>,
         interaction: BlockInteraction = .expandDrawer,
+        symbolName: String? = nil,
         makeView: @escaping @MainActor (BlockContext) -> AnyView
     ) {
         self.id = id
@@ -116,6 +122,7 @@ public struct NotchBlock: Identifiable {
         self.supportedSpans = spans
         self.defaultSize = defaultSize
         self.interaction = interaction
+        self.symbolName = symbolName
         self.makeView = makeView
     }
 

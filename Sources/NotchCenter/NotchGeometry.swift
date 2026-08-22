@@ -6,7 +6,7 @@ import CoreGraphics
 struct NotchLayout: Equatable {
     /// 刘海尺寸（无刘海屏幕为顶部中央回退尺寸）。
     let notchSize: NSSize
-    /// 紧凑热区窗口尺寸：宽度覆盖 左面板+间隙+刘海+间隙+右面板+编辑占位，
+    /// 紧凑热区窗口尺寸：宽度覆盖 左面板+间隙+刘海+间隙+右面板，
     /// 高度 = 刘海高度（紧凑区不再向下超出刘海）。
     let compactSize: NSSize
     /// 面板顶部相对屏幕顶部的偏移（保持 0，紧贴屏幕顶部）。
@@ -18,8 +18,7 @@ struct NotchLayout: Equatable {
     }
 }
 
-/// 紧凑区分列布局：左侧最多 2 个槽位、其余在右侧，中间留出刘海本身；
-/// 编辑模式“+”按钮占用窗口右端的预留区。
+/// 紧凑区分列布局：左侧最多 2 个槽位、其余在右侧，中间留出刘海本身。
 struct CompactStripLayout: Equatable {
     let notchWidth: CGFloat
     let height: CGFloat
@@ -28,7 +27,6 @@ struct CompactStripLayout: Equatable {
     private var spacing: CGFloat { NotchGeometry.compactSlotSpacing }
     private var padding: CGFloat { NotchGeometry.compactHorizontalPadding }
     private var gap: CGFloat { NotchGeometry.compactNotchGap }
-    private var editReserve: CGFloat { NotchGeometry.compactEditReserve }
 
     var leftSlots: Int {
         min(NotchGeometry.compactSlotCount, NotchGeometry.maxCompactSlotsPerSide)
@@ -71,14 +69,9 @@ struct CompactStripLayout: Equatable {
         bandLeft + leftPanelWidth + gap + notchWidth / 2
     }
 
-    /// 编辑模式“+”按钮中心（位于右侧面板之外的预留区）。
-    var editButtonPoint: CGPoint {
-        CGPoint(x: windowWidth - editReserve / 2, y: height / 2)
-    }
-
-    /// 热区窗口总宽度。
+    /// 热区窗口总宽度（与黑色带同宽，带体绕刘海左右对称）。
     var windowWidth: CGFloat {
-        rightPanelX + rightPanelWidth + editReserve
+        bandWidth
     }
 
     /// 槽位矩形（窗口内容坐标，左上原点）；越界返回 nil。
@@ -139,8 +132,6 @@ enum NotchGeometry {
     nonisolated static let compactNotchGap: CGFloat = 5
     /// 单侧最大槽位数（超出部分放到另一侧）。
     nonisolated static let maxCompactSlotsPerSide = 2
-    /// 编辑模式“+”按钮占位宽（窗口右端预留，平时透明不可见）。
-    nonisolated static let compactEditReserve: CGFloat = 34
 
     /// 无刘海屏幕的顶部中央回退尺寸。
     nonisolated static let fallbackNotchSize = NSSize(width: 210, height: 32)

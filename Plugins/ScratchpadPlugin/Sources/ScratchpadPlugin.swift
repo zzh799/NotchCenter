@@ -10,6 +10,7 @@ import SwiftUI
             id: "scratchpad.compact",
             displayName: "Scratchpad",
             kind: .compact,
+            symbolName: "tray",
             makeView: { context in
                 AnyView(ScratchpadCompactView(context: context))
             }
@@ -28,6 +29,7 @@ import SwiftUI
                     }
                 }
             ),
+            symbolName: "tray.full",
             makeView: { context in
                 AnyView(ScratchpadShelfBlockView(context: context))
             }

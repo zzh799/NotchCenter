@@ -325,6 +325,165 @@ final class LayoutEngineTests: XCTestCase {
             makeView: { _ in AnyView(EmptyView()) }
         ).validationError)
     }
+
+    // MARK: 编辑模式契约：无空行 + 缩放推挤（面板按需增减高的布局基础）
+
+    /// 直接写入精确几何（绕过 autoPlace 的首空位扫描）。
+    /// 所有块共用已注册的 blockID "cell"（跨度由各测试的 register 决定），
+    /// 传入的 `id` 仅作 placementID。
+    private func placeRaw(
+        _ engine: LayoutEngine,
+        id: String,
+        column: Int,
+        row: Int,
+        width: Int,
+        height: Int
+    ) {
+        var model = engine.modelForTesting
+        model.drawerBlocks.append(
+            PlacedBlock(
+                pluginID: "com.test.plugin",
+                blockID: "cell",
+                placementID: id,
+                originColumn: column,
+                originRow: row,
+                widthColumns: width,
+                heightRows: height
+            )
+        )
+        engine.modelForTesting = model
+    }
+
+    private func occupiedRows(_ engine: LayoutEngine) -> Set<Int> {
+        Set(
+            engine.drawerBlocks.flatMap { block in
+                (block.originRow..<block.originRow + block.heightRows)
+            }
+        )
+    }
+
+    func testRemoveBlockClosesEmptyRowBelowShiftsUp() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.wide], defaultSize: .wide)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 4, height: 1)
+        placeRaw(engine, id: "b", column: 0, row: 1, width: 4, height: 1)
+        placeRaw(engine, id: "c", column: 0, row: 2, width: 4, height: 1)
+
+        engine.removeDrawerBlock(placementID: "b")
+
+        // 行 1 空置 → 下方整体上移一行，不留空行。
+        XCTAssertEqual(engine.drawerBlock(placementID: "c")?.originRow, 1)
+        XCTAssertEqual(occupiedRows(engine), [0, 1])
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testPartialRowGapIsPreserved() throws {
+        // 行内部分留白保留：同行的另一块仍在 → 该行不空 → 下方不动。
+        register(blockID: "cell", kind: .drawer, sizes: [.medium, .wide], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "b", column: 2, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "c", column: 0, row: 1, width: 4, height: 1)
+
+        engine.removeDrawerBlock(placementID: "a")
+
+        XCTAssertEqual(engine.drawerBlock(placementID: "c")?.originRow, 1)
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originColumn, 2)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testMoveAwayClosesVacatedRows() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.wide], defaultSize: .wide)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 4, height: 1)
+        placeRaw(engine, id: "b", column: 0, row: 1, width: 4, height: 1)
+        placeRaw(engine, id: "c", column: 0, row: 2, width: 4, height: 1)
+
+        // 把 a 拖到很下方：原行空出 → 下方上移压实，a 也随之回到堆栈底部。
+        XCTAssertTrue(engine.moveDrawerBlock(placementID: "a", toColumn: 0, toRow: 8))
+        XCTAssertEqual(engine.drawerBlock(placementID: "a")?.originRow, 2)
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originRow, 0)
+        XCTAssertEqual(engine.drawerBlock(placementID: "c")?.originRow, 1)
+        XCTAssertEqual(occupiedRows(engine), [0, 1, 2])
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testResizeGrowPushesBlocksBelowInsteadOfFailing() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.medium, .large], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "b", column: 0, row: 1, width: 2, height: 1)
+        placeRaw(engine, id: "c", column: 0, row: 2, width: 2, height: 1)
+
+        // 扩大与下方重叠：不再回退失败，而是下方块被推挤下移。
+        XCTAssertTrue(engine.resizeDrawerBlock(placementID: "a", toColumns: 2, toRows: 2))
+        XCTAssertEqual(engine.drawerBlock(placementID: "a")?.heightRows, 2)
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originRow, 2)
+        XCTAssertEqual(engine.drawerBlock(placementID: "c")?.originRow, 3)
+        XCTAssertTrue(engine.validate().isEmpty)
+        // 面板高度依据：行数 3 → 4（按需增高）。
+        let rows = engine.drawerBlocks.map { $0.originRow + $0.heightRows }.max() ?? 0
+        XCTAssertEqual(rows, 4)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testResizeShrinkCompactsFreedRows() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.medium, .large], defaultSize: .large)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 2, height: 2)
+        placeRaw(engine, id: "b", column: 0, row: 2, width: 2, height: 1)
+
+        // 缩小腾出的行被压实：b 上移一行，总行数 3 → 2（面板收缩）。
+        XCTAssertTrue(engine.resizeDrawerBlock(placementID: "a", toColumns: 2, toRows: 1))
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originRow, 1)
+        XCTAssertEqual(occupiedRows(engine), [0, 1])
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testResizePreviewMatchesCommitAndGrowsWindowRows() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.medium, .large], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "b", column: 0, row: 1, width: 2, height: 1)
+
+        let preview = engine.previewArrangement(resizing: "a", toColumns: 2, toRows: 2)
+        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: 0, row: 0))
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 2))
+        // 预览期间面板按最低占用行临时增高。
+        XCTAssertEqual(engine.previewBottomRow(origins: preview), 3)
+
+        // 所见即所得：提交结果与预览一致。
+        XCTAssertTrue(engine.resizeDrawerBlock(placementID: "a", toColumns: 2, toRows: 2))
+        for block in engine.drawerBlocks {
+            XCTAssertEqual(
+                LayoutEngine.GridOrigin(column: block.originColumn, row: block.originRow),
+                preview[block.placementID]
+            )
+        }
+
+        // 不支持的跨度预览返回空。
+        XCTAssertTrue(engine.previewArrangement(resizing: "a", toColumns: 3, toRows: 3).isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testPreviewBottomRowAccountsForBottomBlockGrowth() throws {
+        // 最底层块长高：没有推挤（origins 全员原位），面板行数只能来自
+        // 被缩放块的新行数——必须显式传入 resized 才会增高。
+        register(blockID: "cell", kind: .drawer, sizes: [.medium, .large], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "b", column: 0, row: 1, width: 2, height: 1)
+
+        let preview = engine.previewArrangement(resizing: "b", toColumns: 2, toRows: 2)
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 1))
+        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: 0, row: 0))
+        // 不带 resized：按模型旧 heightRows 计算，底行不变（历史缺陷）。
+        XCTAssertEqual(engine.previewBottomRow(origins: preview), 2)
+        // 带 resized：底行计入新高度，面板按需增高一格。
+        XCTAssertEqual(engine.previewBottomRow(origins: preview, resized: ("b", 2)), 3)
+        try? FileManager.default.removeItem(at: directory)
+    }
 }
 
 @MainActor

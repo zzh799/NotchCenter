@@ -18,20 +18,17 @@ final class PanelUIState: ObservableObject {
     /// 抽屉是否展开（用于内容命中测试开关）。
     @Published var isDrawerExpanded = false
 
-    /// 紧凑区布局与元素（随屏幕切换/布局编辑变化）。
-    @Published var compactLayout: NotchLayout
+    /// 紧凑区元素（随屏幕切换/布局编辑变化）。紧凑带几何（刘海尺寸、
+    /// 槽位布局）不在这里——它按屏幕各异，由各面板以 `layout` 参数持有
+    /// （热区/抽屉视图用所属 pair 的几何，不共享主屏几何）。
     @Published var compactElements: [CompactElement] = []
-    @Published var compactCatalog: [CompactCatalogItem] = []
+    /// 紧凑槽位是否仍有空位（AddBlock 上栏条目据此置灰）。
     @Published var canAddCompact = true
     @Published var showsClickModeHint = false
 
-    /// 抽屉网格内容与目录侧边栏。
+    /// 抽屉网格内容与 AddBlock 目录条（编辑模式）。
     @Published var drawerContentSize: CGSize = .zero
     @Published var drawerWindowSize: CGSize = .zero
     @Published var drawerElements: [DrawerElement] = []
     @Published var catalogPlugins: [CatalogPluginGroup] = []
-
-    init(compactLayout: NotchLayout) {
-        self.compactLayout = compactLayout
-    }
 }

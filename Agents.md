@@ -91,7 +91,9 @@ open dist.noindex/NotchCenter.app
 - **保持唤醒需要管理员权限**：`SystemSleepGuard` 通过 `osascript with administrator privileges` 调用 `pmset disablesleep`。**不要在单元测试里触发真实休眠抑制**；测试只验证命令字符串与 shell 语法（见 `SystemSleepGuardTests`）。
 - **面板内容刷新走 `PanelUIState`**：透明无边框 `NSPanel` 上重新赋值 `NSHostingView.rootView` 不能保证立即重绘；宿主视图只在创建时设置一次 root，之后一律通过 `PanelUIState` 的 `@Published` 属性驱动 SwiftUI 刷新。新增面板状态时加到 `PanelUIState`，不要绕过它直接操作视图。
 - **块尺寸用 GridSpan 表达**：`BlockSize` 只是预设，真实约束是块的 `supportedSpans`（由 `supportedSizes` 派生 + `supportedGridSpans` 自由跨度）。编辑模式缩放走 `LayoutEngine.resizeBlock` 的任意跨度路径；新增尺寸能力时扩展 `supportedGridSpans` 而不是堆预设。
-- **拖拽推挤算法不能改回“同步 +1 行”**：`previewArrangement` 的逐块安放语义是历史 bug 的修复——旧实现让所有重叠块同步下移，相对位置不变、永不分离，靠次数上限退出并把残留重叠写盘，导致粘连块对与失控行号。改动推挤逻辑前先读 `DragReorderReproTests`；`LayoutEngine` 加载时会自动净化含重叠的损坏 layout.json，勿删除该路径。
+- **缩放握把的量化必须带死区、平移量必须在稳定坐标系度量**：`ResizeHysteresis.quantized` 只在连续位移越过当前档位半格边界 ± band 之外才换档；`DrawerBlockContainer.resizeGesture` 必须用 `coordinateSpace: .global`。不要改回朴素 `round()`、整数距离迟滞（无实际死区，边界抖动闪烁），也不要改回默认 `.local`——握把随预览增长平移一格时 local 平移量瞬间反跳一整格，死区吸收不了，形成逐像素自激振荡。诊断：`NOTCHCENTER_RESIZE_PROBE=1` 打开复刻管线对照页，`NOTCHCENTER_RESIZE_LOG=1` 打印真实管线事件（见 `ResizeHysteresisTests` / `ResizeProbe.swift`）。
+- **拖拽推挤算法不能改回“同步 +1 行”**：`pushDownOrigins`（`previewArrangement` 的核心，缩放推挤复用同一实现）的逐块安放语义是历史 bug 的修复——旧实现让所有重叠块同步下移，相对位置不变、永不分离，靠次数上限退出并把残留重叠写盘，导致粘连块对与失控行号。改动推挤逻辑前先读 `DragReorderReproTests`；`LayoutEngine` 加载时会自动净化含重叠的损坏 layout.json，勿删除该路径。
+- **编辑模式契约：不留空行 + 缩放推挤 + 面板贴合**：所有变更（移动/移除/缩放/提交）后 `compactEmptyRows` 会闭合整行空洞（下方整体上移；行内部分留白保留，加载净化的留白保护不受影响）；`resizeDrawerBlock` 扩大遇下方块不再回退而是推挤下移，预览与提交走同一算法（所见即所得）；窗口高度经 `previewBottomRow`/`refreshAfterEdit` 随内容行数按需增减。回归见 `LayoutEngineTests` 的“编辑模式契约”一节。
 - **Chicken-and-egg 初始化**：`NotchPanelController.init` 在 `super.init()` 之后才构建 `pluginManager` / `layoutEngine`（属性是 `private(set) var ...!`）。改动核心初始化顺序时注意。
 - **UI 风格**：抽屉强制深色（`.environment(\.colorScheme, .dark)`），背景接近纯黑半透明，顶部圆角遮罩（`TopAttachedRoundedShape`）。改动视觉时保持“贴近刘海”的观感。
 - **命名 / 语言**：源码标识符与 UI 字符串用英文；注释可用中文。保持与现有文件一致的风格（缩进、分组、注释密度）。
@@ -100,7 +102,7 @@ open dist.noindex/NotchCenter.app
 ## 测试
 
 - 运行：`swift test`；单文件调试可 `swift test --filter <Name>`。
-- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）。
+- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）。
 - 涉及 `pmset` / 休眠的逻辑测试应确保**不真正改变系统睡眠状态**。
 - 涉及 AppKit 窗口/事件的逻辑依赖 App 运行环境，注意保持 `@MainActor` 测试隔离（`setUp`/`tearDown` 是非隔离上下文，不要在里面改 @MainActor 属性）。
 

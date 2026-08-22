@@ -11,6 +11,7 @@ import SwiftUI
             displayName: "Keep Awake",
             kind: .compact,
             interaction: .custom,
+            symbolName: "cup.and.saucer",
             makeView: { context in
                 AnyView(KeepAwakeCompactView(context: context))
             }

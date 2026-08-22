@@ -10,6 +10,7 @@ import SwiftUI
             id: "notes.compact",
             displayName: "Notes",
             kind: .compact,
+            symbolName: "note.text",
             makeView: { context in
                 AnyView(NotesCompactView(context: context))
             }
@@ -20,6 +21,16 @@ import SwiftUI
             kind: .drawer,
             supportedSizes: [.large, .extraLarge],
             defaultSize: .extraLarge,
+            // 自由跨度：允许竖向加高（2/4 列 × 3-4 行）。编辑模式向下扩大时
+            // 推挤下方块、面板按需增高——没有这些跨度时纵向拖动无法生效
+            //（nearest 永远回到 2 行高的档位）。
+            supportedGridSpans: [
+                GridSpan(columns: 2, rows: 3),
+                GridSpan(columns: 2, rows: 4),
+                GridSpan(columns: 4, rows: 3),
+                GridSpan(columns: 4, rows: 4),
+            ],
+            symbolName: "book",
             makeView: { context in
                 AnyView(NotesBlockView(
                     store: NotesModel.shared.resolve(stateStore: context.stateStore),

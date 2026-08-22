@@ -55,10 +55,9 @@ final class NotchGeometryTests: XCTestCase {
             CGFloat(2) * slot.width + spacing + padding * 2
         )
         XCTAssertEqual(strip.rightPanelX, strip.leftPanelWidth + gap + 210 + gap)
-        XCTAssertEqual(
-            strip.windowWidth,
-            strip.rightPanelX + strip.rightPanelWidth + NotchGeometry.compactEditReserve
-        )
+        // 窗口与黑色带同宽（不再为编辑模式“+”预留右端占位）。
+        XCTAssertEqual(strip.windowWidth, strip.rightPanelX + strip.rightPanelWidth)
+        XCTAssertEqual(strip.windowWidth, strip.bandWidth)
 
         // 带体绕刘海的左右边距相等。
         XCTAssertEqual(strip.notchCenterX, strip.windowWidth / 2)
@@ -110,13 +109,5 @@ final class NotchGeometryTests: XCTestCase {
         // 越界返回 nil。
         XCTAssertNil(strip.slotRect(at: -1))
         XCTAssertNil(strip.slotRect(at: 3))
-    }
-
-    func testCompactStripEditButtonInReserveArea() {
-        let strip = CompactStripLayout(notchWidth: 210, height: 32)
-
-        // “+”按钮位于右侧面板之外的预留区，垂直居中。
-        XCTAssertEqual(strip.editButtonPoint.x, strip.windowWidth - NotchGeometry.compactEditReserve / 2)
-        XCTAssertEqual(strip.editButtonPoint.y, 16)
     }
 }

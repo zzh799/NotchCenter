@@ -102,9 +102,9 @@ final class NotchPanelController: NSObject {
     let uiState: PanelUIState
 
     /// 每个屏幕的面板对。
-    private var pairs: [ScreenPanelPair] = []
+    var pairs: [ScreenPanelPair] = []
     /// 当前展开抽屉的屏幕面板对。
-    private var activePair: ScreenPanelPair?
+    var activePair: ScreenPanelPair?
 
     /// 钉住状态（抽屉是否保持常开）。经 uiState 发布，顶部按钮即时同步。
     private var isPinned: Bool {
@@ -131,7 +131,7 @@ final class NotchPanelController: NSObject {
     private var pluginManagerWindowController: PluginManagerWindowController?
 
     override init() {
-        uiState = PanelUIState(compactLayout: NotchGeometry.layout(for: NotchGeometry.targetScreen()))
+        uiState = PanelUIState()
 
         super.init()
 
@@ -248,6 +248,11 @@ final class NotchPanelController: NSObject {
         positionCompactPanel(pair)
         // 窗口直接摆到最终尺寸，“从刘海展开”由视图内遮罩插值完成
         // （沿用 NotchNotes 的 DrawerState.revealProgress 方案）。
+        #if DEBUG
+        if ResizeProbeLog.isEnabled {
+            NSLog("expand setFrame -> %@ (isEditing=%@)", NSStringFromRect(drawerFrame(for: pair)), String(describing: isEditing))
+        }
+        #endif
         pair.drawerPanel.setFrame(drawerFrame(for: pair), display: true)
         var t = Transaction()
         t.disablesAnimations = true
@@ -342,19 +347,38 @@ final class NotchPanelController: NSObject {
     }
 
     /// 由 HostController.enterEditMode / 视图动作调用。
+    /// 收起态进入时先完整展开（普通小揭示），揭示完成后再进入编辑：
+    /// 揭示与高度增长串行，各自走已验证路径——两者叠加是首次进入特有
+    /// 异常（宿主视图刚上线、preference 跟随未参与）的来源。
+    /// 不要改成叠加（同帧翻转 isEditing）或“先置编辑再 expand”（收起态
+    /// 直接向编辑终高大揭示，每次进入都有显眼的顶部展开）。
     func startEditMode() {
         if !isExpanded {
             expand(animated: true, activate: false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) { [weak self] in
+                self?.applyEditMode()
+            }
+        } else {
+            applyEditMode()
         }
-        isEditing = true
-        rebuildContent()
+    }
+
+    /// 进入编辑状态的内容过渡（内容 spring 增高、窗口由跟随器贴合）。
+    private func applyEditMode() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+            isEditing = true
+        }
+        rebuildContent(animated: true)
     }
 
     /// 由 HostController.exitEditMode / 视图动作调用。
+    /// 高度收缩由内容 spring + 窗口逐帧跟随完成（syncDrawerFrame）。
     func stopEditMode() {
         guard isEditing else { return }
-        isEditing = false
-        rebuildContent()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+            isEditing = false
+        }
+        rebuildContent(animated: true)
         if !isPinned {
             handleMouseLocation(NSEvent.mouseLocation)
         }
@@ -365,18 +389,31 @@ final class NotchPanelController: NSObject {
     /// 刷新面板内容：把布局与元素写入 `uiState`（@Published 驱动 SwiftUI 刷新），
     /// 所有屏幕的宿主视图共享同一份状态。宿主视图只创建一次，之后不再重新赋值
     /// rootView——在透明无边框 NSPanel 上 rootView 重赋值不能保证立即重绘。
-    private func rebuildContent(layout: NotchLayout? = nil) {
-        let layout = layout ?? primaryLayout()
-        uiState.compactLayout = layout
-        uiState.showsClickModeHint = settingsStore.triggerMode == .click
-        uiState.compactElements = buildCompactElements(layout: layout)
-        uiState.compactCatalog = buildCompactCatalog()
-        uiState.canAddCompact = layoutEngine.compactSlots.contains(where: { $0 == nil })
+    /// `animated: true` 时状态变化套 spring（编辑模式目录条/窗口高度过渡）。
+    private func rebuildContent(animated: Bool = false) {
+        // 紧凑元素的上下文 frame 以主屏几何近似（槽位尺寸跨屏一致，
+        // 视觉几何由各面板的 layout 参数精确持有）。
+        let contextLayout = primaryLayout()
+        let catalogPlugins = buildCatalogPlugins()
 
-        uiState.drawerContentSize = layoutEngine.drawerContentSize()
-        uiState.drawerWindowSize = layoutEngine.drawerWindowSize()
-        uiState.drawerElements = buildDrawerElements()
-        uiState.catalogPlugins = buildCatalogPlugins()
+        let apply = {
+            self.uiState.showsClickModeHint = self.settingsStore.triggerMode == .click
+            self.uiState.compactElements = self.buildCompactElements(layout: contextLayout)
+            self.uiState.canAddCompact = self.layoutEngine.compactSlots.contains(where: { $0 == nil })
+
+            self.uiState.drawerContentSize = self.layoutEngine.drawerContentSize()
+            // 目录先就位，窗口尺寸才能计入 AddBlock 区域高度。
+            self.uiState.catalogPlugins = catalogPlugins
+            self.uiState.drawerWindowSize = self.drawerWindowSize(for: self.activePair ?? self.pairs.first)
+            self.uiState.drawerElements = self.buildDrawerElements()
+        }
+        if animated {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                apply()
+            }
+        } else {
+            apply()
+        }
 
         for pair in pairs {
             buildViewsIfNeeded(pair)
@@ -387,10 +424,16 @@ final class NotchPanelController: NSObject {
     }
 
     /// 为某个屏幕的面板对创建宿主视图（每屏一份，共享 uiState）。
+    /// 紧凑带几何按所属屏幕传入：外接屏回退与内建屏实测刘海的宽度/槽位
+    /// 布局不同，视图不得读共享的主屏几何。
     private func buildViewsIfNeeded(_ pair: ScreenPanelPair) {
         if pair.hotHostingView == nil {
             let host = TransparentHitHostingView(
-                rootView: CompactPanelView(ui: uiState, actions: compactActions())
+                rootView: CompactPanelView(
+                    ui: uiState,
+                    layout: pair.layout,
+                    actions: compactActions()
+                )
             )
             host.translatesAutoresizingMaskIntoConstraints = true
             host.autoresizingMask = [.width, .height]
@@ -404,13 +447,18 @@ final class NotchPanelController: NSObject {
             let host = FirstMouseHostingView(
                 rootView: DrawerPanelView(
                     ui: uiState,
+                    layout: pair.layout,
                     // 岛顶嵌入紧凑区（不自绘底衬）：展开后刘海带与抽屉一体呈现。
                     compactView: CompactPanelView(
                         ui: uiState,
+                        layout: pair.layout,
                         actions: compactActions(),
                         showsBand: false
                     ),
-                    actions: drawerActions()
+                    actions: drawerActions(),
+                    onContentSizeChange: { [weak self, weak pair] size in
+                        self?.syncDrawerFrame(toContentSize: size, pair: pair)
+                    }
                 )
             )
             host.translatesAutoresizingMaskIntoConstraints = true
@@ -507,32 +555,17 @@ final class NotchPanelController: NSObject {
         pluginManager.entries
             .filter { $0.isEnabled && $0.instance != nil }
             .compactMap { entry -> CatalogPluginGroup? in
-                // 只列有抽屉块的插件：纯紧凑块插件（如防休眠）不出现在
-                // Add Block 目录里，避免空分组（紧凑块由紧凑区“+”添加）。
+                // AddBlock 目录同时列紧凑块（上栏）与抽屉块（下栏）；
+                // 两者皆无的插件不出现，避免空分组。
+                let compactBlocks = entry.blocks.filter { $0.kind == .compact }
                 let drawerBlocks = entry.blocks.filter { $0.kind == .drawer }
-                guard !drawerBlocks.isEmpty else { return nil }
+                guard !compactBlocks.isEmpty || !drawerBlocks.isEmpty else { return nil }
                 return CatalogPluginGroup(
                     pluginID: entry.id,
                     displayName: entry.metadata.displayName,
+                    compactBlocks: compactBlocks,
                     drawerBlocks: drawerBlocks
                 )
-            }
-    }
-
-    /// 紧凑块目录（编辑模式“+”菜单）。
-    private func buildCompactCatalog() -> [CompactCatalogItem] {
-        pluginManager.entries
-            .filter { $0.isEnabled && $0.instance != nil }
-            .flatMap { entry in
-                entry.blocks
-                    .filter { $0.kind == .compact }
-                    .map { block in
-                        CompactCatalogItem(
-                            pluginID: entry.id,
-                            blockID: block.id,
-                            displayName: block.displayName
-                        )
-                    }
             }
     }
 
@@ -552,11 +585,6 @@ final class NotchPanelController: NSObject {
             },
             onExpand: { [weak self] in
                 self?.expand(animated: true, activate: true)
-            },
-            onAddCompact: { [weak self] pluginID, blockID in
-                guard let self else { return }
-                self.layoutEngine.addCompactBlock(pluginID: pluginID, blockID: blockID)
-                self.rebuildContent()
             }
         )
     }
@@ -585,15 +613,15 @@ final class NotchPanelController: NSObject {
             },
             onRemoveBlock: { [weak self] placementID in
                 self?.layoutEngine.removeDrawerBlock(placementID: placementID)
-                self?.rebuildContent()
+                self?.refreshAfterEdit()
             },
             onMoveBlock: { [weak self] placementID, column, row in
                 self?.layoutEngine.moveDrawerBlock(placementID: placementID, toColumn: column, toRow: row)
-                self?.rebuildContent()
+                self?.refreshAfterEdit()
             },
             onResizeBlock: { [weak self] placementID, columns, rows in
                 self?.layoutEngine.resizeDrawerBlock(placementID: placementID, toColumns: columns, toRows: rows)
-                self?.rebuildContent()
+                self?.refreshAfterEdit()
             },
             onAddBlock: { [weak self] pluginID, blockID in
                 guard let self else { return }
@@ -603,18 +631,32 @@ final class NotchPanelController: NSObject {
                 } else {
                     self.layoutEngine.autoPlaceDrawerBlock(pluginID: pluginID, blockID: blockID)
                 }
-                self.rebuildContent()
+                self.refreshAfterEdit()
             },
             onReorderBlocks: { [weak self] in
                 self?.layoutEngine.reorderDrawerBlocks()
-                self?.rebuildContent()
+                self?.refreshAfterEdit()
             },
             onPreviewMove: { [weak self] placementID, column, row in
-                self?.layoutEngine.previewArrangement(
+                guard let self else { return [:] }
+                let origins = self.layoutEngine.previewArrangement(
                     moving: placementID,
                     toColumn: column,
                     toRow: row
-                ) ?? [:]
+                )
+                self.applyPreviewWindowSize(origins)
+                return origins
+            },
+            onPreviewResize: { [weak self] placementID, columns, rows in
+                guard let self else { return [:] }
+                let origins = self.layoutEngine.previewArrangement(
+                    resizing: placementID,
+                    toColumns: columns,
+                    toRows: rows
+                )
+                // 底层块长高不推挤任何人：新行数必须显式传入才会增高面板。
+                self.applyPreviewWindowSize(origins, resized: (placementID, rows))
+                return origins
             },
             onCommitDrag: { [weak self] placementID, column, row in
                 guard let self else { return }
@@ -624,7 +666,7 @@ final class NotchPanelController: NSObject {
                     toRow: row
                 )
                 _ = self.layoutEngine.commitArrangement(origins)
-                self.rebuildContent()
+                self.refreshAfterEdit()
             }
         )
     }
@@ -846,23 +888,87 @@ final class NotchPanelController: NSObject {
 
     // MARK: - 几何
 
+    /// 抽屉窗口内容尺寸（不含岛顶紧凑带）：布局内容 + 编辑模式 AddBlock
+    /// 区域增高；超出屏幕可用高度时封顶（网格 ScrollView 可视高度随之压缩，
+    /// 文档 §5.3）。与 `DrawerPanelView` 根视图共享该尺寸，保证布局一致。
+    /// `previewRows` 用于拖拽/缩放预览（按预览布局的最低行临时增高）。
+    private func drawerWindowSize(for pair: ScreenPanelPair?, previewRows: Int? = nil) -> CGSize {
+        var size = layoutEngine.drawerWindowSize(contentRows: previewRows)
+        if isEditing {
+            size.height += AddBlockArea.height(for: uiState.catalogPlugins)
+        }
+        if let pair {
+            let maxHeight = pair.screenFrame.height - 8 - pair.layout.compactSize.height
+            if size.height > maxHeight {
+                size.height = maxHeight
+            }
+        }
+        return size
+    }
+
+    /// 窗口作为内容几何的逐帧跟随者：`DrawerPanelView` 经 preference 上报
+    /// 实际渲染尺寸（含 spring 动画的每一帧），窗口 frame 直接贴合（顶缘
+    /// 钉死屏幕顶端、底缘与内容严丝合缝）——窗口与内容共用同一
+    /// SwiftUI spring。注意：沙箱化进程上 preference 不传播，诊断须在
+    /// 非沙箱环境运行（此前在沙箱中误判为“不触发”并将其移除，导致
+    /// 解析 spring 等替代方案的曲线/时钟偏差）。
+    private func syncDrawerFrame(toContentSize contentSize: CGSize, pair: ScreenPanelPair?) {
+        guard isExpanded, let pair, contentSize.height > 0, contentSize.width > 0 else { return }
+        var size = contentSize
+        size.height += pair.layout.compactSize.height
+        let frame = NotchGeometry.topCenteredFrame(
+            for: size,
+            topY: pair.screenFrame.maxY,
+            in: pair.screenFrame
+        )
+        guard pair.drawerPanel.frame != frame else { return }
+        pair.drawerPanel.setFrame(frame, display: true)
+    }
+
     /// 抽屉窗口：从屏幕顶端开始（包含刘海高度带的岛顶区域），
     /// 展开动画时遮罩从紧凑带尺寸放大到完整窗口，与刘海视觉融合。
     private func drawerFrame(for pair: ScreenPanelPair) -> NSRect {
         let screenFrame = pair.screenFrame
-        let layout = pair.layout
-        var size = layoutEngine.drawerWindowSize()
-        size.height += layout.compactSize.height
-        // 文档 §5.3：达到屏幕可用高度上限后内容区域滚动（窗口高度封顶）。
-        let maxHeight = screenFrame.height - 8
-        if size.height > maxHeight {
-            size.height = maxHeight
-        }
+        var size = drawerWindowSize(for: pair)
+        size.height += pair.layout.compactSize.height
         return NotchGeometry.topCenteredFrame(
             for: size,
             topY: screenFrame.maxY,
             in: screenFrame
         )
+    }
+
+    /// 拖拽/缩放预览期间面板按需增高：以预览布局的最低行为准直接设置窗口
+    /// （紧跟指针、不做动画）；提交后由 `refreshAfterEdit` 的 spring 回落
+    /// 到压实尺寸。`resized` 为正在缩放块的新行数（底层块长高时唯一能
+    /// 反映增高的来源）。
+    private func applyPreviewWindowSize(
+        _ origins: [String: LayoutEngine.GridOrigin],
+        resized: (placementID: String, heightRows: Int)? = nil
+    ) {
+        guard isExpanded, let pair = activePair, !origins.isEmpty else { return }
+        let size = drawerWindowSize(
+            for: pair,
+            previewRows: layoutEngine.previewBottomRow(origins: origins, resized: resized)
+        )
+        guard uiState.drawerWindowSize != size else { return }
+        uiState.drawerWindowSize = size
+        var frameSize = size
+        frameSize.height += pair.layout.compactSize.height
+        pair.drawerPanel.setFrame(
+            NotchGeometry.topCenteredFrame(
+                for: frameSize,
+                topY: pair.screenFrame.maxY,
+                in: pair.screenFrame
+            ),
+            display: true
+        )
+    }
+
+    /// 编辑操作提交后的刷新：内容 spring 重建，窗口按同参数解析 spring
+    /// 贴合新高度（无空行、面板贴合内容）。
+    private func refreshAfterEdit() {
+        rebuildContent(animated: true)
     }
 
     // MARK: - 插件管理窗口
