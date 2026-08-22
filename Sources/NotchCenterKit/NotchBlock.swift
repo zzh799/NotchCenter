@@ -42,6 +42,17 @@ public enum BlockInteraction: Sendable, Hashable {
     case custom
 }
 
+/// 任意网格跨度（列数 × 行数）：BlockSize 枚举档位之外的自由尺寸声明。
+public struct GridSpan: Hashable, Codable, Sendable {
+    public let columns: Int
+    public let rows: Int
+
+    public init(columns: Int, rows: Int) {
+        self.columns = columns
+        self.rows = rows
+    }
+}
+
 /// 插件提供的最小 UI 单元（文档 §4.2）。
 @MainActor
 public struct NotchBlock: Identifiable {
@@ -53,6 +64,9 @@ public struct NotchBlock: Identifiable {
     public let kind: BlockKind
     /// 支持的可选尺寸等级（仅抽屉块有效，且必须包含 `defaultSize`）。
     public let supportedSizes: Set<BlockSize>
+    /// 支持的完整跨度集合：`supportedSizes` 的派生跨度 + `supportedGridSpans`
+    /// 额外声明的自由跨度（如 1×3、3×3）。核心的缩放/校验以此为准。
+    public let supportedSpans: Set<GridSpan>
     /// 默认尺寸等级（仅抽屉块有效）。
     public let defaultSize: BlockSize?
     /// 紧凑块点击行为（仅紧凑块有意义）。默认 `.expandDrawer`。
@@ -69,21 +83,49 @@ public struct NotchBlock: Identifiable {
         interaction: BlockInteraction = .expandDrawer,
         makeView: @escaping @MainActor (BlockContext) -> AnyView
     ) {
+        self.init(
+            id: id,
+            displayName: displayName,
+            kind: kind,
+            supportedSizes: supportedSizes,
+            defaultSize: defaultSize,
+            supportedGridSpans: [],
+            interaction: interaction,
+            makeView: makeView
+        )
+    }
+
+    public init(
+        id: String,
+        displayName: String,
+        kind: BlockKind,
+        supportedSizes: Set<BlockSize>,
+        defaultSize: BlockSize?,
+        supportedGridSpans: Set<GridSpan>,
+        interaction: BlockInteraction = .expandDrawer,
+        makeView: @escaping @MainActor (BlockContext) -> AnyView
+    ) {
         self.id = id
         self.displayName = displayName
         self.kind = kind
         self.supportedSizes = supportedSizes
+        var spans = Set(supportedSizes.map { size in
+            GridSpan(columns: size.gridSpan.columns, rows: size.gridSpan.rows)
+        })
+        spans.formUnion(supportedGridSpans)
+        self.supportedSpans = spans
         self.defaultSize = defaultSize
         self.interaction = interaction
         self.makeView = makeView
     }
 
     /// 校验块声明是否满足架构文档 §4.2 的规则。
-    /// - 紧凑块固定 44×44，无需声明尺寸；抽屉块必须声明 supportedSizes 且包含 defaultSize。
+    /// - 紧凑块固定 44×44，无需声明尺寸；抽屉块必须声明支持的跨度（supportedSizes
+    ///   或 supportedGridSpans 至少其一）且包含 defaultSize。
     public var validationError: String? {
         switch kind {
         case .compact:
-            if !supportedSizes.isEmpty {
+            if !supportedSizes.isEmpty || !supportedSpans.isEmpty {
                 return "compact block \(id) must not declare supportedSizes"
             }
             if defaultSize != nil {
@@ -91,10 +133,11 @@ public struct NotchBlock: Identifiable {
             }
             return nil
         case .drawer:
-            if supportedSizes.isEmpty {
+            if supportedSpans.isEmpty {
                 return "drawer block \(id) must declare supportedSizes"
             }
-            if let defaultSize, !supportedSizes.contains(defaultSize) {
+            if let defaultSize,
+               !supportedSpans.contains(GridSpan(columns: defaultSize.gridSpan.columns, rows: defaultSize.gridSpan.rows)) {
                 return "drawer block \(id) defaultSize must be included in supportedSizes"
             }
             return nil

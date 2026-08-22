@@ -195,8 +195,10 @@ private struct CompactBlockContainer: View {
 struct DrawerElement: Identifiable {
     let placement: PlacedBlock
     let view: AnyView
-    let supportedSizes: [BlockSize]
-    let currentSize: BlockSize?
+    /// 支持的完整跨度集合（列数 × 行数，来自块声明的 supportedSpans）。
+    let supportedSpans: [GridSpan]
+    /// 当前已提交的跨度（与 placement 一致；布局遗留数据可能为 nil）。
+    let currentSpan: GridSpan?
 
     var id: String { placement.placementID }
 }
@@ -207,7 +209,7 @@ struct DrawerActions {
     let onCollapse: () -> Void
     let onRemoveBlock: (String) -> Void
     let onMoveBlock: (String, Int, Int) -> Void
-    let onResizeBlock: (String, BlockSize) -> Void
+    let onResizeBlock: (String, Int, Int) -> Void
     let onAddBlock: (String, String) -> Void
     /// 拖拽实时预览：返回全体块的新位置（不落盘）。
     let onPreviewMove: (String, Int, Int) -> [String: LayoutEngine.GridOrigin]
@@ -427,73 +429,74 @@ struct DrawerPanelView: View {
 
     @State private var previewPositions: [String: LayoutEngine.GridOrigin] = [:]
     @State private var draggingPlacementID: String?
-    /// 缩放预览：正在调整的块及其目标格数（由父视图持有，跨手势中断稳定）。
+    /// 缩放预览：正在调整的块及其目标跨度（由父视图持有，跨手势中断稳定）。
     @State private var resizingPlacementID: String?
     @State private var resizePreviewColumns: Int?
     @State private var resizePreviewRows: Int?
-    /// 缩放手势基准与上次位移（用于检测手势中断重启）。
-    @State private var resizeBaseColumns: Int?
-    @State private var resizeBaseRows: Int?
-    @State private var lastResizeTranslation: CGSize = .zero
 
-    /// 缩放位移 → 目标格数。按下瞬间位移为零，目标即当前尺寸（不会瞬间缩小）；
-    /// 检测到手势被中断重启（位移突然回退）时以当前预览为新的基准，
-    /// 从当前大小继续缩放——既无跳变也无"当前 ↔ 原始"闪烁。
+    /// 缩放位移 → 目标跨度。按下瞬间位移为零，目标即当前尺寸（不会瞬间缩小）。
+    /// 吸附采用迟滞策略：只有当候选跨度明显更近（余量一个网格单位）时才切换预览，
+    /// 边界处的亚像素抖动不会再引起"当前 ↔ 候选"的尺寸闪烁；也不依赖任何
+    /// 手势重启启发式——基准固定为按下时的 placement，映射是纯函数、无路径依赖。
     private func handleResizeTranslate(_ translation: CGSize, for element: DrawerElement) {
-        let absW = abs(translation.width)
-        let absH = abs(translation.height)
-        if resizingPlacementID != element.id
-            || absW < lastResizeTranslation.width - 4
-            || absH < lastResizeTranslation.height - 4 {
-            resizeBaseColumns = resizePreviewColumns ?? element.placement.widthColumns
-            resizeBaseRows = resizePreviewRows ?? element.placement.heightRows
+        if resizingPlacementID != element.id {
             resizingPlacementID = element.id
+            resizePreviewColumns = element.placement.widthColumns
+            resizePreviewRows = element.placement.heightRows
         }
-        lastResizeTranslation = CGSize(width: absW, height: absH)
 
         let stepW = NotchGridMetrics.cellWidth + NotchGridMetrics.spacing
         let stepH = NotchGridMetrics.cellHeight + NotchGridMetrics.spacing
         let rawColumns = min(
-            max((resizeBaseColumns ?? 1) + Int((translation.width / stepW).rounded()), 1),
+            max(element.placement.widthColumns + Int(round(translation.width / stepW)), 1),
             4
         )
         let rawRows = min(
-            max((resizeBaseRows ?? 1) + Int((translation.height / stepH).rounded()), 1),
+            max(element.placement.heightRows + Int(round(translation.height / stepH)), 1),
             6
         )
+        let rawSpan = GridSpan(columns: rawColumns, rows: rawRows)
 
-        // 预览直接吸附到最近的支持尺寸：所见即所得，松手必定生效，
-        // 不会出现"拖到中间尺寸、松手又恢复原大小"的落差。
-        if let nearest = element.supportedSizes.min(by: { lhs, rhs in
-            let leftDistance = abs(lhs.gridSpan.columns - rawColumns)
-                + abs(lhs.gridSpan.rows - rawRows)
-            let rightDistance = abs(rhs.gridSpan.columns - rawColumns)
-                + abs(rhs.gridSpan.rows - rawRows)
-            return leftDistance < rightDistance
-        }) {
-            resizePreviewColumns = nearest.gridSpan.columns
-            resizePreviewRows = nearest.gridSpan.rows
+        // 候选跨度中离原始目标最近的那个。
+        var nearest: GridSpan?
+        var nearestDistance = Int.max
+        for span in element.supportedSpans {
+            let distance = abs(span.columns - rawColumns) + abs(span.rows - rawRows)
+            if distance < nearestDistance {
+                nearestDistance = distance
+                nearest = span
+            }
+        }
+        guard let candidate = nearest else { return }
+
+        // 迟滞：当前预览到目标的距离比候选多出至少一个网格单位才切换，
+        // 否则保持现状——切换点两侧各留出半个单位的稳定带。
+        let currentColumns = resizePreviewColumns ?? element.placement.widthColumns
+        let currentRows = resizePreviewRows ?? element.placement.heightRows
+        let currentDistance = abs(currentColumns - rawColumns) + abs(currentRows - rawRows)
+        let switchedAlready = currentColumns != element.placement.widthColumns
+            || currentRows != element.placement.heightRows
+
+        if !switchedAlready || currentDistance >= nearestDistance + 1 {
+            resizePreviewColumns = candidate.columns
+            resizePreviewRows = candidate.rows
         }
     }
 
-    /// 松手时在支持的尺寸等级间吸附；无匹配尺寸则回退原尺寸。
+    /// 松手提交预览跨度（预览始终 ∈ supportedSpans，所见即所得）；
+    /// 与当前一致时不产生任何操作。
     private func commitResize(for element: DrawerElement) {
         defer {
             resizingPlacementID = nil
             resizePreviewColumns = nil
             resizePreviewRows = nil
-            resizeBaseColumns = nil
-            resizeBaseRows = nil
-            lastResizeTranslation = .zero
         }
         guard let columns = resizePreviewColumns,
               let rows = resizePreviewRows,
-              let size = element.supportedSizes.first(where: {
-                  $0.gridSpan.columns == columns && $0.gridSpan.rows == rows
-              }), size != element.currentSize else {
+              columns != element.currentSpan?.columns || rows != element.currentSpan?.rows else {
             return
         }
-        actions.onResizeBlock(element.id, size)
+        actions.onResizeBlock(element.id, columns, rows)
     }
 
     private func resolveOrigin(for element: DrawerElement) -> LayoutEngine.GridOrigin {

@@ -347,18 +347,29 @@ final class LayoutEngine: ObservableObject {
     /// 在支持的尺寸等级间切换块尺寸（编辑模式，文档 §5.5）。重叠或越界时回退。
     @discardableResult
     func resizeDrawerBlock(placementID: String, to size: BlockSize) -> Bool {
+        resizeDrawerBlock(
+            placementID: placementID,
+            toColumns: size.gridSpan.columns,
+            toRows: size.gridSpan.rows
+        )
+    }
+
+    /// 缩放块到任意声明的跨度（编辑模式）：跨度必须在块的 supportedSpans 内，
+    /// 重叠时回退。左上角原点保持不变（仅越界列数时向左收紧）。
+    @discardableResult
+    func resizeDrawerBlock(placementID: String, toColumns: Int, toRows: Int) -> Bool {
         guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
             return false
         }
         let block = model.drawerBlocks[index]
         guard let definition = blockResolver(block.pluginID, block.blockID),
-              definition.supportedSizes.contains(size) else {
+              definition.supportedSpans.contains(GridSpan(columns: toColumns, rows: toRows)) else {
             return false
         }
 
         var resized = block
-        resized.widthColumns = size.gridSpan.columns
-        resized.heightRows = size.gridSpan.rows
+        resized.widthColumns = toColumns
+        resized.heightRows = toRows
 
         let columns = effectiveMaxColumns()
         resized.originColumn = min(resized.originColumn, max(0, columns - resized.widthColumns))
@@ -522,12 +533,10 @@ final class LayoutEngine: ObservableObject {
             }
             if let definition = blockResolver(block.pluginID, block.blockID),
                case .drawer = definition.kind {
-                let span = BlockSize.allCases.filter { definition.supportedSizes.contains($0) }
-                let declared = span.first {
-                    $0.gridSpan.columns == block.widthColumns
-                        && $0.gridSpan.rows == block.heightRows
-                }
-                if declared == nil {
+                let declared = definition.supportedSpans.contains(
+                    GridSpan(columns: block.widthColumns, rows: block.heightRows)
+                )
+                if !declared {
                     issues.append(.sizeNotSupported(placementID: block.placementID))
                 }
             }

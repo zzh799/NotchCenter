@@ -20,6 +20,14 @@ import SwiftUI
             kind: .drawer,
             supportedSizes: [.medium, .large, .wide, .extraLarge],
             defaultSize: .large,
+            // 自由跨度：网格上限内的所有组合（1×1 到 4×4）都支持。
+            supportedGridSpans: Set(
+                (1...4).flatMap { columns in
+                    (1...4).map { rows in
+                        GridSpan(columns: columns, rows: rows)
+                    }
+                }
+            ),
             makeView: { context in
                 AnyView(ScratchpadShelfBlockView(context: context))
             }

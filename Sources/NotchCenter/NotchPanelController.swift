@@ -466,11 +466,7 @@ final class NotchPanelController: NSObject {
                 return nil
             }
             let frame = layoutEngine.frame(for: placement)
-            let sizes = BlockSize.allCases.filter { block.supportedSizes.contains($0) }
-            let currentSize = sizes.first {
-                $0.gridSpan.columns == placement.widthColumns
-                    && $0.gridSpan.rows == placement.heightRows
-            }
+            let currentSpan = GridSpan(columns: placement.widthColumns, rows: placement.heightRows)
             let context = BlockContext(
                 pluginID: placement.pluginID,
                 blockID: placement.blockID,
@@ -481,7 +477,7 @@ final class NotchPanelController: NSObject {
                     region: .drawer,
                     placementID: placement.placementID,
                     frame: frame,
-                    size: currentSize,
+                    size: nil,
                     originColumn: placement.originColumn,
                     originRow: placement.originRow,
                     widthColumns: placement.widthColumns,
@@ -492,8 +488,10 @@ final class NotchPanelController: NSObject {
             return DrawerElement(
                 placement: placement,
                 view: block.makeView(context),
-                supportedSizes: sizes,
-                currentSize: currentSize
+                supportedSpans: block.supportedSpans.sorted { lhs, rhs in
+                    lhs.columns == rhs.columns ? lhs.rows < rhs.rows : lhs.columns < rhs.columns
+                },
+                currentSpan: currentSpan
             )
         }
     }
@@ -586,8 +584,8 @@ final class NotchPanelController: NSObject {
                 self?.layoutEngine.moveDrawerBlock(placementID: placementID, toColumn: column, toRow: row)
                 self?.rebuildContent()
             },
-            onResizeBlock: { [weak self] placementID, size in
-                self?.layoutEngine.resizeDrawerBlock(placementID: placementID, to: size)
+            onResizeBlock: { [weak self] placementID, columns, rows in
+                self?.layoutEngine.resizeDrawerBlock(placementID: placementID, toColumns: columns, toRows: rows)
                 self?.rebuildContent()
             },
             onAddBlock: { [weak self] pluginID, blockID in
