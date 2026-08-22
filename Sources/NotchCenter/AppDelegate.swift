@@ -123,6 +123,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 panelController.capturePanelsForDebug(suffix: "_edit")
                 print("edit captured")
             }
+            // 拖拽排序验证：预留落点后抓帧窗口，供外部输入驱动在 6-9s 间执行拖放。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 9.0) {
+                panelController.capturePanelsForDebug(suffix: "_afterdrag")
+                print("after-drag captured")
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
                 NSApp.terminate(nil)
             }
