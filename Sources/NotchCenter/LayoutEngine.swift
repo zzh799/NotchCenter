@@ -300,6 +300,44 @@ final class LayoutEngine: ObservableObject {
         saveToDisk()
     }
 
+    /// 一键重排（编辑模式）：按“从上到下、从左到右”的阅读顺序紧密排布所有抽屉块。
+    /// 以当前布局的阅读顺序为优先级，逐块放到首个不重叠位置（行优先扫描），
+    /// 消除移动/缩放留下的空洞；块身份与跨度保持不变，仅调整原点。
+    func reorderDrawerBlocks() {
+        guard !model.drawerBlocks.isEmpty else { return }
+        let columns = effectiveMaxColumns()
+
+        // 阅读顺序即优先级：先看行再看列（元组比较）。
+        let ordered = model.drawerBlocks.sorted {
+            ($0.originRow, $0.originColumn) < ($1.originRow, $1.originColumn)
+        }
+
+        var occupied: [RectKey] = []
+        var result: [PlacedBlock] = []
+        result.reserveCapacity(ordered.count)
+
+        for block in ordered {
+            // 行优先扫描首个可用位置；扫描上界为已占最底行 + 1
+            // （新起一行时必然无冲突，无需继续向下找）。
+            var candidate = block
+            let maxRow = occupied.map(\.maxRow).max() ?? -1
+            scan: for row in 0...max(0, maxRow + 1) {
+                for col in 0...max(0, columns - block.widthColumns) {
+                    candidate.originColumn = col
+                    candidate.originRow = row
+                    if !overlaps(candidate, with: occupied) {
+                        break scan
+                    }
+                }
+            }
+            occupied.append(rectKey(candidate))
+            result.append(candidate)
+        }
+
+        model.drawerBlocks = result
+        saveToDisk()
+    }
+
     /// 移动抽屉块到目标位置；目标被占用时移动到最近可用位置。失败（无处可放或块不存在）返回 false。
     @discardableResult
     func moveDrawerBlock(placementID: String, toColumn: Int, toRow: Int) -> Bool {

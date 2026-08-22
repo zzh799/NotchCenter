@@ -153,6 +153,60 @@ final class LayoutEngineTests: XCTestCase {
         XCTAssertTrue(engine.drawerBlocks.isEmpty)
     }
 
+    // MARK: 一键重排（编辑模式）
+
+    func testReorderPacksGapsInReadingOrder() throws {
+        register(blockID: "a", kind: .drawer, sizes: [.small], defaultSize: .small)
+        register(blockID: "b", kind: .drawer, sizes: [.small], defaultSize: .small)
+        register(blockID: "c", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        engine.updateScreenConstraint(width: 700)
+
+        let a = try XCTUnwrap(engine.autoPlaceDrawerBlock(pluginID: "com.test.plugin", blockID: "a"))
+        let b = try XCTUnwrap(engine.autoPlaceDrawerBlock(pluginID: "com.test.plugin", blockID: "b"))
+        let c = try XCTUnwrap(engine.autoPlaceDrawerBlock(pluginID: "com.test.plugin", blockID: "c"))
+
+        // 人为制造空洞：b 移到右上角，a 移到远处，留下大片空白。
+        XCTAssertTrue(engine.moveDrawerBlock(placementID: b.placementID, toColumn: 3, toRow: 0))
+        XCTAssertTrue(engine.moveDrawerBlock(placementID: a.placementID, toColumn: 2, toRow: 4))
+
+        // 阅读顺序（行优先再按列）：c 在 (2,0) 先于 b 在 (3,0)，再轮到 a 在 (2,4)。
+        engine.reorderDrawerBlocks()
+
+        let reorderedC = engine.drawerBlock(placementID: c.placementID)
+        let reorderedB = engine.drawerBlock(placementID: b.placementID)
+        let reorderedA = engine.drawerBlock(placementID: a.placementID)
+
+        // 重排后紧密无洞：按阅读优先级依次回到行首，后续块紧贴已占区域。
+        XCTAssertEqual(reorderedC?.originColumn, 0)
+        XCTAssertEqual(reorderedC?.originRow, 0)
+        XCTAssertEqual(reorderedB?.originColumn, 1)
+        XCTAssertEqual(reorderedB?.originRow, 0)
+        XCTAssertEqual(reorderedA?.originColumn, 2)
+        XCTAssertEqual(reorderedA?.originRow, 0)
+
+        // 身份与跨度不变，布局无重叠。
+        XCTAssertTrue(engine.validate().isEmpty)
+    }
+
+    func testReorderKeepsSpanAndIdentity() throws {
+        register(blockID: "wide", kind: .drawer, sizes: [.large], defaultSize: .large)
+        let (engine, directory, _) = try makeEngine()
+        engine.updateScreenConstraint(width: 700)
+
+        let wide = try XCTUnwrap(engine.autoPlaceDrawerBlock(pluginID: "com.test.plugin", blockID: "wide"))
+        XCTAssertTrue(engine.moveDrawerBlock(placementID: wide.placementID, toColumn: 0, toRow: 3))
+
+        engine.reorderDrawerBlocks()
+
+        let moved = engine.drawerBlock(placementID: wide.placementID)
+        XCTAssertEqual(moved?.placementID, wide.placementID)
+        XCTAssertEqual(moved?.widthColumns, wide.widthColumns)
+        XCTAssertEqual(moved?.heightRows, wide.heightRows)
+        XCTAssertEqual(moved?.originColumn, 0)
+        XCTAssertEqual(moved?.originRow, 0)
+    }
+
     // MARK: 校验（文档 §5.4）
 
     func testValidateDetectsOverlaps() throws {

@@ -605,6 +605,10 @@ final class NotchPanelController: NSObject {
                 }
                 self.rebuildContent()
             },
+            onReorderBlocks: { [weak self] in
+                self?.layoutEngine.reorderDrawerBlocks()
+                self?.rebuildContent()
+            },
             onPreviewMove: { [weak self] placementID, column, row in
                 self?.layoutEngine.previewArrangement(
                     moving: placementID,

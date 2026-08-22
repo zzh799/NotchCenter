@@ -211,6 +211,8 @@ struct DrawerActions {
     let onMoveBlock: (String, Int, Int) -> Void
     let onResizeBlock: (String, Int, Int) -> Void
     let onAddBlock: (String, String) -> Void
+    /// 编辑模式一键重排：按阅读顺序紧密排布所有抽屉块。
+    let onReorderBlocks: () -> Void
     /// 拖拽实时预览：返回全体块的新位置（不落盘）。
     let onPreviewMove: (String, Int, Int) -> [String: LayoutEngine.GridOrigin]
     /// 拖拽结束提交（含自动重排）。
@@ -341,6 +343,16 @@ struct DrawerPanelView: View {
                 tint: ui.isEditing ? .white.opacity(0.9) : .white.opacity(0.65)
             )
 
+            // 一键重排仅在编辑模式下有意义（与拖拽/缩放同属布局编辑工具）。
+            if ui.isEditing {
+                topBarButton(
+                    systemImage: "arrow.down.forward.and.arrow.up.backward",
+                    help: "Tidy layout (top-to-bottom, left-to-right)",
+                    action: actions.onReorderBlocks,
+                    tint: .white.opacity(0.9)
+                )
+            }
+
             topBarButton(
                 systemImage: "chevron.down",
                 help: "Close drawer",
@@ -423,6 +435,7 @@ struct DrawerPanelView: View {
             alignment: .topLeading
         )
         .animation(.spring(response: 0.3, dampingFraction: 0.86), value: ui.drawerElements.map(\.id))
+        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: ui.drawerElements.map(\.placement))
         .animation(.spring(response: 0.3, dampingFraction: 0.86), value: previewPositions)
 
     }
