@@ -72,13 +72,7 @@ NotchCenter/
 ./Scripts/prepare-dev-plugins.sh        # 组装 .build/.../debug/PlugIns/*.bundle
 swift run NotchCenter
 
-# 冒烟测试（开发期验证插件发现/加载/布局，1.5s 后自动退出）
-# NOTCHCENTER_EDIT=1 可让首启直接进入编辑模式
-NOTCHCENTER_SMOKE_TEST=1 swift run NotchCenter
 
-# 面板截图验证（0.8s 展开抽屉，2.5s 把两个面板渲染为 PNG 到 /tmp/nc_*.png，无需屏幕录制权限）
-# 布局文件可用 NOTCHCENTER_LAYOUT_FILE=/tmp/x.json 隔离（验证首启默认布局等）
-NOTCHCENTER_SMOKE_TEST=1 NOTCHCENTER_SCREENSHOT=1 NOTCHCENTER_LAYOUT_FILE=/tmp/nc-layout.json swift run NotchCenter
 
 # 仅编译 / 跑测试
 swift build
