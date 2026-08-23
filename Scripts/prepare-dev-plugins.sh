@@ -22,7 +22,7 @@ cd "$ROOT_DIR"
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 PLUGINS_DIR="$BIN_DIR/PlugIns"
 
-for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin; do
+for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin CalibrePlugin; do
   echo "Building $product..."
   swift build -c "$CONFIG" --product "$product"
 done
@@ -30,7 +30,7 @@ done
 rm -rf "$PLUGINS_DIR"
 mkdir -p "$PLUGINS_DIR"
 
-for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin; do
+for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin CalibrePlugin; do
   DYLIB="$(find "$BUILD_ROOT" -path "*/$CONFIG/lib$product.dylib" -not -path "*/PlugIns/*" | head -1)"
   if [[ ! -f "$DYLIB" ]]; then
     echo "找不到构建产物: $product.dylib" >&2
@@ -62,6 +62,12 @@ for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin; do
       PLUGIN_VERSION="1.0.0"
       DISPLAY_NAME="DSH Service"
       DESCRIPTION="Controls the dsh-web launchd service."
+      ;;
+    CalibrePlugin)
+      PLUGIN_ID="com.zhouzihang.notchcenter.calibre"
+      PLUGIN_VERSION="1.0.0"
+      DISPLAY_NAME="Calibre Server"
+      DESCRIPTION="Controls the calibre-server launchd service."
       ;;
   esac
 

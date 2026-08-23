@@ -21,7 +21,7 @@ UI 改动与新增界面时，请遵循 [`docs/DESIGN.md`](docs/DESIGN.md) 中�
 
 ```
 NotchCenter/
-├── Package.swift                 # SPM 清单：宿主 + 3 个官方插件 + 测试 target
+├── Package.swift                 # SPM 清单：宿主 + 官方插件 + 测试 target
 ├── Sources/NotchCenter/          # 宿主主 App（可执行 target）
 │   ├── main.swift / AppDelegate.swift
 │   ├── NotchPanelController.swift   # 核心控制器（hostController 实现）：状态中枢 + 每屏一对面板 + 展开/收起 + 几何
@@ -56,7 +56,10 @@ NotchCenter/
 ├── Plugins/                      # 官方插件源码（独立 bundle target，动态库）
 │   ├── NotesPlugin/              # 笔记（MarkdownEngine 编辑器，StateStore 持久化）
 │   ├── ScratchpadPlugin/         # 文件暂存（只保存路径引用）
-│   └── CaffeinatePlugin/         # 防休眠（SystemSleepGuard，管理员 pmset）
+│   ├── CaffeinatePlugin/         # 防休眠（SystemSleepGuard，管理员 pmset）
+│   ├── DshPlugin/                # dsh-web 服务控制卡（launchd 服务控制插件，见 docs/服务控制插件开发指南.md）
+│   └── CalibrePlugin/            # calibre-server 服务控制卡（同上）
+├── LaunchdControlKit/            # launchd 管理基础库（独立本地包，仅服务控制类插件使用）
 ├── Vendor/swift-markdown-engine/ # vendored 依赖，仅 NotesPlugin 使用
 ├── Scripts/package-app.sh        # 通用 .app + PlugIns/*.bundle + Frameworks + zip/sha256
 ├── Scripts/prepare-dev-plugins.sh# 开发期把插件 dylib 组装成 .bundle 到可执行文件旁 PlugIns/
@@ -111,7 +114,7 @@ open dist.noindex/NotchCenter.app
 ## 测试
 
 - 运行：`swift test`；单文件调试可 `swift test --filter <Name>`。
-- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）。
+- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）。
 - 涉及 `pmset` / 休眠的逻辑测试应确保**不真正改变系统睡眠状态**。
 - 涉及 AppKit 窗口/事件的逻辑依赖 App 运行环境，注意保持 `@MainActor` 测试隔离（`setUp`/`tearDown` 是非隔离上下文，不要在里面改 @MainActor 属性）。
 
@@ -119,4 +122,5 @@ open dist.noindex/NotchCenter.app
 
 1. 先读 `docs/NotchCenter 架构设计文档.md`，再读 `NotchCenterKit`（协议与类型）→ `Sources/NotchCenter/PluginManager.swift` → `LayoutEngine.swift` → `NotchPanelController.swift` 理解插件生命周期与面板协调。
 2. 插件开发：参照 `Plugins/NotesPlugin/Sources/NotesPlugin.swift` 的入口模式（`static var blocks` + `attachServices`）。
-3. UI 改动从 `CompactPanelView.swift` / `DrawerPanelView.swift` / `AddBlockArea.swift`（紧凑区/抽屉/编辑模式）入手。
+3. launchd 服务控制类插件（DshPlugin / CalibrePlugin 模式）：按 [`docs/服务控制插件开发指南.md`](docs/服务控制插件开发指南.md) 的分层、登记清单与 workerPattern 选取规则复制扩展——launchd 探测/控制/plist 逻辑一律复用 `LaunchdControlKit`，不要在插件里另写 launchd 或 plist 处理代码。
+4. UI 改动从 `CompactPanelView.swift` / `DrawerPanelView.swift` / `AddBlockArea.swift`（紧凑区/抽屉/编辑模式）入手。

@@ -70,7 +70,7 @@ else
   exit 1
 fi
 
-# LaunchdControlKit（DshPlugin 依赖的独立基础库动态库）。
+# LaunchdControlKit（DshPlugin / CalibrePlugin 依赖的独立基础库动态库）。
 LAUNCHD_DYLIB="$PRODUCTS_DIR/libLaunchdControlKit.dylib"
 if [[ -f "$LAUNCHD_DYLIB" ]]; then
   cp "$LAUNCHD_DYLIB" "$FRAMEWORKS_DIR/libLaunchdControlKit.dylib"
@@ -80,7 +80,7 @@ else
 fi
 
 # 内置官方插件 bundle。
-for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin; do
+for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin CalibrePlugin; do
   DYLIB="$PRODUCTS_DIR/lib$product.dylib"
   if [[ ! -f "$DYLIB" ]]; then
     echo "找不到插件产物：$DYLIB" >&2
@@ -112,6 +112,12 @@ for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin; do
       PLUGIN_VERSION="1.0.0"
       DISPLAY_NAME="DSH Service"
       DESCRIPTION="Controls the dsh-web launchd service."
+      ;;
+    CalibrePlugin)
+      PLUGIN_ID="com.zhouzihang.notchcenter.calibre"
+      PLUGIN_VERSION="1.0.0"
+      DISPLAY_NAME="Calibre Server"
+      DESCRIPTION="Controls the calibre-server launchd service."
       ;;
   esac
 

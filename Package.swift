@@ -14,14 +14,15 @@ let package = Package(
         .library(name: "NotesPlugin", type: .dynamic, targets: ["NotesPlugin"]),
         .library(name: "ScratchpadPlugin", type: .dynamic, targets: ["ScratchpadPlugin"]),
         .library(name: "CaffeinatePlugin", type: .dynamic, targets: ["CaffeinatePlugin"]),
-        .library(name: "DshPlugin", type: .dynamic, targets: ["DshPlugin"])
+        .library(name: "DshPlugin", type: .dynamic, targets: ["DshPlugin"]),
+        .library(name: "CalibrePlugin", type: .dynamic, targets: ["CalibrePlugin"])
     ],
     dependencies: [
         // 共享 API 动态库：宿主与插件以「产品」方式链接同一份 Kit 代码（架构文档 §2.2 / §15）。
         .package(path: "Sources/NotchCenterKit"),
         // 仅 NotesPlugin 使用（Markdown 编辑器）。核心不再依赖任何业务组件。
         .package(path: "Vendor/swift-markdown-engine"),
-        // launchd 服务管理基础库：仅 DshPlugin 使用（纯 shell 封装，不依赖 Kit）。
+        // launchd 服务管理基础库：仅 DshPlugin / CalibrePlugin 使用（纯 shell 封装，不依赖 Kit）。
         .package(path: "LaunchdControlKit")
     ],
     targets: [
@@ -91,6 +92,19 @@ let package = Package(
                 ])
             ]
         ),
+        .target(
+            name: "CalibrePlugin",
+            dependencies: [
+                .product(name: "NotchCenterKit", package: "NotchCenterKit"),
+                .product(name: "LaunchdControlKit", package: "LaunchdControlKit")
+            ],
+            path: "Plugins/CalibrePlugin",
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../../../../Frameworks"
+                ])
+            ]
+        ),
         .testTarget(
             name: "NotchCenterTests",
             dependencies: [
@@ -100,6 +114,7 @@ let package = Package(
                 "ScratchpadPlugin",
                 "CaffeinatePlugin",
                 "DshPlugin",
+                "CalibrePlugin",
                 .product(name: "LaunchdControlKit", package: "LaunchdControlKit")
             ],
             path: "Tests/NotchCenterTests"

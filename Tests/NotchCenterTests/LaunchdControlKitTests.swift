@@ -28,6 +28,19 @@ final class LaunchdControlKitTests: XCTestCase {
         XCTAssertEqual(contents["StandardErrorPath"] as? String, "/tmp/err.log")
     }
 
+    func testMakeContentsThrottleInterval() throws {
+        // 默认不写入 ThrottleInterval。
+        let plain = LaunchdPlist.makeContents(label: "com.example.svc", programArguments: ["/bin/true"])
+        XCTAssertNil(plain["ThrottleInterval"])
+
+        let throttled = LaunchdPlist.makeContents(
+            label: "com.example.svc",
+            programArguments: ["/bin/true"],
+            throttleInterval: 60
+        )
+        XCTAssertEqual(throttled["ThrottleInterval"] as? Int, 60)
+    }
+
     func testWriteAndReadRoundTrip() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("launchdkit-tests-\(UUID().uuidString)")
@@ -70,5 +83,45 @@ final class LaunchdControlKitTests: XCTestCase {
         let probe = LaunchdProbe(label: "com.example.svc", plistPath: "/tmp/x.plist")
         XCTAssertEqual(probe.target.label, "com.example.svc")
         XCTAssertNil(probe.target.workerPattern)
+    }
+
+    // MARK: - probe 状态机（resolveState 纯函数，不真跑 shell）
+
+    func testResolveStateUnmanagedRequiresListening() {
+        // 回归：服务未加载时，仅命令行特征匹配（tail 日志/编辑器/残留进程）、
+        // 未监听端口的进程不算野进程 → Stopped，不误显示 Unmanaged。
+        XCTAssertEqual(
+            LaunchdProbe.resolveState(
+                isLoaded: false, launchdPID: nil, servingPID: nil,
+                servingManaged: false, listeningCount: 0
+            ),
+            .stopped
+        )
+    }
+
+    func testResolveStateTable() {
+        typealias State = LaunchdServiceStatus.State
+        let cases: [(String, Bool, pid_t?, pid_t?, Bool, Int, State)] = [
+            // (说明, isLoaded, launchdPID, servingPID, servingManaged, listeningCount, 期望)
+            ("未加载 + 真有监听野进程", false, nil, 901, false, 1, .unmanagedExternal),
+            ("未加载 + 两个监听实例", false, nil, 901, false, 2, .portConflict(listeningCount: 2)),
+            ("已加载 + wrapper 等待外置卷（有 PID 未监听）", true, 100, nil, false, 0, .managed),
+            ("已加载无 PID 且无监听", true, nil, nil, false, 0, .loadedNotRunning),
+            ("已加载 + 监听实例即 launchd PID", true, 100, 100, true, 1, .managed),
+            ("已加载 + 监听实例是 launchd 子孙（exec/pnpm 包装）", true, 100, 200, true, 1, .managed),
+            ("已加载 + 监听实例无血缘", true, 100, 999, false, 1, .unmanagedExternal),
+            ("已加载 + 监听实例无血缘且多实例", true, 100, 999, false, 2, .portConflict(listeningCount: 2)),
+            ("已加载但 launchctl 未报 PID + 有监听（无法证伪血缘）", true, nil, 999, false, 1, .managed),
+        ]
+        for (name, isLoaded, launchdPID, servingPID, managed, count, expected) in cases {
+            XCTAssertEqual(
+                LaunchdProbe.resolveState(
+                    isLoaded: isLoaded, launchdPID: launchdPID, servingPID: servingPID,
+                    servingManaged: managed, listeningCount: count
+                ),
+                expected,
+                name
+            )
+        }
     }
 }

@@ -59,6 +59,7 @@ public struct LaunchdPlist: @unchecked Sendable {
     // MARK: 模板生成
 
     /// 标准 launchd plist 键集合（Label / ProgramArguments / KeepAlive 等）。
+    /// `throttleInterval` 对应 ThrottleInterval（重启风暴抑制秒数），nil 不写入。
     public static func makeContents(
         label: String,
         programArguments: [String],
@@ -66,6 +67,7 @@ public struct LaunchdPlist: @unchecked Sendable {
         environment: [String: String]? = nil,
         runAtLoad: Bool = true,
         keepAlive: Bool = true,
+        throttleInterval: Int? = nil,
         stdoutPath: String? = nil,
         stderrPath: String? = nil
     ) -> [String: Any] {
@@ -77,6 +79,7 @@ public struct LaunchdPlist: @unchecked Sendable {
         ]
         if let workingDirectory { contents["WorkingDirectory"] = workingDirectory }
         if let environment { contents["EnvironmentVariables"] = environment }
+        if let throttleInterval { contents["ThrottleInterval"] = throttleInterval }
         if let stdoutPath { contents["StandardOutPath"] = stdoutPath }
         if let stderrPath { contents["StandardErrorPath"] = stderrPath }
         return contents

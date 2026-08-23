@@ -207,6 +207,41 @@ public struct LaunchdProbe: Sendable {
 
     // MARK: 全量快照
 
+    /// 纯函数状态判定（便于单测）：把 probe() 收集的事实映射为五态。
+    ///
+    /// 关键语义：**野进程（unmanagedExternal / portConflict）只认真正在监听
+    /// 端口的进程**。仅命令行特征匹配（pgrep）但未监听的进程——tail 看日志、
+    /// 编辑器打开 wrapper 脚本、刚 bootout 的残留进程——不算野进程，否则
+    /// 服务未启动时卡片会误显示 Unmanaged（CalibrePlugin 落地时踩过；
+    /// DshPlugin 的 isSelfOrAncestor 排除是同类问题的另一面）。
+    static func resolveState(
+        isLoaded: Bool,
+        launchdPID: pid_t?,
+        servingPID: pid_t?,
+        servingManaged: Bool,
+        listeningCount: Int
+    ) -> LaunchdServiceStatus.State {
+        if isLoaded {
+            if let servingPID {
+                guard let launchdPID else {
+                    // 已加载但 launchctl 未报 PID：无法证伪血缘，按受管处理。
+                    return .managed
+                }
+                if servingManaged { return .managed }
+                return listeningCount > 1
+                    ? .portConflict(listeningCount: listeningCount)
+                    : .unmanagedExternal
+            }
+            // 已加载有 PID 但无监听实例：wrapper 等待外置卷 / 启动中。
+            return launchdPID != nil ? .managed : .loadedNotRunning
+        }
+        // 未加载：只有真正在监听的进程才构成野进程 / 端口冲突。
+        guard let servingPID else { return .stopped }
+        return listeningCount > 1
+            ? .portConflict(listeningCount: listeningCount)
+            : .unmanagedExternal
+    }
+
     /// 四态判定全量探测。多次 shell 调用（launchctl/pgrep/lsof/ps），毫秒级总量，
     /// 由调用方调度到后台线程执行。
     @discardableResult
@@ -214,31 +249,24 @@ public struct LaunchdProbe: Sendable {
         let launchd = launchdInfo()
         let candidates = workerCandidates(including: launchd.pid)
         let serving = servingPID(among: candidates)
-        let active = serving ?? candidates.first
-
-        let state: LaunchdServiceStatus.State
-        if active != nil {
-            if launchd.isLoaded, let lp = launchd.pid, let sp = serving {
-                if sp == lp || isDescendant(sp, of: lp) {
-                    state = .managed
-                } else {
-                    let count = listeningCount(among: candidates)
-                    state = count > 1 ? .portConflict(listeningCount: count) : .unmanagedExternal
-                }
-            } else if launchd.isLoaded {
-                state = .managed
-            } else {
-                state = .unmanagedExternal
-            }
-        } else {
-            state = launchd.isLoaded ? .loadedNotRunning : .stopped
+        let count = serving != nil ? listeningCount(among: candidates) : 0
+        var servingManaged = false
+        if let sp = serving, let lp = launchd.pid {
+            servingManaged = sp == lp || isDescendant(sp, of: lp)
         }
-
-        let port = active.flatMap { detectPort(pid: $0) }
+        let state = Self.resolveState(
+            isLoaded: launchd.isLoaded,
+            launchdPID: launchd.pid,
+            servingPID: serving,
+            servingManaged: servingManaged,
+            listeningCount: count
+        )
+        let pid = serving ?? (launchd.isLoaded ? launchd.pid : nil)
+        let port = pid.flatMap { detectPort(pid: $0) }
         return LaunchdServiceStatus(
             state: state,
             isLoaded: launchd.isLoaded,
-            pid: active,
+            pid: pid,
             port: port,
             launchdPID: launchd.pid
         )
