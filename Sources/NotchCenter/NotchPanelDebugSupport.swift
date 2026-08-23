@@ -44,4 +44,19 @@ extension NotchPanelController {
         NSApp.activate(ignoringOtherApps: true)
         controller.window?.makeKeyAndOrderFront(nil)
     }
+
+    /// 设置面板（accessory 应用无菜单栏，抽屉顶栏齿轮是常驻入口）。
+    /// 打开面板后收起抽屉（设置窗口接管交互，抽屉不再需要停留）。
+    func showSettings() {
+        let controller = settingsWindowController ?? {
+            let controller = SettingsWindowController(panelController: self)
+            settingsWindowController = controller
+            return controller
+        }()
+        controller.showSettings()
+        if isEditing {
+            stopEditMode()
+        }
+        collapse(animated: true)
+    }
 }

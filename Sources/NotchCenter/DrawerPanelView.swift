@@ -17,6 +17,7 @@ struct DrawerElement: Identifiable {
 }
 
 struct DrawerActions {
+    let onShowSettings: () -> Void
     let onTogglePin: () -> Void
     let onToggleEdit: () -> Void
     let onCollapse: () -> Void
@@ -147,9 +148,13 @@ struct DrawerPanelView: View {
 
     private var topBar: some View {
         HStack(spacing: 8) {
-            Text("NotchCenter")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.55))
+            // 原标题位置改为设置按钮（accessory 应用无菜单栏，这是常驻入口）。
+            topBarButton(
+                systemImage: "gearshape",
+                help: "Settings",
+                action: actions.onShowSettings,
+                tint: .white.opacity(0.65)
+            )
 
             Spacer(minLength: 0)
 

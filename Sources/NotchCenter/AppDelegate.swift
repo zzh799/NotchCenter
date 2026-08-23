@@ -4,13 +4,10 @@ import NotchCenterKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: NotchPanelController?
-    private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         panelController = NotchPanelController()
         panelController?.showDocked()
-        buildStatusItem()
-        buildMenu()
         #if DEBUG
         if ProcessInfo.processInfo.environment["NOTCHCENTER_RESIZE_PROBE"] == "1" {
             ResizeProbeWindowController.shared.show()
@@ -23,38 +20,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController?.flush()
     }
 
-    // MARK: - 状态栏菜单（文档 §6.1 / §4.8）
+    // MARK: - 设置面板（抽屉顶栏齿轮按钮触发；accessory 应用无菜单栏）
 
-    private func buildStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "rectangle.3.group", accessibilityDescription: "NotchCenter")
-        item.button?.imagePosition = .imageOnly
-        let menu = NSMenu()
-        menu.delegate = self
-        menu.autoenablesItems = false
-        item.menu = menu
-        statusItem = item
-    }
-
-    private func buildMenu() {
-        let rootItem = NSMenuItem(title: "NotchCenter", action: nil, keyEquivalent: "")
-        let mainMenu = NSMenu()
-        rootItem.submenu = mainMenu
-
-        let toggleItem = NSMenuItem(title: "Show Drawer", action: #selector(toggleDrawer), keyEquivalent: "e")
-        toggleItem.target = self
-        mainMenu.addItem(toggleItem)
-
-        let editItem = NSMenuItem(title: "Edit Layout…", action: #selector(editLayout), keyEquivalent: "l")
-        editItem.target = self
-        mainMenu.addItem(editItem)
-
-        let quitItem = NSMenuItem(title: "Quit NotchCenter", action: #selector(quit), keyEquivalent: "q")
-        quitItem.target = self
-        mainMenu.addItem(quitItem)
-
-        NSApp.mainMenu = NSMenu()
-        NSApp.mainMenu?.addItem(rootItem)
+    @objc private func showSettings() {
+        panelController?.showSettings()
     }
 
     @objc private func toggleDrawer() {
@@ -251,130 +220,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// MARK: - 状态栏菜单动态刷新：插件贡献与状态随启用变化重建（文档 §4.8）
+// MARK: - 菜单动作载体（Action 需闭包，NSMenuItem 通过 representedObject 携带）
 
-extension AppDelegate: NSMenuDelegate {
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        guard menu === statusItem?.menu else { return }
-        menu.removeAllItems()
-        populateStatusMenu(menu)
-    }
-
-    private func populateStatusMenu(_ menu: NSMenu) {
-        guard let panelController else { return }
-
-        let toggleTitle = panelController.isDrawerExpanded() ? "Hide Drawer" : "Show Drawer"
-        let toggleItem = NSMenuItem(title: toggleTitle, action: #selector(toggleDrawer), keyEquivalent: "e")
-        toggleItem.target = self
-        menu.addItem(toggleItem)
-
-        let editItem = NSMenuItem(title: "Edit Layout…", action: #selector(editLayout), keyEquivalent: "l")
-        editItem.target = self
-        menu.addItem(editItem)
-
-        menu.addItem(.separator())
-
-        let triggerItem = NSMenuItem(title: "Trigger Mode", action: nil, keyEquivalent: "")
-        triggerItem.submenu = makeTriggerModeMenu(settingsStore: panelController.settingsStore)
-        menu.addItem(triggerItem)
-
-        let columnsItem = NSMenuItem(title: "Drawer Columns", action: nil, keyEquivalent: "")
-        columnsItem.submenu = makeColumnsMenu(engine: panelController.layoutEngine)
-        menu.addItem(columnsItem)
-
-        menu.addItem(.separator())
-
-        // 插件菜单贡献（按插件分组，最多 3 项/插件）。
-        for contribution in panelController.pluginManager.menuContributions() {
-            let pluginItem = NSMenuItem(title: contribution.displayName, action: nil, keyEquivalent: "")
-            pluginItem.submenu = makePluginMenu(contribution)
-            menu.addItem(pluginItem)
-        }
-
-        menu.addItem(.separator())
-
-        let pluginsItem = NSMenuItem(title: "Plugin Manager…", action: #selector(showPluginManager), keyEquivalent: ",")
-        pluginsItem.target = self
-        menu.addItem(pluginsItem)
-
-        menu.addItem(.separator())
-
-        let quitItem = NSMenuItem(title: "Quit NotchCenter", action: #selector(quit), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-    }
-
-    private func makeTriggerModeMenu(settingsStore: SettingsStore) -> NSMenu {
-        let menu = NSMenu()
-        for mode in SettingsStore.TriggerMode.allCases {
-            let item = NSMenuItem(
-                title: mode.title,
-                action: #selector(setTriggerMode(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.tag = mode == .hover ? 0 : 1
-            item.state = settingsStore.triggerMode == mode ? .on : .off
-            menu.addItem(item)
-        }
-        return menu
-    }
-
-    private func makeColumnsMenu(engine: LayoutEngine) -> NSMenu {
-        let menu = NSMenu()
-        for columns in 2...8 {
-            let item = NSMenuItem(
-                title: "\(columns) Columns",
-                action: #selector(setColumns(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.tag = columns
-            item.state = engine.userMaxColumns == columns ? .on : .off
-            menu.addItem(item)
-        }
-        return menu
-    }
-
-    private func makePluginMenu(
-        _ contribution: (pluginID: String, displayName: String, items: [PluginMenuItem])
-    ) -> NSMenu {
-        let menu = NSMenu()
-        for item in contribution.items {
-            let menuItem = NSMenuItem(title: item.title, action: #selector(pluginMenuAction(_:)), keyEquivalent: "")
-            menuItem.target = self
-            menuItem.representedObject = MenuActionItem(title: item.title, action: item.action)
-            if let systemImage = item.systemImage {
-                menuItem.image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
-            }
-            menu.addItem(menuItem)
-        }
-        return menu
-    }
-
-    // MARK: 菜单动作
-
-    @objc private func setTriggerMode(_ sender: NSMenuItem) {
-        panelController?.settingsStore.triggerMode = sender.tag == 1 ? .click : .hover
-    }
-
-    @objc private func setColumns(_ sender: NSMenuItem) {
-        guard let panelController else { return }
-        panelController.layoutEngine.setUserMaxColumns(sender.tag)
-        panelController.refreshAfterLayoutChange()
-    }
-
-    @objc private func showPluginManager() {
-        panelController?.showPluginManager()
-    }
-
-    @objc private func pluginMenuAction(_ sender: NSMenuItem) {
-        guard let payload = sender.representedObject as? MenuActionItem else { return }
-        payload.action()
-    }
-}
-
-/// 菜单项的闭包动作载体（Action 需闭包，NSMenuItem 通过 representedObject 携带）。
 @MainActor
 final class MenuActionItem: NSObject {
     let title: String

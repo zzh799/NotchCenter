@@ -279,6 +279,9 @@ extension NotchPanelController {
 
     func drawerActions() -> DrawerActions {
         DrawerActions(
+            onShowSettings: { [weak self] in
+                self?.showSettings()
+            },
             onTogglePin: { [weak self] in
                 guard let self else { return }
                 self.isPinned.toggle()

@@ -47,6 +47,7 @@ final class NotchPanelController: NSObject {
     var globalMouseDownMonitor: Any?
     var globalMouseUpMonitor: Any?
     var pluginManagerWindowController: PluginManagerWindowController?
+    var settingsWindowController: SettingsWindowController?
 
     override init() {
         uiState = PanelUIState()
