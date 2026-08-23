@@ -58,6 +58,20 @@ final class EditorInteractionState: ObservableObject {
     private var selectionRestoreGeneration = 0
 
     func bind(containerView: NSView?, textView: NSTextView?) {
+        FocusProbe.log("bind textViewWindow=\(describeWindow(of: textView)) containerWindow=\(describeWindow(of: containerView)) pendingFocus=\(pendingFocus)")
+        // 抽屉视图树在每块屏各挂一份且共享本状态：只允许“在屏窗口”里的
+        // 实例接管引用。隐藏屏实例的 bind 若最后落地，后续焦点/命令会打
+        // 到隐藏窗口——makeKeyAndOrderFront 会把已收起的抽屉重新拉上屏
+        // （“新建笔记多出一块面板”）。当前引用不在屏（或为空）时仍允许
+        // 隐藏实例接管：窗口重新上屏时不一定再触发 bind，引用不能永远
+        // 钉死在旧树。
+        let candidateVisible = (textView?.window ?? containerView?.window)?.isVisible ?? false
+        let currentVisible = (self.textView?.window ?? self.containerView?.window)?.isVisible ?? false
+        if !candidateVisible && currentVisible {
+            FocusProbe.log("bind REJECTED (hidden candidate, current visible)")
+            return
+        }
+
         // Keep the container around so markdown commands can rediscover a
         // fresh text view after SwiftUI rebuilds the editor hierarchy.
         if let containerView {
@@ -199,12 +213,20 @@ final class EditorInteractionState: ObservableObject {
         guard let textView else {
             return
         }
+        // 兜底：聚焦绝不能把已收起的抽屉窗口拉回屏幕（多屏下另一块屏的
+        // 抽屉会“复活”成第二块面板）。引用落在隐藏窗口时放弃本次聚焦，
+        // pendingFocus 保留给下一次可见实例的 bind。
+        guard let window = textView.window, window.isVisible else {
+            FocusProbe.log("focusEditor SKIPPED (window hidden) \(describeWindow(of: textView))")
+            return
+        }
+        FocusProbe.log("focusEditor window=\(describeWindow(of: textView))")
 
         pendingFocus = false
         focusAttemptsRemaining = 0
         NSApp.activate(ignoringOtherApps: true)
-        textView.window?.makeKeyAndOrderFront(nil)
-        textView.window?.makeFirstResponder(textView)
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(textView)
     }
 
     private func observeSelectionChanges(in textView: NSTextView) {
@@ -446,6 +468,21 @@ final class EditorInteractionState: ObservableObject {
         return textView.bounds.contains(location)
     }
 
+}
+
+/// 诊断探针：NOTCHCENTER_GHOST_PROBE=1 时输出编辑器焦点/绑定决策日志。
+enum FocusProbe {
+    static var isEnabled: Bool { ProcessInfo.processInfo.environment["NOTCHCENTER_GHOST_PROBE"] == "1" }
+    static func log(_ message: String) {
+        guard isEnabled else { return }
+        NSLog("[focus] \(message)")
+    }
+}
+
+@MainActor
+private func describeWindow(of view: NSView?) -> String {
+    guard let view, let window = view.window else { return "nil" }
+    return "\(Unmanaged.passUnretained(window).toOpaque()) visible=\(window.isVisible) frame=\(NSStringFromRect(window.frame))"
 }
 
 struct EditorFocusBinder: NSViewRepresentable {

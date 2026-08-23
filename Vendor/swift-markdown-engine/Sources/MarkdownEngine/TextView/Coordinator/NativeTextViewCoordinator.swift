@@ -105,6 +105,15 @@ public final class NativeTextViewCoordinator: NSObject, NSTextViewDelegate {
     // Inline selection geometry, image-embed activation, and inline-token
     // detection live in `NativeTextViewCoordinator+InlineSelection.swift`.
 
+    /// Refresh the source bindings after makeCoordinator. SwiftUI only runs
+    /// makeCoordinator once per view identity, but embedders commonly build
+    /// these bindings from per-document state (e.g. an active-tab ID); stale
+    /// bindings would keep routing edits to the wrong document.
+    func updateBindings(text: Binding<String>, isWikiLinkActive: Binding<Bool>) {
+        _text = text
+        _isWikiLinkActive = isWikiLinkActive
+    }
+
     init(text: Binding<String>,
          fontName: String,
          fontSize: CGFloat,

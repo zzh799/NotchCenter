@@ -88,8 +88,16 @@ final class NotchPanelController: NSObject {
     func syncScreens() {
         let screens = NSScreen.screens.isEmpty ? [NSScreen.main].compactMap { $0 } : NSScreen.screens
 
-        // 移除已断开屏幕的面板对。
+        // 移除已断开屏幕的面板对（NSScreen 实例在部分显示重配后会换新身份，
+        // 同一物理屏也会命中此路径）。窗口不会随 pair 移除自动隐藏，残留的
+        // 常置顶面板会与新 pair 叠影，必须显式收回。
+        let stalePairs = pairs.filter { pair in !screens.contains { $0 === pair.screen } }
         pairs.removeAll { pair in !screens.contains { $0 === pair.screen } }
+        for stale in stalePairs {
+            GhostProbe.log("syncScreens hide stale pair=\(NSStringFromRect(stale.screen.frame))")
+            stale.hotPanel.orderOut(nil)
+            stale.drawerPanel.orderOut(nil)
+        }
 
         // 为新接入的屏幕创建面板对。
         for screen in screens where !pairs.contains(where: { $0.screen === screen }) {
@@ -146,11 +154,13 @@ final class NotchPanelController: NSObject {
     }
 
     func expand(animated: Bool, activate: Bool = true) {
+        GhostProbe.log("expand enter isExpanded=\(isExpanded) activate=\(activate) mouse=\(NSStringFromPoint(NSEvent.mouseLocation))")
         if isExpanded {
             if activate {
                 NSApp.activate(ignoringOtherApps: true)
                 activePair?.drawerPanel.makeKeyAndOrderFront(nil)
             }
+            hideOtherDrawers(keeping: activePair)
             return
         }
         // 在鼠标所在屏幕展开；不在任何激活区则沿用上次的屏幕。
@@ -159,6 +169,7 @@ final class NotchPanelController: NSObject {
         }
         activePair = pair
         layoutEngine.updateScreenConstraint(width: pair.screenFrame.width)
+        GhostProbe.log("expand pair=\(pair.screen.frame)")
 
         cancelCollapse()
         isExpanded = true
@@ -168,6 +179,9 @@ final class NotchPanelController: NSObject {
         // 参考codex-island：窗口固定尺寸，只上线不动画；可见面板经
         // `drawerWindowSize`（唯一动画真源）从紧凑带 spring 变形到全尺寸。
         pair.drawerPanel.setFrame(drawerFrame(for: pair), display: true)
+        // 自愈：其他屏可能残留跨屏竞态的抽屉窗口（收起完成回调前又在
+        // 别屏展开），一并收回。
+        hideOtherDrawers(keeping: pair)
         if activate {
             NSApp.activate(ignoringOtherApps: true)
             pair.drawerPanel.makeKeyAndOrderFront(nil)
@@ -177,7 +191,19 @@ final class NotchPanelController: NSObject {
         setDrawerRevealed(true, animated: animated)
     }
 
+    /// 抽屉单例不变量：任一时刻至多一个屏的抽屉窗口在屏（当前展开屏的）。
+    /// 收起完成回调有 0.43s 窗口，期间在另一块屏重新展开会绕过旧 pair 的
+    /// orderOut；残留窗口与活动屏共享 uiState，会渲染出一份一模一样的
+    /// 活抽屉（“新建笔记多出一块面板”的根因）。
+    private func hideOtherDrawers(keeping kept: ScreenPanelPair?) {
+        for pair in pairs where pair !== kept {
+            GhostProbe.log("hideOtherDrawers orderOut pair=\(NSStringFromRect(pair.screen.frame))")
+            pair.drawerPanel.orderOut(nil)
+        }
+    }
+
     func collapse(animated: Bool) {
+        GhostProbe.log("collapse enter isExpanded=\(isExpanded) pair=\(activePair.map { NSStringFromRect($0.screen.frame) } ?? "nil")")
         guard isExpanded else { return }
         isExpanded = false
         isRevealedForFileDrag = false
@@ -185,11 +211,18 @@ final class NotchPanelController: NSObject {
             isEditing = false
         }
         setDrawerRevealed(false, animated: animated)
-        let pair = activePair
         let completion = { [weak self] in
-            guard let self, !self.isExpanded else { return }
-            pair?.drawerPanel.orderOut(nil)
-            positionCompactPanel(pair!)
+            guard let self else { return }
+            // 等待期内可能再次展开（同屏返回，或移到了另一块屏）：只保留
+            // 当前展开屏的抽屉，其余屏（含本次收起的屏）一律收回。不能
+            // 因“已重新展开”整体跳过——跨屏再展开时上一块屏的抽屉会
+            // 永久残留。
+            let kept = self.isExpanded ? self.activePair : nil
+            GhostProbe.log("collapse completion kept=\(kept.map { NSStringFromRect($0.screen.frame) } ?? "nil")")
+            for pair in self.pairs where pair !== kept {
+                pair.drawerPanel.orderOut(nil)
+                self.positionCompactPanel(pair)
+            }
         }
         if animated {
             // 与 easeOut(0.16) 收起动画匹配，等面板缩回刘海再隐藏窗口。
@@ -347,6 +380,15 @@ final class NotchPanelController: NSObject {
 }
 
 // MARK: - HostController 协议实现
+
+/// 临时探针：NOTCHCENTER_GHOST_PROBE=1 时输出展开/收起/换屏决策日志。
+enum GhostProbe {
+    static var isEnabled: Bool { ProcessInfo.processInfo.environment["NOTCHCENTER_GHOST_PROBE"] == "1" }
+    static func log(_ message: String) {
+        guard isEnabled else { return }
+        NSLog("[ghost] \(message)")
+    }
+}
 
 extension NotchPanelController: HostController {
     func expandDrawer() {

@@ -218,6 +218,14 @@ public struct NativeTextViewWrapper: NSViewRepresentable {
     public func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
 
+        // Refresh the coordinator's bindings on every update. makeCoordinator
+        // captures them once, but embedders commonly build these bindings from
+        // per-document state (e.g. an active-tab ID). Without this refresh,
+        // edits keep flowing into whichever document was active when the view
+        // was first created, even after switching documents.
+        context.coordinator.updateBindings(text: $text, isWikiLinkActive: $isWikiLinkActive)
+        context.coordinator.onLinkClick = onLinkClick
+
         let isNodeSwitch = context.coordinator.documentId != documentId
         let restoredScrollY: CGFloat? = {
             guard isNodeSwitch else { return nil }
