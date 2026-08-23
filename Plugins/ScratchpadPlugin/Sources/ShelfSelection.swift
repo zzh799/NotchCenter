@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-struct FileShelfSelection: Equatable {
+struct FileShelfSelection {
     private(set) var selectedIDs: Set<UUID> = []
     private(set) var anchorID: UUID?
 
@@ -78,10 +78,14 @@ struct FileShelfSelection: Equatable {
         }
     }
 
-    mutating func retainValidIDs(_ validIDs: Set<UUID>) {
-        selectedIDs.formIntersection(validIDs)
-        if let anchorID, !validIDs.contains(anchorID) {
-            self.anchorID = selectedIDs.first
+    /// Drops IDs that no longer exist and re-anchors to the first surviving
+    /// item in display order; a Set-based fallback would pick an arbitrary
+    /// member because Set iteration order is unspecified.
+    mutating func retainValidIDs(_ validIDs: [UUID]) {
+        let validSet = Set(validIDs)
+        selectedIDs.formIntersection(validSet)
+        if let anchorID, !validSet.contains(anchorID) {
+            self.anchorID = validIDs.first { selectedIDs.contains($0) }
         }
     }
 

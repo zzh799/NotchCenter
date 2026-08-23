@@ -13,8 +13,15 @@ final class NotchPanel: NSPanel {
     override var canBecomeMain: Bool { true }
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, event.keyCode == 53 {
-            onEscape?()
+        // 只拦截“裸” Escape：输入法用户需要 Esc 取消编辑器中的 marked text，
+        // 带修饰键的 Esc 组合键也应交给系统处理。
+        if event.type == .keyDown, event.keyCode == 53,
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+            if let editor = firstResponder as? NSTextView, editor.hasMarkedText() {
+                super.sendEvent(event)
+            } else {
+                onEscape?()
+            }
             return
         }
 

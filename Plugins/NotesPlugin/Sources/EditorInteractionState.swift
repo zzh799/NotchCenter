@@ -47,6 +47,7 @@ final class EditorInteractionState: ObservableObject {
     var onSelectionChange: ((NSRange) -> Void)?
 
     private weak var textView: NSTextView?
+    private weak var containerView: NSView?
     private weak var observedSelectionTextView: NSTextView?
     private var selectionObserver: NSObjectProtocol?
     private var didStartInEditor = false
@@ -57,6 +58,12 @@ final class EditorInteractionState: ObservableObject {
     private var selectionRestoreGeneration = 0
 
     func bind(containerView: NSView?, textView: NSTextView?) {
+        // Keep the container around so markdown commands can rediscover a
+        // fresh text view after SwiftUI rebuilds the editor hierarchy.
+        if let containerView {
+            self.containerView = containerView
+        }
+
         if let textView {
             self.textView = textView
             observeSelectionChanges(in: textView)
@@ -74,10 +81,6 @@ final class EditorInteractionState: ObservableObject {
         focusAttemptsRemaining = 8
 
         retryFocus(searchingIn: rootView)
-    }
-
-    func resetSelectionToDocumentStart(searchingIn rootView: NSView? = nil) {
-        restoreSelection(NSRange(location: 0, length: 0), searchingIn: rootView)
     }
 
     func restoreSelection(
@@ -122,6 +125,10 @@ final class EditorInteractionState: ObservableObject {
     }
 
     func applyMarkdownCommand(_ command: MarkdownCommand) {
+        // A SwiftUI rebuild can leave our stale reference dangling until the
+        // next binder pass; re-scan once so toolbar clicks are not dropped.
+        refreshTextView(searchingIn: containerView)
+
         guard let textView else { return }
 
         focusEditor()
@@ -279,11 +286,7 @@ final class EditorInteractionState: ObservableObject {
     }
 
     private func safeSelectedRange(in textView: NSTextView) -> NSRange {
-        let fullLength = (textView.string as NSString).length
-        let selectedRange = textView.selectedRange()
-        let location = min(max(selectedRange.location, 0), fullLength)
-        let length = min(max(selectedRange.length, 0), fullLength - location)
-        return NSRange(location: location, length: length)
+        clampedRange(textView.selectedRange(), length: (textView.string as NSString).length)
     }
 
     private func scheduleSelectionRestore(
@@ -318,7 +321,7 @@ final class EditorInteractionState: ObservableObject {
 
     private func applySelection(_ range: NSRange, reveal: Bool) {
         guard let textView else { return }
-        let safeRange = clampedRange(range, in: textView)
+        let safeRange = clampedRange(range, length: (textView.string as NSString).length)
         let preservedScrollOrigin = reveal
             ? nil
             : textView.enclosingScrollView?.contentView.bounds.origin
@@ -332,8 +335,9 @@ final class EditorInteractionState: ObservableObject {
         }
     }
 
-    private func clampedRange(_ range: NSRange, in textView: NSTextView) -> NSRange {
-        let fullLength = (textView.string as NSString).length
+    /// Clamps a range against `fullLength` so TextKit never sees an
+    /// out-of-bounds location/length (mutation APIs crash on those).
+    private func clampedRange(_ range: NSRange, length fullLength: Int) -> NSRange {
         let location = min(max(range.location, 0), fullLength)
         let length = min(max(range.length, 0), fullLength - location)
         return NSRange(location: location, length: length)

@@ -8,6 +8,9 @@ import NotchCenterKit
 /// manifest 记录在同一目录的 manifest.json 中。媒体文件不适合键值存储，
 /// 键值 API 仍用于普通状态（文档 §4.6）。
 final class NotesImageStore: EmbeddedImageFileProvider, @unchecked Sendable {
+    /// Magic bytes every PNG file starts with (8-byte signature).
+    private static let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+
     private struct ImageAssetRecord: Codable {
         var id: String
         var displayName: String
@@ -33,12 +36,21 @@ final class NotesImageStore: EmbeddedImageFileProvider, @unchecked Sendable {
         records = Self.loadRecords(from: manifestURL)
     }
 
+    private func saveImageFileData(_ data: Data) -> Data {
+        // Already-PNG payloads skip re-encoding: NSImage→TIFF→PNG wastes CPU
+        // and drops original metadata such as color profile chunks.
+        if data.starts(with: Self.pngSignature) {
+            return data
+        }
+        return pngData(fromImageData: data) ?? data
+    }
+
     func saveImage(from pasteboard: NSPasteboard) -> String? {
         if let fileURL = PasteboardImageReader.imageFileURL(from: pasteboard),
            let data = try? Data(contentsOf: fileURL),
            NSImage(data: data) != nil {
             return save(
-                data: pngData(fromImageData: data) ?? data,
+                data: saveImageFileData(data),
                 originalName: fileURL.deletingPathExtension().lastPathComponent,
                 originalFileURL: fileURL,
                 sourceKind: "file"
@@ -179,6 +191,7 @@ final class NotesImageStore: EmbeddedImageFileProvider, @unchecked Sendable {
               let records = try? JSONDecoder().decode([ImageAssetRecord].self, from: data) else {
             return [:]
         }
-        return Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
+        // 容忍历史 manifest 中的重复 id（崩溃/并发写残留）：保留首条，避免 init 直接失败。
+        return Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 }

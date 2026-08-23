@@ -112,7 +112,7 @@ final class SystemSleepGuard {
             guard let readyFileURL else { return false }
             if FileManager.default.fileExists(atPath: readyFileURL.path) {
                 launcherProcess = nil
-                return Self.sleepDisabledState() == true
+                return await Self.sleepDisabledState() == true
             }
             if let launcherProcess, !launcherProcess.isRunning {
                 discardStoppedSession()
@@ -138,7 +138,7 @@ final class SystemSleepGuard {
             let readyFileExists = readyFileURL.map {
                 FileManager.default.fileExists(atPath: $0.path)
             } ?? false
-            if !readyFileExists, Self.sleepDisabledState() == false {
+            if !readyFileExists, await Self.sleepDisabledState() == false {
                 discardStoppedSession()
                 return true
             }
@@ -153,7 +153,7 @@ final class SystemSleepGuard {
         if await waitUntilStopped() {
             return true
         }
-        guard Self.sleepDisabledState() != false else {
+        guard await Self.sleepDisabledState() != false else {
             discardStoppedSession()
             return true
         }
@@ -169,7 +169,7 @@ final class SystemSleepGuard {
             try? await Task.sleep(for: .milliseconds(100))
         }
 
-        let didReset = Self.sleepDisabledState() == false
+        let didReset = await Self.sleepDisabledState() == false
         if didReset {
             clearSessionFiles()
         }
@@ -177,10 +177,21 @@ final class SystemSleepGuard {
     }
 
     static func isSleepDisabled() -> Bool {
-        sleepDisabledState() == true
+        pmsetProbe() == true
     }
 
-    private static func sleepDisabledState() -> Bool? {
+    /// Async variant used by polling loops: each synchronous pmset spawn costs
+    /// tens of milliseconds, and the stop-wait loop can poll up to ~80 times;
+    /// running those probes on the main thread would stall notch animations.
+    private static func sleepDisabledState() async -> Bool? {
+        await Task.detached(priority: .utility) {
+            pmsetProbe()
+        }.value
+    }
+
+    /// Deliberately nonisolated: this only spawns /usr/bin/pmset, so it must
+    /// run off the main actor when called inside Task.detached.
+    private nonisolated static func pmsetProbe() -> Bool? {
         let process = Process()
         let output = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
@@ -190,9 +201,11 @@ final class SystemSleepGuard {
 
         do {
             try process.run()
+            // Drain the pipe before waiting on exit; waiting first would let
+            // a full pipe buffer deadlock the child against our read.
+            let data = output.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             guard process.terminationStatus == 0 else { return nil }
-            let data = output.fileHandleForReading.readDataToEndOfFile()
             let text = String(data: data, encoding: .utf8) ?? ""
             return SystemSleepGuardCommand.sleepIsDisabled(in: text)
         } catch {
@@ -212,8 +225,9 @@ final class SystemSleepGuard {
     private func discardStoppedSession() {
         guard launcherProcess?.isRunning != true else { return }
 
-        if let readyFileURL,
-           !FileManager.default.fileExists(atPath: readyFileURL.path) {
+        // Removing a not-yet-created ready file is a harmless no-op, so no
+        // existence check is needed here.
+        if let readyFileURL {
             try? FileManager.default.removeItem(at: readyFileURL)
         }
         if let stopFileURL {
