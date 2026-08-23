@@ -56,6 +56,18 @@ struct NotesBlockView: View {
                             reveal: false
                         )
                     },
+                    onCreateNote: {
+                        let newTabID = store.addTab()
+                        // 必须在任何 onChange 触发前同步写记忆（与紧凑入口
+                        // createNoteInTopmostPlacement 的写序一致）：标签跟随
+                        // onChange 可能先于 activeTabID 的 onChange 触发，读到
+                        // 旧记忆会把本实例的选择弹回旧笔记。
+                        NotesModel.shared.rememberActiveTab(newTabID, for: placementID)
+                        // 挂起焦点：新标签触发 documentId 变化、编辑器重建，
+                        // bind 时自动聚焦本实例的新编辑器。
+                        editorInteractionState.scheduleDeferredFocus()
+                        return newTabID
+                    },
                     availableWidth: proxy.size.width - contentHorizontalPadding * 2
                 )
                 .frame(height: toolbarHeight, alignment: .topLeading)
@@ -100,8 +112,9 @@ struct NotesBlockView: View {
                     return
                 }
                 // 外部入口（紧凑图标/状态栏菜单）新建笔记：跟随持久化的
-                // 激活标签并聚焦编辑器。本地切换时 rememberActiveTab 已把
-                // 持久化值写成一致，不会误触发。
+                // 激活标签并聚焦编辑器。本地入口（块内“+”）与本地切换都在
+                // 改本地状态前/同步把记忆写成目标值，本分支只会被外部入口
+                // 触发，不依赖两个 onChange 的触发顺序。
                 if let remembered = NotesModel.shared.activeTab(for: placementID),
                    remembered != activeTabID {
                     activeTabID = remembered

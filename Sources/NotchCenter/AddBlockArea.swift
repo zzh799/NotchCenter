@@ -71,9 +71,9 @@ struct AddBlockArea: View {
         plugins.contains { !$0.drawerBlocks.isEmpty }
     }
 
-    /// 上栏：紧凑块目录（跨插件扁平排列）。
+    /// 上栏：紧凑块目录（跨插件扁平排列，滚轮 + 按住拖动横向滚动）。
     private var compactRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        HorizontalDragScroll {
             HStack(spacing: 8) {
                 rowCaption("Compact")
                 ForEach(flatCompactEntries) { entry in
@@ -90,10 +90,10 @@ struct AddBlockArea: View {
         }
     }
 
-    /// 下栏：抽屉块目录，按插件内联分组。
+    /// 下栏：抽屉块目录，按插件内联分组（滚轮 + 按住拖动横向滚动）。
     private var drawerRow: some View {
         let groups = plugins.filter { !$0.drawerBlocks.isEmpty }
-        return ScrollView(.horizontal, showsIndicators: false) {
+        return HorizontalDragScroll {
             HStack(spacing: 8) {
                 rowCaption("Drawer")
                 ForEach(Array(groups.enumerated()), id: \.element.id) { index, plugin in

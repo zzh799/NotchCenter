@@ -5,6 +5,8 @@ struct TabPagerControl: View {
     let activeTabID: UUID
     let editorInteractionState: EditorInteractionState
     let onSelectTab: (UUID) -> Void
+    /// 新建笔记入口：由所属块实例提供（创建 + 定向记忆 + 挂起焦点），返回新标签 ID。
+    let onCreateNote: () -> UUID
     let availableWidth: CGFloat
 
     var body: some View {
@@ -65,7 +67,7 @@ struct TabPagerControl: View {
             // 右侧：新建按钮
             Button {
                 rememberCurrentSelection()
-                let newTabID = store.addTab()
+                let newTabID = onCreateNote()
                 withAnimation(tabSwitchAnimation) {
                     onSelectTab(newTabID)
                 }

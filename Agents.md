@@ -34,6 +34,7 @@ NotchCenter/
 │   ├── DrawerPanelView.swift        # 抽屉面板主体（drawerWindowSize 绑定 + 顶缘钉死 + 拖拽/缩放手势状态机）
 │   ├── DrawerBlockContainer.swift   # 抽屉块容器（预览尺寸补偿 + 编辑 overlay + 缩放握把 .global 手势）
 │   ├── AddBlockArea.swift            # 添加块目录条（编辑模式，上栏紧凑块/下栏抽屉块）
+│   ├── HorizontalDragScroll.swift    # 横向拖动滚动容器（ScrollView 内嵌 NSScrollView 探针，滚轮之外支持按住拖动）
 │   ├── ResizeHysteresis.swift        # 缩放跨度死区量化（纯函数，ResizeHysteresisTests 覆盖）
 │   ├── NotchGeometry.swift          # 刘海/回退几何与紧凑带布局（左右面板绕刘海对称，左2右1共 3 槽，28×28，右端编辑“+”预留区）
 │   ├── PluginManager.swift          # 插件发现/加载/启用禁用/安装卸载（双目录）

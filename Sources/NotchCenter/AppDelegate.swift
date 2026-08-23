@@ -135,6 +135,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard ProcessInfo.processInfo.environment["NOTCHCENTER_SMOKE_TEST"] == "1" else { return }
         guard let panelController else { return }
         #if DEBUG
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_DRAGSCROLL_AUTO"] == "1" {
+            panelController.runDragScrollAutoDiagnostic()
+            return
+        }
         if ProcessInfo.processInfo.environment["NOTCHCENTER_RESIZE_AUTO"] == "1" {
             panelController.runResizeAutoDiagnostic()
             return
