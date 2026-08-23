@@ -137,13 +137,63 @@ final class LayoutEngine: ObservableObject {
         if let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode(LayoutModel.self, from: data),
            decoded.schemaVersion <= LayoutModel.currentSchemaVersion {
-            model = decoded
+            model = Self.sanitized(decoded)
             didLoadFromDisk = true
         } else {
             model = LayoutModel()
             didLoadFromDisk = false
         }
         saveToDisk()
+    }
+
+    /// 加载时净化历史损坏布局：旧版推挤算法（同步 +1 行）会把粘连块对连同
+    /// 残留重叠一起写盘，行号随之失控增长。持久重叠只可能来自该 bug，
+    /// 因此仅在检测到重叠时触发一次「去重叠 + 向上压实」；正常布局
+    /// （含用户刻意留白）不受影响。块顺序与列位置保持不变。
+    private static func sanitized(_ model: LayoutModel) -> LayoutModel {
+        var blocks = model.drawerBlocks
+        let hasOverlap = blocks.indices.contains { i in
+            blocks[(i + 1)...].contains { rectsOverlap(blocks[i], $0) }
+        }
+        guard hasOverlap else { return model }
+
+        // 去重叠：按（行,列）顺序逐块安放，重叠则下移（与拖拽推挤同语义）。
+        // 附 placementID 决胜保证同格粘连对的相对顺序跨启动稳定。
+        func ordered(_ list: [PlacedBlock]) -> [PlacedBlock] {
+            list.sorted { lhs, rhs in
+                if lhs.originRow != rhs.originRow { return lhs.originRow < rhs.originRow }
+                if lhs.originColumn != rhs.originColumn { return lhs.originColumn < rhs.originColumn }
+                return lhs.placementID < rhs.placementID
+            }
+        }
+
+        var placed: [PlacedBlock] = []
+        for var block in ordered(blocks) {
+            while placed.contains(where: { rectsOverlap(block, $0) }) {
+                block.originRow += 1
+            }
+            placed.append(block)
+        }
+
+        // 向上压实：仍按（行,列）顺序，把每块上移到列不变且不与已放置块重叠的
+        // 最高位置，消除历史失控行号造成的巨大空洞。
+        var settled: [PlacedBlock] = []
+        for block in ordered(placed) {
+            var candidate = block
+            while candidate.originRow > 0 {
+                var probe = candidate
+                probe.originRow -= 1
+                if settled.contains(where: { rectsOverlap(probe, $0) }) { break }
+                candidate = probe
+            }
+            settled.append(candidate)
+        }
+
+        // 恢复原始数组顺序（placementID 不变，仅修正坐标）。
+        let originByID = Dictionary(uniqueKeysWithValues: settled.map { ($0.placementID, $0) })
+        var result = model
+        result.drawerBlocks = blocks.map { originByID[$0.placementID] ?? $0 }
+        return result
     }
 
     // MARK: - 查询
@@ -429,6 +479,12 @@ final class LayoutEngine: ObservableObject {
 
     /// 拖拽实时预览（不落盘，文档 §5.5）：把 `placementID` 放到目标格子，
     /// 被占用的块向下推挤（自动重排），返回全体块的新位置，key 为 placementID。
+    ///
+    /// 推挤采用「逐块安放」：以被拖块为初始已固定集合，其余块按（行,列）顺序
+    /// 依次下移到与所有已固定块都不重叠的首个位置后立即固定。
+    /// 不能改为「每一轮让所有重叠块同步 +1 行」：重叠块同步移动时相对位置
+    /// 不变、永不分离，循环只能靠次数上限退出，会把残留重叠写回布局；
+    /// 粘连块对随后每次拖拽提交又被整体再推若干行，行号失控增长（历史 bug）。
     func previewArrangement(moving placementID: String, toColumn: Int, toRow: Int) -> [String: GridOrigin] {
         var placements = model.drawerBlocks
         guard let index = placements.firstIndex(where: { $0.placementID == placementID }) else {
@@ -439,36 +495,30 @@ final class LayoutEngine: ObservableObject {
         placements[index].originColumn = min(max(toColumn, 0), max(0, columns - placements[index].widthColumns))
         placements[index].originRow = max(toRow, 0)
 
-        // 推挤：重复扫描，让所有重叠块依次下移一行，直到稳定（有界，防止异常输入死循环）。
-        var remainingIterations = 64
-        var hasOverlap = true
-        while hasOverlap, remainingIterations > 0 {
-            hasOverlap = false
-            let order = placements.indices.sorted { lhs, rhs in
-                let a = placements[lhs], b = placements[rhs]
-                return a.originRow == b.originRow
-                    ? a.originColumn < b.originColumn
-                    : a.originRow < b.originRow
+        // 固定集合从被拖块开始；其余按原（行,列）排序处理，未受影响的块
+        // 在循环中零次移动，保持原位（最小扰动）。
+        var fixed = [placements[index]]
+        let orderedOthers = placements.indices
+            .filter { $0 != index }
+            .sorted { lhs, rhs in
+                let l = placements[lhs], r = placements[rhs]
+                if l.originRow != r.originRow { return l.originRow < r.originRow }
+                if l.originColumn != r.originColumn { return l.originColumn < r.originColumn }
+                return l.placementID < r.placementID
             }
-            for i in order {
-                let placement = placements[i]
-                let key = rectKey(placement)
-                let intersects = placements.enumerated().contains { j, other in
-                    guard i != j else { return false }
-                    let otherKey = rectKey(other)
-                    return key.minColumn < otherKey.maxColumn && otherKey.minColumn < key.maxColumn
-                        && key.minRow < otherKey.maxRow && otherKey.minRow < key.maxRow
-                }
-                if intersects {
-                    placements[i].originRow += 1
-                    hasOverlap = true
-                }
+            .map { placements[$0] }
+
+        for var block in orderedOthers {
+            // 终止性：每次迭代 originRow 严格递增，超过当前最深占用行后
+            // 不可能再与任何已固定块重叠，必然退出。
+            while fixed.contains(where: { Self.rectsOverlap(block, $0) }) {
+                block.originRow += 1
             }
-            remainingIterations -= 1
+            fixed.append(block)
         }
 
         var result: [String: GridOrigin] = [:]
-        for placement in placements {
+        for placement in fixed {
             result[placement.placementID] = GridOrigin(column: placement.originColumn, row: placement.originRow)
         }
         return result
@@ -552,7 +602,7 @@ final class LayoutEngine: ObservableObject {
         }
 
         for (index, block) in model.drawerBlocks.enumerated() {
-            for other in model.drawerBlocks.dropFirst(index + 1) where rectsOverlap(block, other) {
+            for other in model.drawerBlocks.dropFirst(index + 1) where Self.rectsOverlap(block, other) {
                 issues.append(.overlap(first: block.placementID, second: other.placementID))
             }
             let columns = effectiveMaxColumns()
@@ -643,8 +693,11 @@ final class LayoutEngine: ObservableObject {
         }
     }
 
-    private func rectsOverlap(_ a: PlacedBlock, _ b: PlacedBlock) -> Bool {
-        overlaps(a, with: [rectKey(b)])
+    private static func rectsOverlap(_ a: PlacedBlock, _ b: PlacedBlock) -> Bool {
+        a.originColumn < b.originColumn + b.widthColumns
+            && b.originColumn < a.originColumn + a.widthColumns
+            && a.originRow < b.originRow + b.heightRows
+            && b.originRow < a.originRow + a.heightRows
     }
 }
 
