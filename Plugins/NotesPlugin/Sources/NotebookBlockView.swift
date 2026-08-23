@@ -12,6 +12,9 @@ struct NotesBlockView: View {
     let imageStore: NotesImageStore
     @ObservedObject var editorInteractionState: EditorInteractionState
     let placementID: String
+    /// 本实例在抽屉网格中的位置（用于“最上方实例”定位，紧凑图标新建入口）。
+    let gridRow: Int
+    let gridHeightRows: Int
 
     @State private var activeTabID: UUID
 
@@ -24,12 +27,16 @@ struct NotesBlockView: View {
         store: NotesStore,
         imageStore: NotesImageStore,
         editorInteractionState: EditorInteractionState,
-        placementID: String
+        placementID: String,
+        gridRow: Int = 0,
+        gridHeightRows: Int = 1
     ) {
         self.store = store
         self.imageStore = imageStore
         self.editorInteractionState = editorInteractionState
         self.placementID = placementID
+        self.gridRow = gridRow
+        self.gridHeightRows = gridHeightRows
         _activeTabID = State(
             initialValue: NotesModel.shared.activeTab(for: placementID) ?? store.activeTabID
         )
@@ -69,8 +76,13 @@ struct NotesBlockView: View {
                     guard let store else { return }
                     store.updateSelection(for: activeTabID, range: range)
                 }
+                // 登记网格位置：紧凑图标“新建笔记”据此定位最上方实例。
+                NotesModel.shared.registerPlacement(placementID, row: gridRow, heightRows: gridHeightRows)
                 editorInteractionState.restoreSelection(store.selectionRange(for: activeTabID))
                 NotesModel.shared.rememberActiveTab(activeTabID, for: placementID)
+            }
+            .onDisappear {
+                editorInteractionState.resetDragState()
             }
             .onChange(of: activeTabID) { _, newTabID in
                 NotesModel.shared.rememberActiveTab(newTabID, for: placementID)
@@ -80,12 +92,23 @@ struct NotesBlockView: View {
                 )
             }
             .onChange(of: store.tabs.map(\.id)) { _, tabIDs in
-                // 其他实例新增/删除标签页时保持本地选择有效。
-                guard !tabIDs.contains(activeTabID) else { return }
-                activeTabID = store.activeTabID
+                // 其他实例删除标签页时保持本地选择有效。
+                if !tabIDs.contains(activeTabID) {
+                    activeTabID = store.activeTabID
+                    return
+                }
+                // 外部入口（紧凑图标/状态栏菜单）新建笔记：跟随持久化的
+                // 激活标签并聚焦编辑器。本地切换时 rememberActiveTab 已把
+                // 持久化值写成一致，不会误触发。
+                if let remembered = NotesModel.shared.activeTab(for: placementID),
+                   remembered != activeTabID {
+                    activeTabID = remembered
+                    editorInteractionState.requestFocus(searchingIn: nil)
+                }
             }
             .onDisappear {
                 editorInteractionState.resetDragState()
+                NotesModel.shared.unregisterPlacement(placementID)
             }
         }
         .environment(\.colorScheme, .dark)

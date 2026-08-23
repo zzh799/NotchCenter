@@ -7,6 +7,8 @@ final class ScratchpadWorkspaceState: ObservableObject {
     @Published var isShelfDropTargeted = false
     @Published var isDraggingShelfItem = false
     @Published var isPreviewingShelfItem = false
+    /// 清空暂存区确认浮层（紧凑图标点击 → 抽屉块内展示，文档 §8：不弹独立窗口）。
+    @Published var isClearConfirmationPending = false
 }
 
 struct FileShelfItem: Identifiable, Codable, Equatable {

@@ -80,7 +80,14 @@ final class EditorInteractionState: ObservableObject {
         pendingFocus = true
         focusAttemptsRemaining = 8
 
-        retryFocus(searchingIn: rootView)
+        retryFocus(searchingIn: rootView ?? containerView)
+    }
+
+    /// 延迟焦点请求：不立即查找 textView，只挂起标记，等编辑器视图经
+    /// `EditorFocusBinder` bind 时自动聚焦。适用于“点击紧凑图标 → 展开
+    /// 抽屉 → 视图重建”的场景——此刻编辑器还不存在，轮询会超时落空。
+    func scheduleDeferredFocus() {
+        pendingFocus = true
     }
 
     func restoreSelection(

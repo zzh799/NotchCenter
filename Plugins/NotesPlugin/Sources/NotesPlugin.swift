@@ -10,6 +10,8 @@ import SwiftUI
             id: "notes.compact",
             displayName: "Notes",
             kind: .compact,
+            // 自定义交互：点击 = 新建笔记 + 展开抽屉 + 焦点落到新笔记。
+            interaction: .custom,
             symbolName: "note.text",
             makeView: { context in
                 AnyView(NotesCompactView(context: context))
@@ -36,7 +38,9 @@ import SwiftUI
                     store: NotesModel.shared.resolve(stateStore: context.stateStore),
                     imageStore: NotesModel.shared.imageStore!,
                     editorInteractionState: NotesModel.shared.editorState(for: context.placementID),
-                    placementID: context.placementID
+                    placementID: context.placementID,
+                    gridRow: context.layoutInfo.originRow ?? 0,
+                    gridHeightRows: context.layoutInfo.heightRows ?? 1
                 ))
             }
         )
@@ -76,9 +80,13 @@ import SwiftUI
     }
 
     private func createNewNote() {
-        guard let store = NotesModel.shared.store else { return }
-        store.addTab()
-        hostController?.expandDrawer()
+        // 在最上方的笔记本放置实例中新建并把焦点挂起到该实例的编辑器；
+        // 无放置实例时退化为仅新建（数据层生效）。
+        if let hostController {
+            NotesModel.shared.createNoteInTopmostPlacement(hostController: hostController)
+        } else {
+            NotesModel.shared.store?.addTab()
+        }
     }
 }
 
@@ -97,6 +105,53 @@ final class NotesModel {
     let editorInteractionState = EditorInteractionState()
     /// placementID → 该实例当前显示的标签页。
     private var activeTabByPlacement: [String: UUID] = [:]
+    /// placementID → 该实例在抽屉网格中的纵向位置（originRow / heightRows），
+    /// 由各放置实例视图自行登记，用于定位“最上方”的笔记本块。
+    private var placementGridRows: [String: GridPosition] = [:]
+
+    struct GridPosition {
+        let row: Int
+        let heightRows: Int
+    }
+
+    /// 视图登记自己在抽屉网格中的位置（onAppear / 布局变化时调用）。
+    func registerPlacement(_ placementID: String, row: Int, heightRows: Int) {
+        placementGridRows[placementID] = GridPosition(row: row, heightRows: heightRows)
+    }
+
+    func unregisterPlacement(_ placementID: String) {
+        placementGridRows.removeValue(forKey: placementID)
+    }
+
+    /// 最上方的放置实例（originRow 最小；同行取更高的块）。无登记时回退 nil。
+    func topmostPlacementID() -> String? {
+        placementGridRows
+            .sorted { lhs, rhs in
+                lhs.value.row == rhs.value.row
+                    ? lhs.value.heightRows > rhs.value.heightRows
+                    : lhs.value.row < rhs.value.row
+            }
+            .first?
+            .key
+    }
+
+    /// 紧凑图标点击入口：在最上方的笔记本放置实例中新建笔记并请求焦点，
+    /// 焦点经 `scheduleDeferredFocus` 挂起，等抽屉展开、编辑器视图 bind 时生效。
+    func createNoteFromCompactIcon(hostController: any HostController) {
+        createNoteInTopmostPlacement(hostController: hostController)
+    }
+
+    func createNoteInTopmostPlacement(hostController: any HostController) {
+        guard let store else { return }
+        let newTabID = store.addTab()
+
+        // 无任何放置的笔记本块时仍新建（数据层生效），仅无法定向焦点。
+        guard let placementID = topmostPlacementID() else { return }
+
+        rememberActiveTab(newTabID, for: placementID)
+        editorState(for: placementID).scheduleDeferredFocus()
+        hostController.expandDrawer()
+    }
     /// placementID → 该实例的编辑器交互状态（多实例互不串扰）。
     private var editorStateByPlacement: [String: EditorInteractionState] = [:]
 
@@ -145,7 +200,7 @@ final class NotesModel {
     }
 }
 
-/// 紧凑块：笔记图标；点击由核心默认展开抽屉。
+/// 紧凑块：笔记图标；点击 = 新建笔记 + 展开抽屉 + 焦点落到新笔记（.custom 交互）。
 private struct NotesCompactView: View {
     let context: BlockContext
 
@@ -157,8 +212,11 @@ private struct NotesCompactView: View {
             .foregroundStyle(.white.opacity(0.72))
             .frame(width: slot.width, height: slot.height)
             .contentShape(Rectangle())
-            .help("Notes")
-            .accessibilityLabel("Notes")
+            .onTapGesture {
+                NotesModel.shared.createNoteFromCompactIcon(hostController: context.hostController)
+            }
+            .help("New Note")
+            .accessibilityLabel("New Note")
     }
 }
 
