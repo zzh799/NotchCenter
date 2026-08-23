@@ -269,9 +269,17 @@ final class NotchPanelController: NSObject {
     /// 抽屉窗口内容尺寸（不含岛顶紧凑带）：布局内容 + 编辑模式 AddBlock
     /// 区域增高；超出屏幕可用高度时封顶（网格 ScrollView 可视高度随之压缩，
     /// 文档 §5.3）。与 `DrawerPanelView` 根视图共享该尺寸，保证布局一致。
-    /// `previewRows` 用于拖拽/缩放预览（按预览布局的最低行临时增高）。
-    func drawerWindowSize(for pair: ScreenPanelPair?, previewRows: Int? = nil) -> CGSize {
-        var size = layoutEngine.drawerWindowSize(contentRows: previewRows)
+    /// `previewRows` 用于拖拽/缩放预览（按预览布局的最低行临时增高）；
+    /// `previewColumns` 同理（按预览布局的实际占用列数临时增宽）。
+    func drawerWindowSize(
+        for pair: ScreenPanelPair?,
+        previewRows: Int? = nil,
+        previewColumns: Int? = nil
+    ) -> CGSize {
+        var size = layoutEngine.drawerWindowSize(
+            contentRows: previewRows,
+            contentColumns: previewColumns
+        )
         if isEditing {
             size.height += AddBlockArea.height(for: uiState.catalogPlugins)
         }
@@ -284,15 +292,19 @@ final class NotchPanelController: NSObject {
         return size
     }
 
-    /// 抽屉窗口（方案 E：固定高度）：顶缘钉死屏幕顶端，高度一次摆到
-    /// 屏高上限 —— 编辑切换/增删块/缩放全部不动窗口，高度动画完全由
-    /// SwiftUI 遮罩 + 内容 spring 承担（与揭示动画同一机制）。仅列数或
-    /// 屏幕变化时重设宽度。命中测试由 `DrawerHostingView` 限定在可见
-    /// 矩形内，透明区穿透。
+    /// 抽屉窗口（方案 E：固定满高满宽）：顶缘钉死屏幕顶端，高度一次摆到
+    /// 屏高上限；宽度固定为屏幕能容纳的最大列数。可见面板尺寸
+    /// （`drawerWindowSize`）随实际占用列数自适应收缩并在窗口内水平居中，
+    /// 窗口比可见面板宽的部分是透明区（命中测试由 `DrawerHostingView`
+    /// 可见矩形限定 + `ignoresMouseEvents` 光标跟踪双机制穿透）。
+    /// 窗口 frame 不跟随内容宽度动画——跟随会导致宽度变化期间裁剪
+    /// spring 变形中的内容、面板偏离屏幕中线。
     private func drawerFrame(for pair: ScreenPanelPair) -> NSRect {
         let screenFrame = pair.screenFrame
+        let width = NotchGridMetrics.contentWidth(columns: layoutEngine.effectiveMaxColumns())
+            + NotchGridMetrics.contentPadding * 2
         let size = CGSize(
-            width: layoutEngine.drawerWindowSize().width,
+            width: width,
             height: min(screenFrame.height - 8, screenFrame.height)
         )
         return NotchGeometry.topCenteredFrame(
@@ -302,19 +314,26 @@ final class NotchPanelController: NSObject {
         )
     }
 
-    /// 拖拽/缩放预览期间面板按需增高（方案 E：纯 SwiftUI）：只更新
-    /// `uiState.drawerWindowSize`，遮罩/内容即时随预览布局的最低行扩展
-    /// （窗口高度固定，无需任何 frame 操作）；提交后由 `refreshAfterEdit`
-    /// 的 spring 回落到压实尺寸。`resized` 为正在缩放块的新行数（底层块
-    /// 长高时唯一能反映增高的来源）。
+    /// 拖拽/缩放预览期间面板按需增高/增宽（方案 E：纯 SwiftUI）：只更新
+    /// `uiState.drawerWindowSize`，遮罩/内容即时随预览布局的最低行与
+    /// 实际占用列数扩展（窗口高度固定，无需任何 frame 操作）；提交后由
+    /// `refreshAfterEdit` 的 spring 回落到压实尺寸。`resized` 为正在缩放
+    /// 块的新跨度（底层块长高/加宽时唯一能反映变化的来源）。
     func applyPreviewWindowSize(
         _ origins: [String: LayoutEngine.GridOrigin],
-        resized: (placementID: String, heightRows: Int)? = nil
+        resized: (placementID: String, heightRows: Int, widthColumns: Int)? = nil
     ) {
         guard isExpanded, let pair = activePair, !origins.isEmpty else { return }
         let size = drawerWindowSize(
             for: pair,
-            previewRows: layoutEngine.previewBottomRow(origins: origins, resized: resized)
+            previewRows: layoutEngine.previewBottomRow(
+                origins: origins,
+                resized: resized.map { ($0.placementID, $0.heightRows) }
+            ),
+            previewColumns: layoutEngine.previewOccupiedColumns(
+                origins: origins,
+                resized: resized.map { ($0.placementID, $0.widthColumns) }
+            )
         )
         guard uiState.drawerWindowSize != size else { return }
         uiState.drawerWindowSize = size

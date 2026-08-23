@@ -92,8 +92,9 @@ struct DrawerPanelView: View {
                 .allowsHitTesting(false)
         }
         .allowsHitTesting(ui.isDrawerExpanded)
-        // 固定高度窗口（屏高上限）内顶对齐：窗口比可见面板高的部分永远
-        // 在底部（透明区、命中测试穿透），面板顶缘钉死窗口顶缘。
+        // 固定满高满宽窗口内顶对齐 + 水平居中：窗口比可见面板高/宽的部分
+        // 永远是透明区（命中测试穿透），面板顶缘钉死窗口顶缘、绕屏幕中线
+        // 居中——宽度随占用列数自适应时面板始终对准刘海。
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: ui.isDrawerExpanded) { expanded in
             if expanded {

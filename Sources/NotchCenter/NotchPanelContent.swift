@@ -345,8 +345,12 @@ extension NotchPanelController {
                     toColumns: columns,
                     toRows: rows
                 )
-                // 底层块长高不推挤任何人：新行数必须显式传入才会增高面板。
-                self.applyPreviewWindowSize(origins, resized: (placementID, rows))
+                // 底层块长高/加宽不推挤任何人：新跨度必须显式传入才会
+                // 增高/增宽面板。
+                self.applyPreviewWindowSize(
+                    origins,
+                    resized: (placementID, rows, columns)
+                )
                 return origins
             },
             onCommitDrag: { [weak self] placementID, column, row in
