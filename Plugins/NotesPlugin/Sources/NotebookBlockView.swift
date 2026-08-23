@@ -18,8 +18,8 @@ struct NotesBlockView: View {
 
     @State private var activeTabID: UUID
 
-    private let contentHorizontalPadding: CGFloat = 14
-    private let contentVerticalPadding: CGFloat = 12
+    private let contentHorizontalPadding: CGFloat = 10
+    private let contentVerticalPadding: CGFloat = 10
     private let toolbarHeight: CGFloat = 34
     private let editorSpacing: CGFloat = 8
 
@@ -68,8 +68,10 @@ struct NotesBlockView: View {
                     size: editorSize(proxy.size)
                 )
             }
-            .padding(.horizontal, contentHorizontalPadding)
-            .padding(.vertical, contentVerticalPadding)
+            // .padding(.horizontal, contentHorizontalPadding)
+            // .padding(.vertical, contentVerticalPadding)
+            // 水平与垂直内边距一致（均为 10），保证块内下方空间与侧边空间视觉
+            // 一致；视图本身已通过外层 GeometryReader 撑满容器分配的全部宽高。
             .frame(width: proxy.size.width, height: proxy.size.height)
             .onAppear {
                 editorInteractionState.onSelectionChange = { [weak store] range in
@@ -116,7 +118,7 @@ struct NotesBlockView: View {
 
     private func editorSize(_ total: CGSize) -> CGSize {
         CGSize(
-            width: total.width - contentHorizontalPadding * 2,
+            width: total.width,
             height: max(
                 total.height
                     - contentVerticalPadding * 2

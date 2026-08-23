@@ -103,7 +103,16 @@ struct FileShelfView: View {
                 .frame(
                     width: size.width,
                     height: size.height,
-                    alignment: .center
+                    alignment: Alignment.center
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        } else if store.items.isEmpty, !workspaceState.isShelfDropTargeted {
+            // 空状态：显示暂存图标占位（设计规范 §9.6 FileShelfView）
+            emptyPlaceholder
+                .frame(
+                    width: size.width,
+                    height: size.height,
+                    alignment: Alignment.center
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
         }
@@ -162,6 +171,27 @@ struct FileShelfView: View {
                 .font(.system(size: 10, weight: .semibold))
         }
         .foregroundStyle(Color.white.opacity(0.58))
+    }
+
+    private var emptyPlaceholder: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "tray")
+                .font(.system(size: 28, weight: .regular))
+                .foregroundStyle(.white.opacity(0.35))
+
+            Text("暂存区")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.55))
+        }
+        // .padding(16)
+        // .background(
+        //     RoundedRectangle(cornerRadius: 10, style: .continuous)
+        //         .fill(.white.opacity(0.02))
+        // )
+        // .overlay {
+        //     RoundedRectangle(cornerRadius: 10, style: .continuous)
+        //         .stroke(.white.opacity(0.06), lineWidth: 1)
+        // }
     }
 
     private var shelfItems: some View {

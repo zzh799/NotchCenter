@@ -22,7 +22,7 @@ struct MarkdownEditorPanel: View {
                 editorInteractionState: editorInteractionState,
                 activeTabID: activeTabID
             )
-            .frame(width: size.width, height: editorHeight)
+            .frame(maxWidth: .infinity, minHeight: editorHeight, maxHeight: .infinity)
 
             Rectangle()
                 .fill(.white.opacity(0.045))
@@ -32,6 +32,7 @@ struct MarkdownEditorPanel: View {
                 .frame(width: size.width, height: toolbarHeight)
                 .background(Color(red: 0.055, green: 0.055, blue: 0.065))
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var editorHeight: CGFloat {
@@ -43,7 +44,7 @@ struct MarkdownShortcutToolbar: View {
     let editorInteractionState: EditorInteractionState
 
     var body: some View {
-        HStack(alignment: .center, spacing: 4) {
+        HStack(alignment: .center, spacing: 6) {
             ForEach(MarkdownCommand.allCases) { command in
                 Button {
                     editorInteractionState.applyMarkdownCommand(command)
@@ -59,7 +60,7 @@ struct MarkdownShortcutToolbar: View {
             Spacer(minLength: 0)
         }
         .frame(maxHeight: .infinity, alignment: .center)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
     }
 }
 

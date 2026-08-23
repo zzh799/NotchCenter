@@ -8,7 +8,8 @@ struct TabPagerControl: View {
     let availableWidth: CGFloat
 
     var body: some View {
-        HStack(alignment: .top, spacing: 6) {
+        HStack(alignment: .center, spacing: 8) {
+            // 左侧：页面指示器圆点（多标签时自动换行，与旧行为一致）
             WrappingHStack(
                 availableWidth: max(availableWidth - 34, 160),
                 horizontalSpacing: 6,
@@ -34,7 +35,7 @@ struct TabPagerControl: View {
                                 .frame(width: isSelected ? 7 : 6, height: isSelected ? 7 : 6)
                                 .shadow(color: .white.opacity(isSelected ? 0.42 : 0), radius: 3)
                         }
-                        .frame(width: 26, height: 24)
+                        .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
                         .animation(tabSwitchAnimation, value: isSelected)
                     }
@@ -59,6 +60,9 @@ struct TabPagerControl: View {
                 }
             }
 
+            Spacer(minLength: 0)
+
+            // 右侧：新建按钮
             Button {
                 rememberCurrentSelection()
                 let newTabID = store.addTab()
@@ -67,15 +71,20 @@ struct TabPagerControl: View {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .frame(width: 28, height: 28)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .frame(width: 24, height: 24)
+                    .background(
+                        Circle()
+                            .fill(.white.opacity(0.08))
+                    )
                     .contentShape(Rectangle())
             }
-            .buttonStyle(TabIconButtonStyle())
-            .fixedSize()
+            .buttonStyle(.plain)
             .help("New note")
             .accessibilityLabel("New note")
         }
-        .padding(.horizontal, 2)
+        .padding(.horizontal, 4)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
     }

@@ -36,7 +36,11 @@ extension LayoutEngine {
     }
 
     /// 抽屉窗口尺寸：宽度按实际占用列数收缩（换行上限仍受屏幕约束）；
-    /// 高度随行数增长。
+    /// 高度随行数增长。高度 = 顶栏 + 内容行高 + 底部内边距——顶部不再
+    /// 预留 padding：`DrawerPanelView` 的内容栈从顶栏直接开始（紧凑带
+    /// 与顶栏之间无需空隙），若在此多加一项，这 16pt 不会被渲染，只会
+    /// 落到 ScrollView 底部与内容自身 bottom padding 叠加，造成“底部留白
+    /// 约为左右两倍”的不一致（截图反馈修复）。
     /// `contentRows` / `contentColumns` 用于拖拽/缩放预览（按预览布局的
     /// 最低行/实际占用列临时调整）。
     func drawerWindowSize(contentRows: Int? = nil, contentColumns: Int? = nil) -> CGSize {
@@ -45,8 +49,7 @@ extension LayoutEngine {
         return CGSize(
             width: NotchGridMetrics.contentWidth(columns: columns)
                 + NotchGridMetrics.contentPadding * 2,
-            height: NotchGridMetrics.contentPadding
-                + NotchGridMetrics.drawerTopBarHeight
+            height: NotchGridMetrics.drawerTopBarHeight
                 + NotchGridMetrics.contentHeight(rows: rows)
                 + NotchGridMetrics.contentPadding
         )

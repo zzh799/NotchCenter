@@ -96,7 +96,7 @@ struct DrawerPanelView: View {
         // 永远是透明区（命中测试穿透），面板顶缘钉死窗口顶缘、绕屏幕中线
         // 居中——宽度随占用列数自适应时面板始终对准刘海。
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onChange(of: ui.isDrawerExpanded) { expanded in
+        .onChange(of: ui.isDrawerExpanded) { _, expanded in
             if expanded {
                 // 先让容器形变启动，内容在后段淡入（形变 commit → 内容到达）。
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
