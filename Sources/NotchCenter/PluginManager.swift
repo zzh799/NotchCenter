@@ -208,13 +208,30 @@ final class PluginManager: ObservableObject {
 
     /// 恢复布局中记录（layout.json enabledPluginIDs）的启用状态：仅加载已启用插件（文档 §3.3 第 4 步）。
     /// 加载失败的条目保持禁用并记录错误。
+    ///
+    /// 内置插件默认启用（决策：官方插件随 app 分发，应开箱即用）：不在
+    /// enabledPluginIDs 里的内置插件自动加载并追加到持久化集合；第三方
+    /// 插件仍需用户在管理窗口手动启用。
     func restoreEnabledState(from enabledIDs: Set<String>) {
+        var effectiveIDs = enabledIDs
+        for entry in entries where entry.metadata.isBuiltIn && !enabledIDs.contains(entry.id) {
+            do {
+                try load(entry)
+                effectiveIDs.insert(entry.id)
+            } catch {
+                // 加载失败保持禁用，不写入持久化集合（下次启动重试）。
+            }
+        }
         for entry in entries where enabledIDs.contains(entry.id) {
+            guard !entry.isEnabled else { continue }
             do {
                 try load(entry)
             } catch {
                 entry.markEnabled(false, error: error.localizedDescription)
             }
+        }
+        if effectiveIDs != enabledIDs {
+            onEnabledPluginIDsChanged?([], effectiveIDs)
         }
     }
 

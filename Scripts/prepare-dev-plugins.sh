@@ -22,7 +22,7 @@ cd "$ROOT_DIR"
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 PLUGINS_DIR="$BIN_DIR/PlugIns"
 
-for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin; do
+for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin; do
   echo "Building $product..."
   swift build -c "$CONFIG" --product "$product"
 done
@@ -30,7 +30,7 @@ done
 rm -rf "$PLUGINS_DIR"
 mkdir -p "$PLUGINS_DIR"
 
-for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin; do
+for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin; do
   DYLIB="$(find "$BUILD_ROOT" -path "*/$CONFIG/lib$product.dylib" -not -path "*/PlugIns/*" | head -1)"
   if [[ ! -f "$DYLIB" ]]; then
     echo "找不到构建产物: $product.dylib" >&2
@@ -56,6 +56,12 @@ for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin; do
       PLUGIN_VERSION="1.0.0"
       DISPLAY_NAME="Keep Awake"
       DESCRIPTION="Keeps your Mac awake on demand."
+      ;;
+    DshPlugin)
+      PLUGIN_ID="com.zhouzihang.notchcenter.dsh"
+      PLUGIN_VERSION="1.0.0"
+      DISPLAY_NAME="DSH Service"
+      DESCRIPTION="Controls the dsh-web launchd service."
       ;;
   esac
 

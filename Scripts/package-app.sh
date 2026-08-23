@@ -70,8 +70,17 @@ else
   exit 1
 fi
 
+# LaunchdControlKit（DshPlugin 依赖的独立基础库动态库）。
+LAUNCHD_DYLIB="$PRODUCTS_DIR/libLaunchdControlKit.dylib"
+if [[ -f "$LAUNCHD_DYLIB" ]]; then
+  cp "$LAUNCHD_DYLIB" "$FRAMEWORKS_DIR/libLaunchdControlKit.dylib"
+else
+  echo "找不到框架产物：$LAUNCHD_DYLIB" >&2
+  exit 1
+fi
+
 # 内置官方插件 bundle。
-for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin; do
+for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin; do
   DYLIB="$PRODUCTS_DIR/lib$product.dylib"
   if [[ ! -f "$DYLIB" ]]; then
     echo "找不到插件产物：$DYLIB" >&2
@@ -97,6 +106,12 @@ for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin; do
       PLUGIN_VERSION="1.0.0"
       DISPLAY_NAME="Keep Awake"
       DESCRIPTION="Keeps your Mac awake on demand."
+      ;;
+    DshPlugin)
+      PLUGIN_ID="com.zhouzihang.notchcenter.dsh"
+      PLUGIN_VERSION="1.0.0"
+      DISPLAY_NAME="DSH Service"
+      DESCRIPTION="Controls the dsh-web launchd service."
       ;;
   esac
 
