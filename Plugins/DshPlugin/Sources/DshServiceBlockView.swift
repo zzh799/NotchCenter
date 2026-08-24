@@ -134,7 +134,7 @@ struct DshServiceBlockView: View {
     /// 释放**。不能用 sequenced(before: DragGesture)——onEnded 会推迟到
     /// 第二阶段（拖拽）结束，浮窗变成松手后才弹出。挂在整卡上（含背景区）。
     private var longPressGesture: some Gesture {
-        LongPressGesture(minimumDuration: 0.5)
+        LongPressGesture(minimumDuration: 0.3)
             .onEnded { _ in
                 showPopover()
             }
@@ -144,9 +144,6 @@ struct DshServiceBlockView: View {
 
     private func showPopover() {
         guard let frameInWindow else { return }
-        DshPopoverController.shared.present(
-            monitor: monitor,
-            frameInWindow: frameInWindow
-        )
+        DshPopover.present(monitor: monitor, frameInWindow: frameInWindow)
     }
 }

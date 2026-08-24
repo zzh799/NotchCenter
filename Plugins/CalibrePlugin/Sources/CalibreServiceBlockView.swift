@@ -146,9 +146,6 @@ struct CalibreServiceBlockView: View {
 
     private func showPopover() {
         guard let frameInWindow else { return }
-        CalibrePopoverController.shared.present(
-            monitor: monitor,
-            frameInWindow: frameInWindow
-        )
+        CalibrePopover.present(monitor: monitor, frameInWindow: frameInWindow)
     }
 }

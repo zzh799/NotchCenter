@@ -34,6 +34,6 @@ import SwiftUI
     }
 
     public func pluginWasDisabled() {
-        CalibrePopoverController.shared.dismiss()
+        CalibrePopover.dismiss()
     }
 }

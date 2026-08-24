@@ -185,7 +185,7 @@ struct OpenCodeUsageBlockView: View {
 
     private func showPopover() {
         guard let frameInWindow else { return }
-        OpenCodeUsagePopoverController.shared.present(store: store, frameInWindow: frameInWindow)
+        OpenCodeUsagePopover.present(store: store, frameInWindow: frameInWindow)
     }
 
     private func openDashboard() {

@@ -61,6 +61,7 @@ NotchCenter/
 │   ├── NotchCenterPlugin.swift   # 协议：static blocks + init()；可选 settingsView / menuItems / 服务注入
 │   ├── NotchBlock.swift          # NotchBlock / BlockKind / BlockSize / BlockInteraction
 │   ├── BlockContext.swift        # BlockContext / BlockLayoutInfo / BlockRegion / PluginSettingsContext
+│   ├── BlockPopover.swift        # 长按浮窗基础组件：单例互斥生命周期 / 叠在块上方 / 统一外观 / spring 弹出动画
 │   ├── HostController.swift      # expand/collapse/编辑模式/刷新紧凑区
 │   ├── StateStore.swift          # 插件隔离键值存储（PluginData/<pluginID>/，原子写）
 │   └── APIVersion.swift          # SemanticVersion / APIVersionRange / currentVersion（文档 §9.1）

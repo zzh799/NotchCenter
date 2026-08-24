@@ -34,6 +34,6 @@ import SwiftUI
     }
 
     public func pluginWasDisabled() {
-        DshPopoverController.shared.dismiss()
+        DshPopover.dismiss()
     }
 }
