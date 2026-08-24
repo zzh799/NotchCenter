@@ -457,7 +457,7 @@ main() {
   shift
   case "$cmd" in
     dev)     cmd_dev "$@" ;;
-    package) shift; cmd_package "$@" ;;
+    package) cmd_package "$@" ;;
     clean)   cmd_clean ;;
     help|-h|--help) usage ;;
     *) usage >&2; die "未知子命令：$cmd" ;;
