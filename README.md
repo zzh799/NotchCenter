@@ -4,14 +4,19 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 
 核心只负责刘海区域交互、窗口管理、插件加载与生命周期、布局引擎与状态存储；笔记、文件暂存、防休眠等功能以官方插件形式提供，第三方插件可动态安装（`.bundle`）。架构基线见 [`docs/NotchCenter 架构设计文档.md`](docs/NotchCenter%20架构设计文档.md)。
 
+![主界面](/docs/CleanShot%202026-08-24%20at%2015.02.03@2x.png)
+
+![编辑演示](/docs/CleanShot%202026-08-24%20at%2015.03.30.gif)
+
+
 > **引用**：NotchCenter 由 [NotchNotes] 重构而来，原项目承担的笔记 / 暂存 / 防休眠等能力已拆分为本仓库的官方插件，核心交互与视觉规范沿用原项目，详见下方“引用”一节。
 
 [NotchNotes]: https://github.com/oil-oil/NotchNotes
 
 ## 下载与安装
 
-- [下载最新版](https://github.com/oil-oil/NotchCenter/releases/latest/download/NotchCenter.zip)
-- [打开产品官网](https://oil-oil.github.io/NotchCenter/)
+- [下载最新版](https://github.com/zzh799/NotchCenter/releases/latest/download/NotchCenter.zip)
+
 
 下载包同时支持 Apple Silicon 和 Intel，要求 macOS 14 或更高版本。
 
