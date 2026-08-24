@@ -5,8 +5,9 @@
 # 用法:
 #   build.sh dev [debug|release]   全量构建，把插件 dylib 组装成 .bundle 放到
 #                                  .build/<config>/PlugIns/（swift run 直接发现加载）
-#   build.sh package               发布打包：通用架构 .app + 内置插件 bundle + 共享框架
-#                                  + zip + sha256（可选公证），产物在 dist.noindex/
+#   build.sh package [-i|--install] 发布打包：通用架构 .app + 内置插件 bundle + 共享框架
+#                                  + zip + sha256（可选公证），产物在 dist.noindex/；
+#                                  加 -i/--install 时把 .app 复制到 /Applications 覆盖安装
 #   build.sh clean                 删除 .build 与 dist.noindex（均为纯可再生制品）
 #
 # 环境变量（仅 package）：APP_VERSION、BUILD_NUMBER、SIGN_IDENTITY、NOTARY_PROFILE。
@@ -222,6 +223,13 @@ cmd_dev() {
 }
 
 cmd_package() {
+  local install_to_applications=0
+  case "${1:-}" in
+    -i|--install) install_to_applications=1 ;;
+    "") ;;
+    *) usage >&2; die "未知参数：$1（package 可用 -i|--install）" ;;
+  esac
+
   cd "$ROOT_DIR"
   discover_plugins
 
@@ -380,6 +388,20 @@ cmd_package() {
   echo "Architectures: $archs"
   echo "Archive: $zip_path"
   echo "Checksum: $checksum_path"
+
+  if (( install_to_applications )); then
+    local dest_app="/Applications/$app_name.app"
+    # 先杀掉正在运行的实例再覆盖，避免复制时文件被占用 / 替换后旧进程仍驻留。
+    if pgrep -x "$app_name" >/dev/null 2>&1; then
+      echo "Stopping running $app_name..."
+      pkill -x "$app_name" || true
+      sleep 1
+    fi
+    rm -rf "$dest_app"
+    ditto "$app_dir" "$dest_app"
+    xattr -cr "$dest_app"
+    echo "Installed $dest_app"
+  fi
 }
 
 cmd_clean() {
@@ -393,7 +415,7 @@ main() {
   shift
   case "$cmd" in
     dev)     cmd_dev "$@" ;;
-    package) cmd_package ;;
+    package) shift; cmd_package "$@" ;;
     clean)   cmd_clean ;;
     help|-h|--help) usage ;;
     *) usage >&2; die "未知子命令：$cmd" ;;
