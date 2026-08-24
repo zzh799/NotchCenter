@@ -57,6 +57,16 @@
 "addblock.help.compact" = "Add to the compact strip";
 "addblock.help.drawer" = "Add to the drawer grid";
 
+/* 隐藏主菜单（accessory 应用不可见，仅承载标准快捷键的 nil-target 动作） */
+"menu.app.hide" = "Hide NotchCenter";
+"menu.app.quit" = "Quit NotchCenter";
+"menu.edit.undo" = "Undo";
+"menu.edit.redo" = "Redo";
+"menu.edit.cut" = "Cut";
+"menu.edit.copy" = "Copy";
+"menu.edit.paste" = "Paste";
+"menu.edit.selectAll" = "Select All";
+
 /* PluginManager 错误信息（经 LocalizedError.errorDescription 展示） */
 "pluginManager.error.notFound" = "Plugin not found: %@";
 "pluginManager.error.apiIncompatible" = "Plugin %@ declares API %@, which does not include current core API %@.";

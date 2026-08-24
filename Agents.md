@@ -24,6 +24,7 @@ NotchCenter/
 ├── Package.swift                 # SPM 清单：宿主 + 官方插件 + 测试 target
 ├── Sources/NotchCenter/          # 宿主主 App（可执行 target）
 │   ├── main.swift / AppDelegate.swift
+│   ├── EditMenuInstaller.swift      # 隐藏主菜单（accessory 无菜单栏）：承载 ⌘C/⌘V 等标准编辑快捷键的 nil-target 动作
 │   ├── NotchPanelController.swift   # 核心控制器（hostController 实现）：状态中枢 + 每屏一对面板 + 展开/收起 + 几何
 │   ├── NotchPanelContent.swift      # 控制器 extension：视图构建（rebuildContent/build*）+ 编辑模式两段式进入
 │   ├── NotchPanelInteraction.swift  # 控制器 extension：事件监听 + 鼠标轮询 + 收起协调（handleMouseLocation/scheduleCollapse）
@@ -126,6 +127,7 @@ open dist.noindex/NotchCenter.app
 - **列双向扩大、行仅向下（originColumn 可为负）**：行始终顶边锚定只向下扩大（originRow 不变、非负）；列支持左右双向——块被拖出左侧时格网向左扩大（originColumn 变负，`validColumnRange` 保证合并后跨度 ≤ 容量），单右下握把只向右下扩大（无左右双握把）。渲染横坐标 = `(originColumn − gridLeft) × 步长`、宽高按占列跨度（`occupiedColumnRange`），面板绕刘海居中所以列扩大视觉上左右对称。预览期 `applyPreviewWindowSize` 必须把 `drawerWindowSize`/`drawerContentSize`/`drawerGridLeftColumn` 放进**同一次 withAnimation（与块推挤同帧，不等松手）**；`compactEmptyColumns` 会闭合负列空洞（左侧块向 0 右移，与右移对称）。回归见 `LayoutEngineTests` 的“编辑模式契约：列双向扩大（左扩）”一节与 `DragReorderReproTests` 的列跨度不变量。
 - **Chicken-and-egg 初始化**：`NotchPanelController.init` 在 `super.init()` 之后才构建 `pluginManager` / `layoutEngine`（属性是 `private(set) var ...!`）。改动核心初始化顺序时注意。
 - **UI 风格**：抽屉强制深色（`.environment(\.colorScheme, .dark)`），背景接近纯黑半透明，顶部圆角遮罩（`TopAttachedRoundedShape`）。改动视觉时保持“贴近刘海”的观感。抽屉块的卡片壳一律用 Kit 的 `BlockCard`（底色/发丝描边/可选悬停），长按浮窗触发一律用 `.blockPopoverTrigger`——不要在插件里自绘背景描边或手写 frame 追踪与长按手势。
+- **标准编辑快捷键依赖隐藏主菜单**：accessory 应用没有可见菜单栏，程序化启动也没有带 Edit 菜单的默认主菜单，⌘C / ⌘V / ⌘X / ⌘A / ⌘Z 属于菜单键等价物——分发路径是 `keyWindow.performKeyEquivalent` → `NSApp.mainMenu` → nil-target 动作沿响应链落到 NSTextView。`EditMenuInstaller.install()` 在启动时安装这份不可见菜单（应用菜单保留 ⌘Q/⌘H），不要删除或改成给某个具体视图固定 target；否则笔记编辑器等文本输入的复制/粘贴快捷键整体失效（普通输入不受影响，回归见 `EditMenuInstallerTests`）。
 - **触发器手势不要改回 TapGesture + simultaneous 长按**：`blockPopoverTrigger` 内部由单个 `DragGesture(minimumDistance: 0, .global)` + `.task(id: pressStartDate)` 定时器驱动（分类阈值见 `BlockTapClassifier`）。旧实现是 `.onTapGesture { guard !isPressing … }` 配 simultaneous `LongPressGesture`——真机上点击回调不触发，「点击开网页」（DSH/Calibre）整体失效；HID 合成点击对照实验确认裸 `TapGesture` 与该组合均不回调，而 DragGesture 管线可靠。长按后的松手必须被抑制（`longPressFired`），否则松手瞬间误触 onTap。
 - **命名 / 语言**：源码标识符与 UI 字符串用英文；注释可用中文。保持与现有文件一致的风格（缩进、分组、注释密度）。
 - **多语言（en / zh-Hans）**：所有面向用户的字符串一律走本地化表，不许硬编码。机制是 Apple 原生 `.lproj` + `Localizable.strings`，每个模块自带翻译：宿主用 `L()`/`LF()`（`Sources/NotchCenter/Localization.swift`，资源经 SPM 打进 `NotchCenter_NotchCenter.bundle`）；插件用各自 Sources 里的 `L()`/`LF()`（基于 Kit 的 `L10n.string` + `Bundle(for:)`）；插件的显示名/描述双语写在各 `Plugin.plist` 的 `DisplayNameLocales` / `DescriptionLocales` 字典（build.sh 生成 InfoPlist.strings）。en 是基准键集，zh-Hans 必须保持键集合一致（`LocalizationTests` 强制校验）。语言跟随系统，设置面板可覆盖（写 AppleLanguages，重启生效）。品牌名（DSH、Calibre、OpenCode、Zen）不翻译。
@@ -134,7 +136,7 @@ open dist.noindex/NotchCenter.app
 ## 测试
 
 - 运行：`swift test`；单文件调试可 `swift test --filter <Name>`。
-- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`OpenCodeUsageTests`（cookie 归一化 / SSR HTML 解析 / 时长短语，不发真实网络请求）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）。
+- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`OpenCodeUsageTests`（cookie 归一化 / SSR HTML 解析 / 时长短语，不发真实网络请求）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）、`EditMenuInstallerTests`（隐藏主菜单接线：标准编辑快捷键的 nil-target 条目与键等价物）。
 - 涉及 `pmset` / 休眠的逻辑测试应确保**不真正改变系统睡眠状态**。
 - 涉及 AppKit 窗口/事件的逻辑依赖 App 运行环境，注意保持 `@MainActor` 测试隔离（`setUp`/`tearDown` 是非隔离上下文，不要在里面改 @MainActor 属性）。
 

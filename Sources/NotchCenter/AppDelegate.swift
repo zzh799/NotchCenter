@@ -6,6 +6,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: NotchPanelController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // accessory 应用没有默认 Edit 菜单，标准编辑快捷键（⌘C 等）需要
+        // 隐藏主菜单承载（见 EditMenuInstaller 顶部说明）。
+        EditMenuInstaller.install()
         panelController = NotchPanelController()
         panelController?.showDocked()
         #if DEBUG
