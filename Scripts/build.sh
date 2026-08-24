@@ -5,9 +5,12 @@
 # 用法:
 #   build.sh dev [debug|release]   全量构建，把插件 dylib 组装成 .bundle 放到
 #                                  .build/<config>/PlugIns/（swift run 直接发现加载）
-#   build.sh package [-i|--install] 发布打包：通用架构 .app + 内置插件 bundle + 共享框架
+#   build.sh package [-i|--install] [-g|--github]
+#                                  发布打包：通用架构 .app + 内置插件 bundle + 共享框架
 #                                  + zip + sha256（可选公证），产物在 dist.noindex/；
-#                                  加 -i/--install 时把 .app 复制到 /Applications 覆盖安装
+#                                  -i/--install 把 .app 复制到 /Applications 覆盖安装；
+#                                  -g/--github 把 zip 发布到 GitHub Release（latest 标签，
+#                                  覆盖式更新，需已安装并登录 gh CLI）
 #   build.sh clean                 删除 .build 与 dist.noindex（均为纯可再生制品）
 #
 # 环境变量（仅 package）：APP_VERSION、BUILD_NUMBER、SIGN_IDENTITY、NOTARY_PROFILE。
@@ -34,7 +37,7 @@ API_RANGE_XML="${API_RANGE//</&lt;}"   # XML 转义（解析后仍是 1.0..<2.0�
 die() { echo "错误：$*" >&2; exit 1; }
 
 usage() {
-  sed -n '4,9p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '4,13p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # ---- 插件自动发现 ------------------------------------------------------------
@@ -223,12 +226,15 @@ cmd_dev() {
 }
 
 cmd_package() {
-  local install_to_applications=0
-  case "${1:-}" in
-    -i|--install) install_to_applications=1 ;;
-    "") ;;
-    *) usage >&2; die "未知参数：$1（package 可用 -i|--install）" ;;
-  esac
+  local install_to_applications=0 publish_github=0
+  while (( $# > 0 )); do
+    case "$1" in
+      -i|--install) install_to_applications=1 ;;
+      -g|--github)  publish_github=1 ;;
+      *) usage >&2; die "未知参数：$1（package 可用 -i|--install、-g|--github）" ;;
+    esac
+    shift
+  done
 
   cd "$ROOT_DIR"
   discover_plugins
@@ -388,6 +394,42 @@ cmd_package() {
   echo "Architectures: $archs"
   echo "Archive: $zip_path"
   echo "Checksum: $checksum_path"
+
+  # 发布到 GitHub Release：与 CI 的 main 分支路径一致——强制移动 latest 标签到当前
+  # 提交，存在 latest Release 则覆盖附件，否则创建；最后标记为 latest 版本。
+  # 本地发布要求 gh 已登录（gh auth status）；仓库从 git remote 自动推断。
+  if (( publish_github )); then
+    command -v gh >/dev/null 2>&1 || die "未安装 gh CLI（brew install gh）"
+    gh auth status >/dev/null 2>&1 || die "gh 未登录，请先 gh auth login"
+    git diff --quiet || die "工作区有未提交改动，请先提交后再发布（Release 标签需要指向有效提交）"
+
+    local release_tag="latest"
+    local release_title="NotchCenter 最新版"
+    local release_notes="本地构建 v$app_version (build $build_number)，$(date '+%Y-%m-%d %H:%M')。"
+    local head_sha
+    head_sha="$(git rev-parse HEAD)"
+
+    echo "Publishing $zip_path to GitHub Release '$release_tag'..."
+    git tag -f "$release_tag" "$head_sha"
+    git push --force origin "refs/tags/$release_tag"
+
+    if gh release view "$release_tag" >/dev/null 2>&1; then
+      gh release upload "$release_tag" \
+        "$zip_path" "$checksum_path" \
+        --clobber
+    else
+      gh release create "$release_tag" \
+        "$zip_path" "$checksum_path" \
+        --verify-tag \
+        --title "$release_title" \
+        --notes "$release_notes"
+    fi
+    gh release edit "$release_tag" \
+      --title "$release_title" \
+      --notes "$release_notes" \
+      --latest
+    echo "Published https://github.com/$(git remote get-url origin | sed -E 's#.*(github\.com[:/])##; s#\.git$##')/releases/tag/$release_tag"
+  fi
 
   if (( install_to_applications )); then
     local dest_app="/Applications/$app_name.app"
