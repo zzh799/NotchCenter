@@ -68,13 +68,12 @@ NotchCenter/
 │   ├── NotesPlugin/              # 笔记（MarkdownEngine 编辑器，StateStore 持久化）
 │   ├── ScratchpadPlugin/         # 文件暂存（只保存路径引用）
 │   ├── CaffeinatePlugin/         # 防休眠（SystemSleepGuard，管理员 pmset）
-│   ├── DshPlugin/                # dsh-web 服务控制卡（launchd 服务控制插件，见 docs/服务控制插件开发指南.md）
+│   ├── DshPlugin/                # dsh-web 服务控制卡（launchd 服务控制插件，见 docs/服务控制类插件开发指南.md）
 │   ├── CalibrePlugin/            # calibre-server 服务控制卡（同上）
 │   └── OpenCodeUsagePlugin/      # OpenCode 用量卡（抓取 opencode.ai SSR 页，同心环用量图 + Zen 余额）
 ├── LaunchdControlKit/            # launchd 管理基础库（独立本地包，仅服务控制类插件使用）
 ├── Vendor/swift-markdown-engine/ # vendored 依赖，仅 NotesPlugin 使用
-├── Scripts/package-app.sh        # 通用 .app + PlugIns/*.bundle + Frameworks + zip/sha256
-├── Scripts/prepare-dev-plugins.sh# 开发期把插件 dylib 组装成 .bundle 到可执行文件旁 PlugIns/
+├── Scripts/build.sh              # 统一构建脚本：dev（组装插件 bundle）/ package（发布 .app）/ clean
 ├── Resources/                    # AppIcon.png、Info.plist
 ├── docs/                         # 官网（GitHub Pages 读取 main 分支）
 └── .github/workflows/release.yml # CI：测试 → 构建 → 更新 GitHub Release
@@ -84,7 +83,7 @@ NotchCenter/
 
 ```bash
 # 本地运行（先准备插件 bundle）
-./Scripts/prepare-dev-plugins.sh        # 组装 .build/.../debug/PlugIns/*.bundle
+./Scripts/build.sh dev                  # 组装 .build/.../debug/PlugIns/*.bundle
 swift run NotchCenter
 
 
@@ -94,8 +93,11 @@ swift build
 swift test          # 或 swift test --filter <Name>
 
 # 构建发布版通用 .app，并生成 zip + sha256
-./Scripts/package-app.sh
+./Scripts/build.sh package
 open dist.noindex/NotchCenter.app
+
+# 清理构建产物（.build 与 dist.noindex）
+./Scripts/build.sh clean
 ```
 
 环境变量（构建脚本）：`APP_VERSION`（默认 1.0.0）、`BUILD_NUMBER`（默认 1）、`SIGN_IDENTITY`（默认 `-`，即临时签名）、`NOTARY_PROFILE`。
@@ -104,8 +106,8 @@ open dist.noindex/NotchCenter.app
 
 - **主线程隔离**：几乎所有 store、controller 与 Kit 公共 API 都标 `@MainActor`（文档 §4.9）。遵循 Swift 6 严格并发；插件内部后台任务自行处理，UI/状态更新必须回主线程。跨线程用 `Task.detached` / `DispatchQueue` 时需显式隔离（参考 `Plugins/NotesPlugin/Sources/NotesImageStore.swift` 的 `@unchecked Sendable` + `NSLock` 模式）。
 - **动态链接是本架构的关键**：`NotchCenterKit` 必须是**唯一的动态库**，宿主与插件通过 `.product(name: "NotchCenterKit", package: "NotchCenterKit")` 链接同一份代码（协议身份一致）。不要让它退化为 target 级静态链接（SPM 同包产品依赖不支持，所以 Kit 是独立本地包）；Kit 源码通常只加公共 API。
-- **插件主类必须 @objc(ClassName)**：SPM 动态库启用 library evolution，无显式 `@objc(...)` 时运行时类名会是 mangled 形式，`NSPrincipalClass` 找不到。新增插件时在类上写 `@objc(XxxPlugin)`，并在 `prepare-dev-plugins.sh` / `package-app.sh` 的元数据表里登记。
-- **插件身份来自 Info.plist**（文档 §4.1）：`NotchCenterPluginID` / `NotchCenterPluginVersion` / `NotchCenterPluginAPIVersion` / `NotchCenterPluginDisplayName` / `NotchCenterPluginDescription` / `NSPrincipalClass`。Info.plist 模板按 `prepare-dev-plugins.sh` 里的结构生成（注意 `..<` 需要 XML 转义为 `&lt;`）。
+- **插件主类必须 @objc(ClassName)**：SPM 动态库启用 library evolution，无显式 `@objc(...)` 时运行时类名会是 mangled 形式，`NSPrincipalClass` 找不到。新增插件时在类上写 `@objc(XxxPlugin)`；插件的唯一登记处是 `Plugins/<Name>/Plugin.plist`（Package.swift 与 build.sh 都从 Plugins/ 自动发现，不要在任何脚本或清单里手工维护插件列表）。
+- **插件身份来自 Info.plist**（文档 §4.1）：`NotchCenterPluginID` / `NotchCenterPluginVersion` / `NotchCenterPluginAPIVersion` / `NotchCenterPluginDisplayName` / `NotchCenterPluginDescription` / `NSPrincipalClass`。这些字段由 build.sh 从各插件的 `Plugins/<Name>/Plugin.plist`（必填 PluginID/Version/DisplayName/Description，可选 Dependencies/NSPrincipalClass/APIVersionRange）生成进 bundle 的 Info.plist（注意 `..<` 需要 XML 转义为 `&lt;`）。
 - **持久化**：插件状态一律走注入的 `StateStore`（文档 §4.6）；核心布局走 `layout.json`（`LayoutEngine.saveToDisk()`，原子写）。宿主退出时 `AppDelegate.applicationWillTerminate → panelController.flush() → layoutEngine.saveToDisk()`。
 - **文件暂存区只持有路径引用**：不复制、不移动、不删除用户原文件（`ScratchpadPlugin`）。新增文件操作时保持这一契约。
 - **保持唤醒需要管理员权限**：`SystemSleepGuard` 通过 `osascript with administrator privileges` 调用 `pmset disablesleep`。**不要在单元测试里触发真实休眠抑制**；测试只验证命令字符串与 shell 语法（见 `SystemSleepGuardTests`）。
@@ -135,6 +137,6 @@ open dist.noindex/NotchCenter.app
 ## 上手建议
 
 1. 先读 `docs/NotchCenter 架构设计文档.md`，再读 `NotchCenterKit`（协议与类型）→ `Sources/NotchCenter/PluginManager.swift` → `LayoutEngine.swift` → `NotchPanelController.swift` 理解插件生命周期与面板协调。
-2. 插件开发：参照 `Plugins/NotesPlugin/Sources/NotesPlugin.swift` 的入口模式（`static var blocks` + `attachServices`）。
-3. launchd 服务控制类插件（DshPlugin / CalibrePlugin 模式）：按 [`docs/服务控制插件开发指南.md`](docs/服务控制插件开发指南.md) 的分层、登记清单与 workerPattern 选取规则复制扩展——launchd 探测/控制/plist 逻辑一律复用 `LaunchdControlKit`，不要在插件里另写 launchd 或 plist 处理代码。
+2. 插件开发：先读 [`docs/插件开发指南.md`](docs/插件开发指南.md)（入口协议、Plugin.plist 登记、构建验证），再参照 `Plugins/NotesPlugin/Sources/NotesPlugin.swift` 的入口模式（`static var blocks` + `attachServices`）。
+3. launchd 服务控制类插件（DshPlugin / CalibrePlugin 模式）：按 [`docs/服务控制类插件开发指南.md`](docs/服务控制类插件开发指南.md) 的分层、五件套与 workerPattern 选取规则复制扩展——launchd 探测/控制/plist 逻辑一律复用 `LaunchdControlKit`，不要在插件里另写 launchd 或 plist 处理代码。
 4. UI 改动从 `CompactPanelView.swift` / `DrawerPanelView.swift` / `AddBlockArea.swift`（紧凑区/抽屉/编辑模式）入手。

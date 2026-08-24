@@ -44,14 +44,14 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 ## 本地运行
 
 ```bash
-./Scripts/prepare-dev-plugins.sh   # 组装官方插件 bundle 到 dev PlugIns 目录
+./Scripts/build.sh dev            # 组装官方插件 bundle 到 dev PlugIns 目录（可选 debug|release）
 swift run NotchCenter
 ```
 
 ## 构建发布包
 
 ```bash
-./Scripts/package-app.sh
+./Scripts/build.sh package
 open dist.noindex/NotchCenter.app
 ```
 
@@ -60,7 +60,7 @@ open dist.noindex/NotchCenter.app
 ```bash
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 NOTARY_PROFILE="notary-profile" \
-./Scripts/package-app.sh
+./Scripts/build.sh package
 ```
 
 ## 自动发布
@@ -78,7 +78,7 @@ NOTARY_PROFILE="notary-profile" \
 - SwiftUI：紧凑区、抽屉网格、编辑模式与插件管理界面。
 - 插件系统：动态 `.bundle` + `NSPrincipalClass`，共享 `NotchCenterKit` 动态库，插件状态经 `StateStore` 键值持久化。
 - MarkdownEngine：Notes 插件的 Markdown 编辑和内嵌图片。
-- LaunchdControlKit：DSH / Calibre 服务控制类插件复用的 launchd 探测与控制基础库（见 `docs/服务控制插件开发指南.md`）。
+- LaunchdControlKit：DSH / Calibre 服务控制类插件复用的 launchd 探测与控制基础库（见 `docs/服务控制类插件开发指南.md`）。
 
 ## 引用
 
