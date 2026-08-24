@@ -73,8 +73,9 @@ final class DragReorderReproTests: XCTestCase {
         for step in 0..<400 {
             let blocks = engine.drawerBlocks
             let victim = blocks[Int(rng.next() % UInt64(blocks.count))]
-            // 随机目标：含越界（负数、超列），模拟真实拖拽的任意落点。
-            let targetCol = Int(rng.next() % 8) - 1
+            // 随机目标：含深度越界（负列、超列），模拟真实拖拽的任意落点，
+            // 覆盖向左拖出自动左扩的 clamp 路径。
+            let targetCol = Int(rng.next() % 8) - 4
             let targetRow = Int(rng.next() % 8) - 1
             dragAndCommit(engine, id: victim.placementID, toColumn: targetCol, toRow: targetRow)
 
@@ -88,6 +89,13 @@ final class DragReorderReproTests: XCTestCase {
             XCTAssertLessThan(
                 row, 40,
                 "step \(step): 行号失控 row=\(row)，布局=\(engine.drawerBlocks)"
+            )
+            // 列双向扩大的容量不变量：合并后列跨度不得超过容量（左扩/右扩皆然）。
+            let minCol = engine.drawerBlocks.map(\.originColumn).min() ?? 0
+            let maxCol = engine.drawerBlocks.map { $0.originColumn + $0.widthColumns }.max() ?? 0
+            XCTAssertLessThanOrEqual(
+                maxCol - minCol, engine.effectiveMaxColumns(),
+                "step \(step): 列跨度超容量 span=\(maxCol - minCol)，布局=\(engine.drawerBlocks)"
             )
         }
         _ = maxRowEver
@@ -152,10 +160,13 @@ final class DragReorderReproTests: XCTestCase {
             dragAndCommit(
                 engine,
                 id: victim.placementID,
-                toColumn: Int(rng.next() % 6) - 1,
+                toColumn: Int(rng.next() % 8) - 4,
                 toRow: Int(rng.next() % 6) - 1
             )
             XCTAssertTrue(overlaps(engine).isEmpty)
+            let minCol = engine.drawerBlocks.map(\.originColumn).min() ?? 0
+            let maxCol = engine.drawerBlocks.map { $0.originColumn + $0.widthColumns }.max() ?? 0
+            XCTAssertLessThanOrEqual(maxCol - minCol, engine.effectiveMaxColumns())
         }
     }
 

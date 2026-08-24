@@ -16,14 +16,32 @@ extension LayoutEngine {
         )
     }
 
-    /// 实际占用的最大列数（行自适应的列对应物）：所有块右缘的最大列数，
-    /// clamp 到网格上限、下限 1。抽屉宽度据此随内容收缩，换行上限仍由
-    /// 用户设置（effectiveMaxColumns）决定。
+    /// 提交布局的占用列区间：(min = 最左占用列，max = 最右占用列的右缘，
+    /// exclusive)。列支持左右双向扩大——块被拖出左侧时 originColumn 可为负，
+    /// 区间随内容向左/右扩展；空布局返回 (0, 0)。
+    func occupiedColumnRange() -> (min: Int, max: Int) {
+        var minColumn = Int.max
+        var maxColumn = Int.min
+        for block in model.drawerBlocks {
+            minColumn = min(minColumn, block.originColumn)
+            maxColumn = max(maxColumn, block.originColumn + block.widthColumns)
+        }
+        if minColumn == Int.max { return (0, 0) }
+        return (minColumn, maxColumn)
+    }
+
+    /// 实际占用的列跨度（右缘 − 左缘，下限 1，封顶容量）：面板绕刘海居中，
+    /// 宽度随跨度左右双向自适应；行仅向下增长。换行上限仍由用户设置
+    /// （effectiveMaxColumns）决定。
     func occupiedColumns() -> Int {
-        let maxColumn = model.drawerBlocks
-            .map { $0.originColumn + $0.widthColumns }
-            .max() ?? 1
-        return min(max(maxColumn, 1), effectiveMaxColumns())
+        let range = occupiedColumnRange()
+        return min(max(range.max - range.min, 1), effectiveMaxColumns())
+    }
+
+    /// 提交布局的格网最左列（渲染偏移）：左扩为负时内容整体右移，
+    /// 使块的原点从面板左缘起算仍保持连续。
+    func gridLeftColumn() -> Int {
+        occupiedColumnRange().min
     }
 
     /// 网格内容尺寸（行列都随内容自适应）。
@@ -82,29 +100,35 @@ extension LayoutEngine {
         return max(occupiedRows, 1)
     }
 
-    /// 预览布局的实际占用列数：提交布局的右缘与预览 origins 的右缘取大。
-    /// `resized` 携带被缩放块的新列数（模型里 widthColumns 还是旧值）。
+    /// 预览布局的列区间（min/max 同 `occupiedColumnRange`）：提交布局与
+    /// 预览 origins 的并集，`resized` 携带被缩放块的新列数（模型里
+    /// widthColumns 还是旧值）。被移动块的落点同样含在 origins 中——
+    /// 向左拖出时的负列由此计入区间。
+    func previewColumnRange(
+        origins: [String: GridOrigin],
+        resized: (placementID: String, widthColumns: Int)? = nil
+    ) -> (min: Int, max: Int) {
+        var minColumn = Int.max
+        var maxColumn = Int.min
+        for block in model.drawerBlocks {
+            let column = origins[block.placementID]?.column ?? block.originColumn
+            let width = block.placementID == resized?.placementID
+                ? resized!.widthColumns
+                : block.widthColumns
+            minColumn = min(minColumn, column)
+            maxColumn = max(maxColumn, column + width)
+        }
+        if minColumn == Int.max { return (0, 0) }
+        return (minColumn, maxColumn)
+    }
+
+    /// 预览布局的列跨度（右缘 − 左缘，封顶容量）：提交布局与预览 origins
+    /// 取并集后按跨度计——向左扩大同样增加跨度，面板随之左右对称增宽。
     func previewOccupiedColumns(
         origins: [String: GridOrigin],
         resized: (placementID: String, widthColumns: Int)? = nil
     ) -> Int {
-        let committed = model.drawerBlocks
-            .map { block -> Int in
-                if block.placementID == resized?.placementID {
-                    return block.originColumn + resized!.widthColumns
-                }
-                return block.originColumn + block.widthColumns
-            }
-            .max() ?? 1
-        let preview = model.drawerBlocks
-            .map { block -> Int in
-                let column = origins[block.placementID]?.column ?? block.originColumn
-                let width = block.placementID == resized?.placementID
-                    ? resized!.widthColumns
-                    : block.widthColumns
-                return column + width
-            }
-            .max() ?? committed
-        return min(max(committed, preview, 1), effectiveMaxColumns())
+        let range = previewColumnRange(origins: origins, resized: resized)
+        return min(max(range.max - range.min, 1), effectiveMaxColumns())
     }
 }

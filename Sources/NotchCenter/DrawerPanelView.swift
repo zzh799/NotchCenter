@@ -255,7 +255,7 @@ struct DrawerPanelView: View {
                         : 0
                 )
                 .position(
-                    x: gridX(column: origin.column)
+                    x: gridX(column: origin.column - ui.drawerGridLeftColumn)
                         + gridWidth(columns: element.placement.widthColumns) / 2,
                     y: gridY(row: origin.row)
                         + gridHeight(rows: element.placement.heightRows) / 2

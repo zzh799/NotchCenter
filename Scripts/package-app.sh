@@ -34,6 +34,11 @@ API_RANGE_XML="${API_RANGE//</&lt;}"   # XML 转义（解析后仍是 1.0..<2.0�
 
 cd "$ROOT_DIR"
 
+# 发布包要求可复现：新增/重命名插件后增量缓存可能使新 product 缺失
+# （本地 .build/release-universal 残留旧产物，上次构建后新增的 DshPlugin/CalibrePlugin 等不会自动补上）。
+# 强制清理 scratch 目录，确保通用架构产物完整。
+rm -rf "$BUILD_DIR"
+
 swift build \
   -c release \
   --arch arm64 \
@@ -64,6 +69,11 @@ plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$CONTENTS_DIR/Info.plis
 # 共享框架（宿主与插件通过 @rpath 解析）。
 KIT_DYLIB="$PRODUCTS_DIR/libNotchCenterKit.dylib"
 if [[ -f "$KIT_DYLIB" ]]; then
+  KIT_ARCHS="$(lipo -archs "$KIT_DYLIB")"
+  if [[ "$KIT_ARCHS" != *"arm64"* || "$KIT_ARCHS" != *"x86_64"* ]]; then
+    echo "框架不是通用架构：libNotchCenterKit ($KIT_ARCHS)" >&2
+    exit 1
+  fi
   cp "$KIT_DYLIB" "$FRAMEWORKS_DIR/libNotchCenterKit.dylib"
 else
   echo "找不到框架产物：$KIT_DYLIB" >&2
@@ -73,6 +83,11 @@ fi
 # LaunchdControlKit（DshPlugin / CalibrePlugin 依赖的独立基础库动态库）。
 LAUNCHD_DYLIB="$PRODUCTS_DIR/libLaunchdControlKit.dylib"
 if [[ -f "$LAUNCHD_DYLIB" ]]; then
+  LAUNCHD_ARCHS="$(lipo -archs "$LAUNCHD_DYLIB")"
+  if [[ "$LAUNCHD_ARCHS" != *"arm64"* || "$LAUNCHD_ARCHS" != *"x86_64"* ]]; then
+    echo "框架不是通用架构：libLaunchdControlKit ($LAUNCHD_ARCHS)" >&2
+    exit 1
+  fi
   cp "$LAUNCHD_DYLIB" "$FRAMEWORKS_DIR/libLaunchdControlKit.dylib"
 else
   echo "找不到框架产物：$LAUNCHD_DYLIB" >&2
@@ -84,6 +99,11 @@ for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin CalibrePl
   DYLIB="$PRODUCTS_DIR/lib$product.dylib"
   if [[ ! -f "$DYLIB" ]]; then
     echo "找不到插件产物：$DYLIB" >&2
+    exit 1
+  fi
+  PLUGIN_ARCHS="$(lipo -archs "$DYLIB")"
+  if [[ "$PLUGIN_ARCHS" != *"arm64"* || "$PLUGIN_ARCHS" != *"x86_64"* ]]; then
+    echo "插件不是通用架构：$product ($PLUGIN_ARCHS)" >&2
     exit 1
   fi
 
@@ -183,7 +203,9 @@ fi
 xattr -cr "$APP_DIR"
 
 sign_nested() {
-  codesign --force --sign "$SIGN_IDENTITY" "$FRAMEWORKS_DIR/libNotchCenterKit.dylib"
+  for framework in "$FRAMEWORKS_DIR"/*.dylib; do
+    codesign --force --sign "$SIGN_IDENTITY" "$framework"
+  done
   for bundle in "$PLUGINS_DIR"/*.bundle; do
     codesign --force --sign "$SIGN_IDENTITY" "$bundle"
   done

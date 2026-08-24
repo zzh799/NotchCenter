@@ -349,27 +349,42 @@ final class NotchPanelController: NSObject {
 
     /// 拖拽/缩放预览期间面板按需增高/增宽（方案 E：纯 SwiftUI）：只更新
     /// `uiState.drawerWindowSize`，遮罩/内容即时随预览布局的最低行与
-    /// 实际占用列数扩展（窗口高度固定，无需任何 frame 操作）；提交后由
+    /// 列跨度扩展（窗口高度固定，无需任何 frame 操作）；提交后由
     /// `refreshAfterEdit` 的 spring 回落到压实尺寸。`resized` 为正在缩放
     /// 块的新跨度（底层块长高/加宽时唯一能反映变化的来源）。
+    ///
+    /// 尺寸变化与块推挤同帧完成（不等松手）：`drawerWindowSize`、
+    /// `drawerContentSize`（网格容器实时更新）与 `drawerGridLeftColumn`
+    /// （左扩渲染偏移）在一次 withAnimation 里更新——与视图内推挤预览
+    /// 使用同一 spring，面板扩大、容器扩展与其余块推挤动画同步起效。
     func applyPreviewWindowSize(
         _ origins: [String: LayoutEngine.GridOrigin],
         resized: (placementID: String, heightRows: Int, widthColumns: Int)? = nil
     ) {
         guard isExpanded, let pair = activePair, !origins.isEmpty else { return }
+        let resizedColumns = resized.map { ($0.placementID, $0.widthColumns) }
+        let columnRange = layoutEngine.previewColumnRange(origins: origins, resized: resizedColumns)
+        let columnSpan = min(
+            max(columnRange.max - columnRange.min, 1),
+            layoutEngine.effectiveMaxColumns()
+        )
         let size = drawerWindowSize(
             for: pair,
             previewRows: layoutEngine.previewBottomRow(
                 origins: origins,
                 resized: resized.map { ($0.placementID, $0.heightRows) }
             ),
-            previewColumns: layoutEngine.previewOccupiedColumns(
-                origins: origins,
-                resized: resized.map { ($0.placementID, $0.widthColumns) }
-            )
+            previewColumns: layoutEngine.previewOccupiedColumns(origins: origins, resized: resizedColumns)
         )
-        guard uiState.drawerWindowSize != size else { return }
-        uiState.drawerWindowSize = size
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+            uiState.drawerGridLeftColumn = columnRange.min
+            uiState.drawerContentSize = CGSize(
+                width: NotchGridMetrics.contentWidth(columns: columnSpan),
+                height: layoutEngine.drawerContentSize().height
+            )
+            guard uiState.drawerWindowSize != size else { return }
+            uiState.drawerWindowSize = size
+        }
     }
 
     /// 编辑操作提交后的刷新：内容 spring 重建（窗口高度固定，

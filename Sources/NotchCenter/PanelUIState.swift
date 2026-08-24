@@ -31,6 +31,9 @@ final class PanelUIState: ObservableObject {
     /// 抽屉网格内容与 AddBlock 目录条（编辑模式）。
     /// 可见面板尺寸见上方 `drawerWindowSize`（唯一动画真源）。
     @Published var drawerContentSize: CGSize = .zero
+    /// 格网内容最左列（列双向扩大：左侧拖出时可为负）：块渲染横坐标 =
+    /// (originColumn − 该值) × 步长，使左扩时内容整体右移、面板绕刘海对称增宽。
+    @Published var drawerGridLeftColumn = 0
     @Published var drawerElements: [DrawerElement] = []
     @Published var catalogPlugins: [CatalogPluginGroup] = []
 }

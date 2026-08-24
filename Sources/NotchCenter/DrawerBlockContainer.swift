@@ -95,6 +95,18 @@ struct DrawerBlockContainer: View {
                         }
                     : nil
             )
+            // 缩放预览跨度变化（新行/新列）时容器尺寸 spring 变形：
+            // 与面板扩大/其余块推挤同一动画（同帧完成，不等松手）。
+            .animation(
+                .spring(response: 0.3, dampingFraction: 0.86),
+                value: ResizePreviewState(columns: previewColumns, rows: previewRows)
+            )
+    }
+
+    /// 缩放预览状态的等值封装（供 .animation(value:) 比较）。
+    private struct ResizePreviewState: Equatable {
+        let columns: Int?
+        let rows: Int?
     }
 
     private var isResizing: Bool {

@@ -218,6 +218,7 @@ final class LayoutEngine: ObservableObject {
     // MARK: 抽屉网格（文档 §5.3）
 
     /// 自动放置到第一个可用位置；超出最大列数后自动换行。
+    /// 落位后压实空行/空列（左扩布局可能存在负列空洞）。
     @discardableResult
     func autoPlaceDrawerBlock(pluginID: String, blockID: String) -> PlacedBlock? {
         guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
@@ -242,6 +243,8 @@ final class LayoutEngine: ObservableObject {
                 )
                 if !overlaps(candidate, with: occupied) {
                     model.drawerBlocks.append(candidate)
+                    compactEmptyRows()
+                    compactEmptyColumns()
                     saveToDisk()
                     return candidate
                 }
@@ -259,6 +262,8 @@ final class LayoutEngine: ObservableObject {
             heightRows: span.rows
         )
         model.drawerBlocks.append(placed)
+        compactEmptyRows()
+        compactEmptyColumns()
         saveToDisk()
         return placed
     }
@@ -315,11 +320,14 @@ final class LayoutEngine: ObservableObject {
             return false
         }
         let block = model.drawerBlocks[index]
-        let columns = effectiveMaxColumns()
+        let bounds = validColumnRange(
+            others: model.drawerBlocks.filter { $0.placementID != placementID },
+            width: block.widthColumns
+        )
         var bestTarget: PlacedBlock?
 
-        // 优先目标位置（clamp 到网格内）。
-        let clampedColumn = min(max(toColumn, 0), max(0, columns - block.widthColumns))
+        // 优先目标位置（clamp 到合法列区间，左侧可为负——左扩）。
+        let clampedColumn = min(max(toColumn, bounds.lower), bounds.upper)
         let clampedRow = max(toRow, 0)
         var candidate = block
         candidate.originColumn = clampedColumn
@@ -332,7 +340,7 @@ final class LayoutEngine: ObservableObject {
         if bestTarget == nil {
             let maxRow = max(model.drawerBlocks.map(\.maxRow).max() ?? 0, clampedRow)
             scan: for row in 0...maxRow + 1 {
-                for col in 0...max(0, columns - block.widthColumns) {
+                for col in bounds.lower...bounds.upper {
                     var probe = block
                     probe.originColumn = col
                     probe.originRow = row
@@ -345,7 +353,7 @@ final class LayoutEngine: ObservableObject {
         }
 
         guard var target = bestTarget else { return false }
-        target.originColumn = min(max(target.originColumn, 0), max(0, columns - target.widthColumns))
+        target.originColumn = min(max(target.originColumn, bounds.lower), bounds.upper)
         target.originRow = max(target.originRow, 0)
         model.drawerBlocks[index] = target
         compactEmptyRows()
@@ -367,7 +375,7 @@ final class LayoutEngine: ObservableObject {
     /// 缩放块到任意声明的跨度（编辑模式）：跨度必须在块的 supportedSpans 内。
     /// 扩大与下方块重叠时不再回退，而是按阅读顺序推挤下移（与拖拽同一
     /// 逐块安放语义）；缩小留下的空行随后压实。左上角原点保持不变
-    /// （仅越界列数时向左收紧）。
+    /// （仅当合并后跨度过容量时向左收紧，原点可为负——左扩）。
     @discardableResult
     func resizeDrawerBlock(placementID: String, toColumns: Int, toRows: Int) -> Bool {
         guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
@@ -383,8 +391,11 @@ final class LayoutEngine: ObservableObject {
         resized.widthColumns = toColumns
         resized.heightRows = toRows
 
-        let columns = effectiveMaxColumns()
-        resized.originColumn = min(max(resized.originColumn, 0), max(0, columns - resized.widthColumns))
+        let bounds = validColumnRange(
+            others: model.drawerBlocks.filter { $0.placementID != placementID },
+            width: toColumns
+        )
+        resized.originColumn = min(max(resized.originColumn, bounds.lower), bounds.upper)
         resized.originRow = max(resized.originRow, 0)
 
         model.drawerBlocks[index] = resized
@@ -403,19 +414,24 @@ final class LayoutEngine: ObservableObject {
 
     /// 拖拽实时预览（不落盘，文档 §5.5）：把 `placementID` 放到目标格子，
     /// 被占用的块向下推挤（自动重排），返回全体块的新位置，key 为 placementID。
+    /// 列支持左右双向：目标列可为负（向左拖出时格网随内容向左扩大），
+    /// 但合并后的总跨度不得超过容量（屏幕约束）。
     func previewArrangement(moving placementID: String, toColumn: Int, toRow: Int) -> [String: GridOrigin] {
         guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
             return [:]
         }
         var changed = model.drawerBlocks[index]
-        let columns = effectiveMaxColumns()
-        changed.originColumn = min(max(toColumn, 0), max(0, columns - changed.widthColumns))
+        let bounds = validColumnRange(
+            others: model.drawerBlocks.filter { $0.placementID != placementID },
+            width: changed.widthColumns
+        )
+        changed.originColumn = min(max(toColumn, bounds.lower), bounds.upper)
         changed.originRow = max(toRow, 0)
         return pushDownOrigins(changed: changed)
     }
 
     /// 缩放实时预览（不落盘）：把 `placementID` 视为已改到目标跨度（原点不动，
-    /// 仅按列宽 clamp 到网格内），其余块推挤下移——上方块扩大时下方整块下移、
+    /// 仅按列跨度 clamp 到容量内），其余块推挤下移——上方块扩大时下方整块下移、
     /// 面板随之增高的实时依据。跨度不在 supportedSpans 内返回空。
     func previewArrangement(resizing placementID: String, toColumns: Int, toRows: Int) -> [String: GridOrigin] {
         guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
@@ -426,12 +442,28 @@ final class LayoutEngine: ObservableObject {
               definition.supportedSpans.contains(GridSpan(columns: toColumns, rows: toRows)) else {
             return [:]
         }
-        let columns = effectiveMaxColumns()
+        let bounds = validColumnRange(
+            others: model.drawerBlocks.filter { $0.placementID != placementID },
+            width: toColumns
+        )
         changed.widthColumns = toColumns
         changed.heightRows = toRows
-        changed.originColumn = min(max(changed.originColumn, 0), max(0, columns - changed.widthColumns))
+        changed.originColumn = min(max(changed.originColumn, bounds.lower), bounds.upper)
         changed.originRow = max(changed.originRow, 0)
         return pushDownOrigins(changed: changed)
+    }
+
+    /// 移动/缩放目标列的合法区间：把目标块（跨度 width）并入其他块的占用区
+    /// 后，整体列跨度不得超过容量。左扩时区间下限可为负（格网向左扩展），
+    /// 右扩时上限按容量收紧；其他块为空时以 0 为基线。
+    /// 推导：finalMin = min(othersMin, col)，finalMax = max(othersMax, col + width)，
+    /// 要求 finalMax − finalMin ≤ capacity ⟺ col ∈ [othersMax − capacity,
+    /// othersMin + capacity − width]。
+    private func validColumnRange(others: [PlacedBlock], width: Int) -> (lower: Int, upper: Int) {
+        let othersMin = others.map(\.originColumn).min() ?? 0
+        let othersMax = others.map { $0.originColumn + $0.widthColumns }.max() ?? 0
+        let capacity = effectiveMaxColumns()
+        return (othersMax - capacity, othersMin + capacity - width)
     }
 
     /// 推挤重排核心（逐块安放）：把 `changed`（已改到目标原点/跨度的块）
@@ -468,16 +500,17 @@ final class LayoutEngine: ObservableObject {
         return result
     }
 
-    /// 把推挤结果写回模型（clamp 到网格内）。
+    /// 把推挤结果写回模型（逐个按合法列区间 clamp，左侧可为负——左扩）。
     private func applyOrigins(_ origins: [String: GridOrigin]) {
-        let columns = effectiveMaxColumns()
         for index in model.drawerBlocks.indices {
             let block = model.drawerBlocks[index]
             guard let target = origins[block.placementID] else { continue }
-            let clampedColumn = min(max(target.column, 0), max(0, columns - block.widthColumns))
-            let clampedRow = max(target.row, 0)
-            model.drawerBlocks[index].originColumn = clampedColumn
-            model.drawerBlocks[index].originRow = clampedRow
+            let bounds = validColumnRange(
+                others: model.drawerBlocks.filter { $0.placementID != block.placementID },
+                width: block.widthColumns
+            )
+            model.drawerBlocks[index].originColumn = min(max(target.column, bounds.lower), bounds.upper)
+            model.drawerBlocks[index].originRow = max(target.row, 0)
         }
     }
 
@@ -509,28 +542,37 @@ final class LayoutEngine: ObservableObject {
         return changed
     }
 
-    /// 水平压实（编辑模式契约：不留空列）：自左向右找到首个完全空置的列，
-    /// 把其右所有块整体左移一列，重复直到没有空列。列内的部分留白保留
-    /// （只消整列空洞）；右侧块整体左移、相对位置不变，不产生新重叠。
+    /// 水平压实（编辑模式契约：不留空列）：在占用列区间 [min, max) 内自左
+    /// 向右找到首个完全空置的列，右侧块整体左移一列（空列 ≥ 0 时）；若空列
+    /// 为负（左扩区域内的空洞），左侧块整体右移一列——双向都朝 0 收拢，
+    /// 不产生新重叠。重复直到没有空列。列内的部分留白保留（只消整列空洞）。
     /// 与 compactEmptyRows 对称，仅由变更路径调用（移动/移除/缩放/提交后），
     /// 加载净化不经过这里（无重叠布局的留白受 sanitized 保护）。
     @discardableResult
     private func compactEmptyColumns() -> Bool {
         var changed = false
         while true {
+            let minColumn = model.drawerBlocks.map(\.originColumn).min() ?? 0
             let maxColumn = model.drawerBlocks.map { $0.originColumn + $0.widthColumns }.max() ?? 0
-            guard maxColumn > 0 else { break }
+            guard maxColumn > minColumn else { break }
             var occupiedColumns = Set<Int>()
             for block in model.drawerBlocks {
                 for col in block.originColumn..<block.originColumn + block.widthColumns {
                     occupiedColumns.insert(col)
                 }
             }
-            // 空列必在其左有块（maxColumn 内）且其右有块（否则推不出 maxColumn），
-            // 左移后该列被填充，每轮严格减少总列数——必然终止。
-            guard let emptyColumn = (0..<maxColumn).first(where: { !occupiedColumns.contains($0) }) else { break }
-            for index in model.drawerBlocks.indices where model.drawerBlocks[index].originColumn > emptyColumn {
-                model.drawerBlocks[index].originColumn -= 1
+            // 空列必在其左有块（minColumn 内）且其右有块（否则推不出 maxColumn），
+            // 向 0 方向收拢一列，每轮严格减少总跨度——必然终止。
+            guard let emptyColumn = (minColumn..<maxColumn)
+                .first(where: { !occupiedColumns.contains($0) }) else { break }
+            if emptyColumn >= 0 {
+                for index in model.drawerBlocks.indices where model.drawerBlocks[index].originColumn > emptyColumn {
+                    model.drawerBlocks[index].originColumn -= 1
+                }
+            } else {
+                for index in model.drawerBlocks.indices where model.drawerBlocks[index].originColumn < emptyColumn {
+                    model.drawerBlocks[index].originColumn += 1
+                }
             }
             changed = true
         }

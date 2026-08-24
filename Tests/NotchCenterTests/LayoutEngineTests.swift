@@ -484,6 +484,110 @@ final class LayoutEngineTests: XCTestCase {
         XCTAssertEqual(engine.previewBottomRow(origins: preview, resized: ("b", 2)), 3)
         try? FileManager.default.removeItem(at: directory)
     }
+
+    // MARK: 编辑模式契约：列双向扩大（左扩）+ 行仅向下
+
+    /// 向左拖出：格网自动向左扩大（originColumn 为负），面板跨度随之增加；
+    /// 提交后左扩保持，行压实只向下（不影响列）。
+    func testDragLeftOutExpandsGridLeft() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 1, height: 1)
+        placeRaw(engine, id: "b", column: 1, row: 0, width: 1, height: 1)
+
+        let preview = engine.previewArrangement(moving: "a", toColumn: -1, toRow: 0)
+        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: -1, row: 0))
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 1, row: 0))
+        // 预览期间按并集跨度（-1..2 = 3 列）计算面板宽度与左缘偏移。
+        XCTAssertEqual(engine.previewOccupiedColumns(origins: preview), 3)
+        XCTAssertEqual(engine.previewColumnRange(origins: preview).min, -1)
+        XCTAssertEqual(engine.previewColumnRange(origins: preview).max, 2)
+        XCTAssertEqual(engine.previewBottomRow(origins: preview), 1)
+
+        // 所见即所得：提交后 a 留在 -1，空列 0 由 b 左移闭合（不留空列）。
+        XCTAssertTrue(engine.commitArrangement(preview))
+        XCTAssertEqual(engine.drawerBlock(placementID: "a")?.originColumn, -1)
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originColumn, 0)
+        XCTAssertEqual(engine.occupiedColumns(), 2)
+        XCTAssertEqual(engine.gridLeftColumn(), -1)
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 左扩受容量约束：其他块已占满容量时，向左拖出不会让总跨度超屏。
+    func testDragLeftExpansionRespectsCapacity() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        engine.updateScreenConstraint(width: 700) // 容量 4
+        for col in 0..<4 {
+            placeRaw(engine, id: "c\(col)", column: col, row: 0, width: 1, height: 1)
+        }
+
+        let preview = engine.previewArrangement(moving: "c0", toColumn: -1, toRow: 0)
+        // 跨度上限 4：-1 越界，clamp 回 0（其余块原位）。
+        XCTAssertEqual(preview["c0"], LayoutEngine.GridOrigin(column: 0, row: 0))
+        XCTAssertEqual(engine.previewOccupiedColumns(origins: preview), 4)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 左侧有空列时允许左扩；左移后的负列空洞向 0 收拢（左侧块右移）。
+    func testLeftGapCompactsTowardZero() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: -2, row: 0, width: 1, height: 1)
+        placeRaw(engine, id: "b", column: 0, row: 0, width: 1, height: 1)
+
+        // b 让出列 0（下移一行）：列 -1 出现空洞 → 左侧块 a 右移闭合。
+        XCTAssertTrue(engine.moveDrawerBlock(placementID: "b", toColumn: 0, toRow: 1))
+        XCTAssertEqual(engine.drawerBlock(placementID: "a")?.originColumn, -1)
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originColumn, 0)
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 左扩布局上再自动添加块：落位后压实，不留下负列空洞。
+    func testAutoPlaceAfterLeftExpansionClosesGap() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: -2, row: 0, width: 1, height: 1)
+        placeRaw(engine, id: "b", column: 0, row: 0, width: 1, height: 1)
+
+        // 列 -1 空洞：autoPlace 落位首个空位后压实，空洞由 a 右移闭合。
+        let added = try XCTUnwrap(engine.autoPlaceDrawerBlock(pluginID: "com.test.plugin", blockID: "cell"))
+        XCTAssertEqual(engine.drawerBlock(placementID: "a")?.originColumn, -1)
+        XCTAssertEqual(engine.drawerBlock(placementID: added.placementID)?.originColumn, 1)
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 左扩块的缩放：原点不动（行仅向下、列单握把右扩），仅按容量收紧。
+    func testResizeKeepsLeftOriginWhenExpanding() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: -1, row: 0, width: 1, height: 1)
+
+        XCTAssertTrue(engine.resizeDrawerBlock(placementID: "a", toColumns: 2, toRows: 1))
+        let resized = engine.drawerBlock(placementID: "a")
+        XCTAssertEqual(resized?.originColumn, -1)
+        XCTAssertEqual(resized?.widthColumns, 2)
+        XCTAssertEqual(resized?.originRow, 0, "行始终顶边锚定，只向下扩大")
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 负列 origin 是合法布局（不再判定越界），只有合并后跨度过容量才越界。
+    func testValidateAllowsNegativeOriginColumns() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: -1, row: 0, width: 1, height: 1)
+        XCTAssertTrue(engine.validate().isEmpty)
+
+        // 跨度过容量（a 在 -1 + b 宽 4 从列 1 起：跨度 6 > 容量 4）：仍应报越界。
+        placeRaw(engine, id: "b", column: 1, row: 1, width: 4, height: 1)
+        let issues = engine.validate()
+        XCTAssertTrue(issues.contains { if case .outOfBounds = $0 { return true }; return false })
+        try? FileManager.default.removeItem(at: directory)
+    }
 }
 
 @MainActor

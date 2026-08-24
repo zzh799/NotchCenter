@@ -14,13 +14,16 @@ extension LayoutEngine {
             issues.append(.compactSlotCountMismatch)
         }
 
+        let gridMinColumn = model.drawerBlocks.map(\.originColumn).min() ?? 0
         for (index, block) in model.drawerBlocks.enumerated() {
             for other in model.drawerBlocks.dropFirst(index + 1) where Self.rectsOverlap(block, other) {
                 issues.append(.overlap(first: block.placementID, second: other.placementID))
             }
             let columns = effectiveMaxColumns()
-            if block.originColumn < 0 || block.originRow < 0
-                || block.originColumn + block.widthColumns > columns {
+            // 列双向扩大：originColumn 可以为负（左侧拖出自动左扩），
+            // 越界只看合并后的列跨度是否超过容量；行仍仅向下（非负）。
+            if block.originRow < 0
+                || (block.originColumn - gridMinColumn) + block.widthColumns > columns {
                 issues.append(.outOfBounds(placementID: block.placementID))
             }
             switch blockResolver(block.pluginID, block.blockID)?.kind {

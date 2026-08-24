@@ -89,6 +89,7 @@ extension NotchPanelController {
             self.uiState.canAddCompact = self.layoutEngine.compactSlots.contains(where: { $0 == nil })
 
             self.uiState.drawerContentSize = self.layoutEngine.drawerContentSize()
+            self.uiState.drawerGridLeftColumn = self.layoutEngine.gridLeftColumn()
             // 目录先就位，窗口尺寸才能计入 AddBlock 区域高度。
             self.uiState.catalogPlugins = catalogPlugins
             self.uiState.drawerWindowSize = self.drawerWindowSize(for: self.activePair ?? self.pairs.first)
