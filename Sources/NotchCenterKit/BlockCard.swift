@@ -20,9 +20,6 @@ enum BlockCardMetrics {
     static let hoverAnimation = Animation.easeOut(duration: 0.12)
 }
 
-/// 长按触发浮窗的最短按压时长。
-private let popoverLongPressDuration: TimeInterval = 0.2
-
 // MARK: - 卡片壳
 
 /// 抽屉块标准表面：圆角 10 连续，撑满外层容器提案的全部空间
@@ -80,15 +77,41 @@ public struct BlockCard<Content: View>: View {
 
 // MARK: - 长按浮窗触发器
 
+/// 触发器的按压分类参数（独立纯值，`BlockCardTriggerTests` 覆盖）。
+public enum BlockTapClassifier {
+    /// 长按浮窗的最短按压时长。
+    public static let longPressDuration: TimeInterval = 0.2
+    /// 超过该位移视为拖动（对齐 `LongPressGesture` 默认 maximumDistance 的容忍度），
+    /// 既不算 tap 也不再弹浮窗（滚动意图）。
+    public static let movementTolerance: CGFloat = 10
+
+    /// 一次「按下 → 松开」应归类为点击吗？
+    /// 快速、未移动、且长按尚未触发才成立；长按后的松手必须被抑制，
+    /// 否则松手瞬间会误触 onTap（如误开网页）。
+    public static func isTap(
+        heldDuration: TimeInterval,
+        translation: CGSize,
+        longPressFired: Bool
+    ) -> Bool {
+        let moved = hypot(translation.width, translation.height) > movementTolerance
+        return heldDuration < longPressDuration && !moved && !longPressFired
+    }
+}
+
 public extension View {
     /// 块交互层（按需叠加）：按住满 0.2s 的瞬间即回调 `onLongPress`，
     /// **无需等鼠标释放**；回调携带块在宿主窗口坐标系中的 frame
     /// （SwiftUI `.global` 空间），供 `BlockPopover.present(anchoredTo:)` 定位。
-    /// 按压期间在内容上方叠加增亮覆盖，提示浮窗即将弹出；手势失败
-    /// （提前松手/滚动）自动复位。
+    /// 按压期间在内容上方叠加增亮覆盖，提示浮窗即将弹出；提前松手/
+    /// 拖走（滚动意图）自动复位。
     ///
     /// `onTap` 为可选点击动作，长按期间自动抑制（保住“开关等子控件
     /// 自行消费点击”的语义）。挂在整卡上（含背景区）。
+    ///
+    /// 实现说明：整条交互由单个 `DragGesture(minimumDistance: 0)` 驱动，
+    /// 不用 `TapGesture`——它与 simultaneous 失败长按并存时在真机上不触发
+    /// （DSH/Calibre「点击开网页」失效的根因），而 DragGesture 管线与
+    /// 缩放握把/滚动探针同路，行为可靠。分类阈值见 `BlockTapClassifier`。
     func blockPopoverTrigger(
         onTap: (() -> Void)? = nil,
         onLongPress: @escaping (_ frameInWindow: CGRect) -> Void
@@ -103,8 +126,14 @@ private struct BlockPopoverTriggerModifier: ViewModifier {
 
     /// 块在宿主窗口坐标系中的 frame（GeometryReader 实时捕获），用于浮窗定位。
     @State private var frameInWindow: CGRect?
-    /// 长按进行中：背景微亮提示浮窗即将弹出（GestureState，手势中断自动复位）。
-    @GestureState private var isPressing = false
+    /// 长按进行中：背景微亮提示浮窗即将弹出。普通 @State 手动维护；
+    /// 若手势被系统静默接管（无 onEnded），残留的增亮会在下一次按压开始时复位。
+    @State private var isPressing = false
+    /// 本次按压的起点时刻；nil 表示当前没有按压。同时充当长按定时器的
+    /// `.task(id:)` 身份——置回 nil 即自动取消待触发的浮窗。
+    @State private var pressStartDate: Date?
+    /// 本次按压是否已触发过长按浮窗（抑制其后的松手误判为 tap）。
+    @State private var longPressFired = false
 
     func body(content: Content) -> some View {
         content
@@ -126,12 +155,25 @@ private struct BlockPopoverTriggerModifier: ViewModifier {
                 }
             }
             .animation(BlockCardMetrics.hoverAnimation, value: isPressing)
-            // 手势顺序与既有块一致：长按优先于点击；开关自身消费点击不触发 onTap。
-            .simultaneousGesture(longPressGesture)
-            .onTapGesture {
-                guard !isPressing else { return }
-                onTap?()
+            // 长按定时器：按压开始（pressStartDate 变为非 nil）后等满 0.2s，
+            // 仍在同一按压中 → 弹浮窗。松手/拖走把 pressStartDate 置回 nil，
+            // 任务身份变化即自动取消，无需手管 DispatchWorkItem。
+            .task(id: pressStartDate) {
+                guard pressStartDate != nil else { return }
+                do {
+                    try await Task.sleep(for: .seconds(BlockTapClassifier.longPressDuration))
+                } catch {
+                    return // 已被取消（松手/拖走/新按压）
+                }
+                guard pressStartDate != nil, !longPressFired else { return }
+                longPressFired = true
+                if let frameInWindow {
+                    onLongPress(frameInWindow)
+                }
             }
+            // 开关等子控件自行消费点击的语义靠 simultaneous 保住：
+            // 卡片层手势不独占事件流，子控件命中时 SwiftUI 优先派发给它们。
+            .simultaneousGesture(pressGesture)
     }
 
     /// 配平后的按压覆盖：填充 0.025+0.03≈0.055、描边 0.09+0.12≈0.20；
@@ -146,15 +188,48 @@ private struct BlockPopoverTriggerModifier: ViewModifier {
         .allowsHitTesting(false)
     }
 
-    /// 纯 LongPressGesture：不能用 sequenced(before: DragGesture)——onEnded 会
-    /// 推迟到第二阶段（拖拽）结束，浮窗变成松手后才弹出。
-    private var longPressGesture: some Gesture {
-        LongPressGesture(minimumDuration: popoverLongPressDuration)
-            .onEnded { _ in
-                guard let frameInWindow else { return }
-                onLongPress(frameInWindow)
+    /// 单手势驱动整条交互：
+    /// - 按下即点亮按压态并记录起点（同时启动上方 `.task` 定时器）；
+    /// - 提前松手且未移动未触发过长按 → tap；
+    /// - 位移超出容忍（滚动意图）→ 清空起点取消浮窗并熄灭按压态。
+    /// 坐标空间用 .global：平移量在窗口坐标系度量，不受块自身动画位移干扰
+    ///（同缩放握把的教训，见 AGENTS.md）。
+    ///
+    /// 已知边界：手势若被系统静默接管（无 onEnded 的极端场景），残留状态会
+    /// 吞掉下一次点击后自愈（onEnded 兜底复位），仅此一次，无视觉副作用。
+    private var pressGesture: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .global)
+            .onChanged { value in
+                if pressStartDate == nil {
+                    pressStartDate = Date()
+                    isPressing = true
+                    longPressFired = false
+                } else if hypot(value.translation.width, value.translation.height)
+                    > BlockTapClassifier.movementTolerance {
+                    // 拖出容忍范围：滚动意图——清空起点取消待触发的浮窗并熄灭
+                    // 按压态（与旧 LongPressGesture 超出 maximumDistance 即失败一致；
+                    // 起点为空也天然排除了 tap 分类）。
+                    pressStartDate = nil
+                    isPressing = false
+                }
             }
-            // 按下即点亮按压态；手势失败（提前松手/滚动）自动复位。
-            .updating($isPressing) { _, state, _ in state = true }
+            .onEnded { value in
+                defer { resetPressState() }
+                guard let start = pressStartDate else { return }
+                let held = Date().timeIntervalSince(start)
+                if BlockTapClassifier.isTap(
+                    heldDuration: held,
+                    translation: value.translation,
+                    longPressFired: longPressFired
+                ) {
+                    onTap?()
+                }
+            }
+    }
+
+    private func resetPressState() {
+        pressStartDate = nil
+        isPressing = false
+        longPressFired = false
     }
 }
