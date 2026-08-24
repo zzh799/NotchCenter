@@ -10,7 +10,7 @@ import SwiftUI
     public static var blocks: [NotchBlock] = [
         NotchBlock(
             id: "calibre.service",
-            displayName: "Calibre Server",
+            displayName: L("calibre.block.name"),
             kind: .drawer,
             supportedSizes: [.small, .medium],
             defaultSize: .small,

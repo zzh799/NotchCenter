@@ -1,5 +1,8 @@
 /* DshPlugin UI 简体中文文案。品牌名 DSH Web / DSH Service 保持英文。 */
 
+/* 块显示名（添加目录；单组件目录下独立成立，不再叠加插件名，与插件显示名一致） */
+"dsh.block.name" = "DSH 服务";
+
 /* 服务状态（浮窗完整版 / 块副标题短版） */
 "dsh.state.managed" = "由 launchd 管理";
 "dsh.state.loadedNotRunning" = "已加载未运行";

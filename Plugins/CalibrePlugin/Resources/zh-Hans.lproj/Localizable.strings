@@ -1,5 +1,8 @@
 /* CalibrePlugin 简体中文文案。品牌名 Calibre 保持原文。 */
 
+/* 块显示名（添加目录；单组件目录下独立成立，不再叠加插件名） */
+"calibre.block.name" = "Calibre 服务";
+
 /* 抽屉块副标题 */
 "calibre.subtitle.running" = "运行中 · 端口 %@";
 "calibre.subtitle.unmanaged" = "⚠️ 有未受管的进程";

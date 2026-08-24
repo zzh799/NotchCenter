@@ -1,7 +1,7 @@
 /* NotesPlugin 英文文案（开发基准语言，键缺失时兜底） */
 
-/* 块与菜单 */
-"notes.block.compact" = "Notes";
+/* 块与菜单（compact block name states the concrete action） */
+"notes.block.compact" = "New Note";
 "notes.block.notebook" = "Notebook";
 "notes.newNote" = "New Note";
 

@@ -16,8 +16,8 @@ struct CatalogPluginGroup: Identifiable {
 
 /// 编辑模式的横向 AddBlock 区域：插入在紧凑带与网格之间，自身分上下两栏。
 /// 上栏：紧凑块目录，点击即追加到紧凑带末尾（带宽随图标数动态伸缩，
-/// 不设数量上限，无需置灰）；下栏：抽屉块目录，按插件内联分组（插件名
-/// 小标签 → 块条目 → 竖分隔线），单行横向滚动不换行。条目统一为
+/// 不设数量上限，无需置灰）；下栏：抽屉块目录，按插件内联分组（仅多组件
+/// 插件带插件名小标签 → 块条目 → 竖分隔线），单行横向滚动不换行。条目统一为
 /// “图标 + 块名”药丸；块未声明 symbolName 时回退纯文本。
 struct AddBlockArea: View {
     let plugins: [CatalogPluginGroup]
@@ -95,10 +95,14 @@ struct AddBlockArea: View {
                 rowCaption(L("addblock.drawer"))
                 ForEach(Array(groups.enumerated()), id: \.element.id) { index, plugin in
                     HStack(spacing: 6) {
-                        Text(plugin.displayName)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.42))
-                            .fixedSize()
+                        // 插件内只有一个抽屉组件时不显示插件名：块名即功能名，
+                        // 避免同一信息出现两遍（块 displayName 由插件保证自明）。
+                        if plugin.drawerBlocks.count > 1 {
+                            Text(plugin.displayName)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.42))
+                                .fixedSize()
+                        }
                         ForEach(plugin.drawerBlocks) { block in
                             catalogPill(
                                 block,

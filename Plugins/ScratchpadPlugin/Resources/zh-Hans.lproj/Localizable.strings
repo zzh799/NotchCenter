@@ -1,8 +1,8 @@
 /* ScratchpadPlugin UI 文案（简体中文） */
 
-/* 块与元数据显示名 */
-"block.compact.name" = "暂存区";
-"block.shelf.name" = "文件架";
+/* 块与元数据显示名（紧凑块名 = 具体功能；抽屉块名单组件目录下独立成立） */
+"block.compact.name" = "清空暂存区";
+"block.shelf.name" = "暂存区";
 
 /* 抽屉块空态 */
 "shelf.empty.title" = "暂存区";

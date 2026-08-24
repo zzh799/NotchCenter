@@ -10,7 +10,7 @@ import SwiftUI
     public static var blocks: [NotchBlock] = [
         NotchBlock(
             id: "dsh.service",
-            displayName: "DSH Service",
+            displayName: L("dsh.block.name"),
             kind: .drawer,
             supportedSizes: [.small, .medium],
             defaultSize: .small,

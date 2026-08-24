@@ -1,5 +1,8 @@
 /* CalibrePlugin 英文文案（开发基准语言，键缺失时兜底）。品牌名 Calibre 保持原文。 */
 
+/* 块显示名（添加目录；单组件目录下独立成立，不再叠加插件名） */
+"calibre.block.name" = "Calibre Server";
+
 /* 抽屉块副标题 */
 "calibre.subtitle.running" = "Running · port %@";
 "calibre.subtitle.unmanaged" = "⚠️ Unmanaged process";

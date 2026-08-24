@@ -1,7 +1,7 @@
 /* ScratchpadPlugin UI 文案（英文为基准语言） */
 
-/* 块与元数据显示名 */
-"block.compact.name" = "Scratchpad";
+/* 块与元数据显示名（compact block name states the concrete action） */
+"block.compact.name" = "Clear Scratchpad";
 "block.shelf.name" = "File Shelf";
 
 /* 抽屉块空态 */
