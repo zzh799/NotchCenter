@@ -11,7 +11,6 @@ import NotchCenterKit
 final class LayoutEngine: ObservableObject {
     enum LayoutIssue: Equatable {
         case schemaVersionMismatch(Int)
-        case compactSlotCountMismatch
         case overlap(first: String, second: String)
         case outOfBounds(placementID: String)
         case unknownBlock(pluginID: String, blockID: String)
@@ -55,7 +54,12 @@ final class LayoutEngine: ObservableObject {
         if let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode(LayoutModel.self, from: data),
            decoded.schemaVersion <= LayoutModel.currentSchemaVersion {
-            model = Self.sanitized(decoded)
+            var loaded = Self.sanitized(decoded)
+            // 旧版固定 3 槽文件可能含 null 占位（解码不经自定义 init，
+            // 归一化只在这里兜底）：剥除空槽、闭合空隙——数组长度即
+            // 图标数，宽度随其伸缩。
+            loaded.compactSlots = LayoutModel.normalizedCompactSlots(loaded.compactSlots)
+            model = loaded
             didLoadFromDisk = true
         } else {
             model = LayoutModel()
@@ -182,11 +186,22 @@ final class LayoutEngine: ObservableObject {
         saveToDisk()
     }
 
-    // MARK: 紧凑槽位（文档 §5.2）
+    // MARK: 紧凑槽位（文档 §5.2：数组长度即图标数，宽度随其动态伸缩）
 
+    /// 设置某索引的紧凑块引用。`nil` = 移除该图标（闭合空隙，后续图标前移）；
+    /// 非空 = 替换该索引（索引等于当前长度则追加到末尾）；越界忽略。
     func setCompactSlot(_ index: Int, to ref: CompactSlotReference?) {
-        guard model.compactSlots.indices.contains(index) else { return }
-        model.compactSlots[index] = ref
+        guard let ref else {
+            guard model.compactSlots.indices.contains(index) else { return }
+            model.compactSlots.remove(at: index)
+            saveToDisk()
+            return
+        }
+        if model.compactSlots.indices.contains(index) {
+            model.compactSlots[index] = ref
+        } else if index == model.compactSlots.count {
+            model.compactSlots.append(ref)
+        }
         saveToDisk()
     }
 
@@ -197,20 +212,17 @@ final class LayoutEngine: ObservableObject {
         saveToDisk()
     }
 
-    /// 添加紧凑块到第一个空槽位；无空槽返回 false。
+    /// 添加紧凑块到末尾（紧凑带长度随之增长，带宽动态伸缩）。
     @discardableResult
     func addCompactBlock(pluginID: String, blockID: String) -> Bool {
         guard let block = blockResolver(pluginID, blockID), block.kind == .compact else {
             return false
         }
-        guard let emptyIndex = model.compactSlots.firstIndex(where: { $0 == nil }) else {
-            return false
-        }
-        model.compactSlots[emptyIndex] = CompactSlotReference(
+        model.compactSlots.append(CompactSlotReference(
             pluginID: pluginID,
             blockID: blockID,
             placementID: UUID().uuidString
-        )
+        ))
         saveToDisk()
         return true
     }

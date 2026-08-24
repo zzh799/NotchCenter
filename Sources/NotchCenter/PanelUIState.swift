@@ -24,8 +24,10 @@ final class PanelUIState: ObservableObject {
     /// 槽位布局）不在这里——它按屏幕各异，由各面板以 `layout` 参数持有
     /// （热区/抽屉视图用所属 pair 的几何，不共享主屏几何）。
     @Published var compactElements: [CompactElement] = []
-    /// 紧凑槽位是否仍有空位（AddBlock 上栏条目据此置灰）。
-    @Published var canAddCompact = true
+    /// 当前紧凑图标数：紧凑带宽度随其动态伸缩（视图侧槽位几何 =
+    /// layout.compactStrip(slotCount: compactCount)）。控制器在每次内容
+    /// 重建时同步。
+    @Published var compactCount = 0
     @Published var showsClickModeHint = false
 
     /// 抽屉网格内容与 AddBlock 目录条（编辑模式）。

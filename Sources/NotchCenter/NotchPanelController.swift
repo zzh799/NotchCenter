@@ -119,15 +119,19 @@ final class NotchPanelController: NSObject {
         }
     }
 
-    /// 把某屏幕的紧凑面板摆到其刘海位置。
-    private func positionCompactPanel(_ pair: ScreenPanelPair) {
+    /// 把某屏幕的紧凑面板摆到其刘海位置（宽度随当前紧凑图标数伸缩，
+    /// 由 `rebuildContent` 在图标增删时调用）。
+    func positionCompactPanel(_ pair: ScreenPanelPair) {
         pair.hotPanel.setFrame(pair.hotFrame, display: true)
         pair.hotPanel.orderFrontRegardless()
     }
 
     /// 主屏布局（用于共享渲染内容；窗口几何按各屏自身计算）。
     func primaryLayout() -> NotchLayout {
-        NotchGeometry.layout(for: pairs.first?.screen)
+        NotchGeometry.layout(
+            for: pairs.first?.screen,
+            compactCount: pairs.first?.compactCount ?? 0
+        )
     }
 
     /// 鼠标所在屏幕的面板对；不在任何激活区时返回 nil。
@@ -269,10 +273,16 @@ final class NotchPanelController: NSObject {
         }
     }
 
-    /// 收起态的可见面板尺寸：紧凑带宽度 × 0 内容高（容器总高 = 带高）。
+    /// 收起态的可见面板尺寸：紧凑带宽度（随当前图标数）× 0 内容高
+    /// （容器总高 = 带高）。
     private func collapsedPanelSize() -> CGSize {
-        let strip = activePair?.layout.compactStrip ?? primaryLayout().compactStrip
-        return CGSize(width: strip.bandWidth, height: 0)
+        let strip: CompactStripLayout
+        if let pair = activePair {
+            strip = pair.layout.compactStrip(slotCount: pair.compactCount)
+        } else {
+            strip = primaryLayout().compactStrip(slotCount: layoutEngine.compactSlots.count)
+        }
+        return CGSize(width: strip.windowWidth, height: 0)
     }
 
     private func setCollapsedSize() {
@@ -317,7 +327,7 @@ final class NotchPanelController: NSObject {
             size.height += AddBlockArea.height(for: uiState.catalogPlugins)
         }
         if let pair {
-            let maxHeight = pair.screenFrame.height - 8 - pair.layout.compactSize.height
+            let maxHeight = pair.screenFrame.height - 8 - pair.layout.compactHeight
             if size.height > maxHeight {
                 size.height = maxHeight
             }

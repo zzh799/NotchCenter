@@ -96,7 +96,7 @@ extension NotchPanelController {
     /// 按内容状态计算可见矩形）。
     private func visibleDrawerFrame(for pair: ScreenPanelPair) -> NSRect {
         var size = uiState.drawerWindowSize
-        size.height += pair.layout.compactSize.height
+        size.height += pair.layout.compactHeight
         return NotchGeometry.topCenteredFrame(
             for: size,
             topY: pair.screenFrame.maxY,
@@ -220,7 +220,7 @@ extension NotchPanelController {
     }
 
     private func isPointInAnyCompactSlot(_ point: NSPoint, layout: NotchLayout, hotFrame: NSRect) -> Bool {
-        let slots = (0..<NotchGeometry.compactSlotCount).map { index -> NSRect in
+        let slots = (0..<layoutEngine.compactSlots.count).map { index -> NSRect in
             let slot = compactSlotFrame(index: index, layout: layout)
             // 槽位 frame 是内容坐标（左上原点）；换算到屏幕坐标。
             return NSRect(

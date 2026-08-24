@@ -5,8 +5,9 @@ import SwiftUI
 // MARK: - HostController 编辑模式（文档 §4.5）
 
 extension NotchPanelController {
-    /// 首启默认布局：启用全部内置插件，紧凑 3 槽放官方紧凑块，抽屉自动放置官方抽屉块，
-    /// 让首次启动即可看到面板内容（空布局对用户不直观）。
+    /// 首启默认布局：启用全部内置插件，把所有官方紧凑块加入紧凑带（带宽随图标数
+    /// 伸缩），抽屉自动放置官方抽屉块，让首次启动即可看到面板内容（空布局对
+    /// 用户不直观）。
     func seedDefaultLayout() {
         layoutEngine.seedEnabledBuiltIns(pluginManager.builtInPluginIDs)
         pluginManager.restoreEnabledState(from: layoutEngine.enabledPluginIDs)
@@ -78,6 +79,19 @@ extension NotchPanelController {
     /// rootView——在透明无边框 NSPanel 上 rootView 重赋值不能保证立即重绘。
     /// `animated: true` 时状态变化套 spring（编辑模式目录条/窗口高度过渡）。
     func rebuildContent(animated: Bool = false) {
+        // 紧凑区宽度动态：先同步每屏的紧凑图标数（紧凑带几何、热区窗口
+        // 宽度都随其伸缩），再构建内容。宽度未变化时 setFrame 同 frame
+        // 无副作用；变化时热区窗口即刻跟进新带宽（抽屉不参与——收起态
+        // 的岛顶带宽在 collapse/showDocked 时按当前数计算）。
+        let compactCount = layoutEngine.compactSlots.count
+        uiState.compactCount = compactCount
+        for pair in pairs {
+            if pair.compactCount != compactCount {
+                pair.compactCount = compactCount
+                positionCompactPanel(pair)
+            }
+        }
+
         // 紧凑元素的上下文 frame 以主屏几何近似（槽位尺寸跨屏一致，
         // 视觉几何由各面板的 layout 参数精确持有）。
         let contextLayout = primaryLayout()
@@ -86,7 +100,6 @@ extension NotchPanelController {
         let apply = {
             self.uiState.showsClickModeHint = self.settingsStore.triggerMode == .click
             self.uiState.compactElements = self.buildCompactElements(layout: contextLayout)
-            self.uiState.canAddCompact = self.layoutEngine.compactSlots.contains(where: { $0 == nil })
 
             self.uiState.drawerContentSize = self.layoutEngine.drawerContentSize()
             self.uiState.drawerGridLeftColumn = self.layoutEngine.gridLeftColumn()
@@ -148,7 +161,7 @@ extension NotchPanelController {
             )
             host.visibleHeightProvider = { [weak self, weak pair] in
                 guard let self, let pair else { return 0 }
-                return pair.layout.compactSize.height + self.uiState.drawerWindowSize.height
+                return pair.layout.compactHeight + self.uiState.drawerWindowSize.height
             }
             host.translatesAutoresizingMaskIntoConstraints = true
             host.autoresizingMask = [.width, .height]
@@ -160,7 +173,7 @@ extension NotchPanelController {
     }
 
     private func buildCompactElements(layout: NotchLayout) -> [CompactElement] {
-        (0..<NotchGeometry.compactSlotCount).map { index in
+        (0..<layoutEngine.compactSlots.count).map { index in
             let frame = compactSlotFrame(index: index, layout: layout)
             guard let reference = layoutEngine.compactSlot(at: index),
                   let entry = pluginManager.entry(for: reference.pluginID),
@@ -259,8 +272,10 @@ extension NotchPanelController {
     }
 
     /// 槽位矩形（窗口内容坐标，左上原点）；与视图共享同一 strip 布局。
+    /// 宽度随当前紧凑图标数动态伸缩。
     func compactSlotFrame(index: Int, layout: NotchLayout) -> CGRect {
-        layout.compactStrip.slotRect(at: index) ?? .zero
+        layout.compactStrip(slotCount: layoutEngine.compactSlots.count)
+            .slotRect(at: index) ?? .zero
     }
 
     private func compactActions() -> CompactActions {

@@ -101,11 +101,15 @@ final class ScreenPanelPair {
         configure(drawerPanel)
     }
 
-    /// 该屏幕的刘海/回退布局。
-    var layout: NotchLayout { NotchGeometry.layout(for: screen) }
+    /// 该屏幕当前的紧凑图标数（控制器在增删紧凑块后同步；紧凑带宽随其
+    /// 动态伸缩，布局/热区 frame 都按它计算）。
+    var compactCount = 0
+
+    /// 该屏幕的刘海/回退布局（紧凑带宽按当前图标数）。
+    var layout: NotchLayout { NotchGeometry.layout(for: screen, compactCount: compactCount) }
     var screenFrame: NSRect { screen.frame }
-    /// 紧凑热区在该屏幕上的 frame。
-    var hotFrame: NSRect { NotchGeometry.activationFrame(for: layout, in: screenFrame) }
+    /// 紧凑热区在该屏幕上的 frame（宽度随当前图标数伸缩）。
+    var hotFrame: NSRect { NotchGeometry.activationFrame(for: layout, slotCount: compactCount, in: screenFrame) }
 }
 
 extension NotchPanelController {

@@ -10,9 +10,6 @@ extension LayoutEngine {
         if model.schemaVersion != LayoutModel.currentSchemaVersion {
             issues.append(.schemaVersionMismatch(model.schemaVersion))
         }
-        if model.compactSlots.count != LayoutModel.compactSlotCount {
-            issues.append(.compactSlotCountMismatch)
-        }
 
         let gridMinColumn = model.drawerBlocks.map(\.originColumn).min() ?? 0
         for (index, block) in model.drawerBlocks.enumerated() {

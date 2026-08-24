@@ -315,7 +315,7 @@ extension NotchPanelController {
         let visibleMinX = frame.minX + (frame.width - visibleWidth) / 2
         // 下栏（Drawer 行）行中心：紧凑带 + 顶栏 + 目录条上内边距 +
         // 上栏整行 + 行距 + 半行高（下栏按插件分组,内容必然溢出视口）。
-        let vy = pair.layout.compactSize.height
+        let vy = pair.layout.compactHeight
             + NotchGridMetrics.drawerTopBarHeight
             + 7
             + AddBlockArea.rowHeight
@@ -449,7 +449,7 @@ extension NotchPanelController {
         let vx = NotchGridMetrics.contentPadding
             + CGFloat(p.originColumn) * (NotchGridMetrics.cellWidth + NotchGridMetrics.spacing)
             + NotchGridMetrics.contentWidth(columns: p.widthColumns) - 16
-        let vy = pair.layout.compactSize.height
+        let vy = pair.layout.compactHeight
             + NotchGridMetrics.drawerTopBarHeight
             + addBlockHeight
             + CGFloat(p.originRow) * (NotchGridMetrics.cellHeight + NotchGridMetrics.spacing)
@@ -621,7 +621,7 @@ extension NotchPanelController {
         let vx = NotchGridMetrics.contentPadding
             + CGFloat(p.originColumn) * (NotchGridMetrics.cellWidth + NotchGridMetrics.spacing)
             + NotchGridMetrics.contentWidth(columns: p.widthColumns) - 16
-        let vy = pair.layout.compactSize.height
+        let vy = pair.layout.compactHeight
             + NotchGridMetrics.drawerTopBarHeight
             + addBlockHeight
             + CGFloat(p.originRow) * (NotchGridMetrics.cellHeight + NotchGridMetrics.spacing)

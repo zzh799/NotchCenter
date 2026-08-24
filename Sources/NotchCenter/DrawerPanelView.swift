@@ -58,10 +58,11 @@ struct DrawerPanelView: View {
         VStack(spacing: 0) {
             // 与独立紧凑面板完全相同的尺寸并水平居中：
             // 保证展开动画前后图标在屏幕上的绝对位置不变。
+            // 带宽随当前紧凑图标数动态伸缩。
             compactView
                 .frame(
-                    width: layout.compactSize.width,
-                    height: layout.compactSize.height
+                    width: layout.compactStrip(slotCount: ui.compactCount).windowWidth,
+                    height: layout.compactHeight
                 )
                 .frame(maxWidth: .infinity)
 
@@ -73,7 +74,7 @@ struct DrawerPanelView: View {
         }
         .frame(
             width: ui.drawerWindowSize.width,
-            height: ui.drawerWindowSize.height + layout.compactSize.height,
+            height: ui.drawerWindowSize.height + layout.compactHeight,
             // 顶缘钉死：收起时 content 退出布局（其快照在移除过渡期间仍
             // 挂在树里），VStack 与仍在收缩的容器高度不一致——默认的
             // .center 会把只剩紧凑带的 VStack 居中/顶出容器，图标随之下坠。
@@ -145,7 +146,6 @@ struct DrawerPanelView: View {
             if ui.isEditing {
                 AddBlockArea(
                     plugins: ui.catalogPlugins,
-                    canAddCompact: ui.canAddCompact,
                     onAddBlock: actions.onAddBlock
                 )
                 .transition(.opacity)

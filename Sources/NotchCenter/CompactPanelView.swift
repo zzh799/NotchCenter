@@ -39,7 +39,9 @@ struct CompactPanelView: View {
     var body: some View {
         GeometryReader { proxy in
             let isEditing = ui.isEditing
-            let strip = layout.compactStrip
+            // 条带宽度随当前紧凑图标数动态伸缩（视图侧按 uiState 的数量计算，
+            // layout 只携带屏幕相关的刘海/高度部分）。
+            let strip = layout.compactStrip(slotCount: ui.compactCount)
             let panelHeight = proxy.size.height
 
             // .top 对齐让黑色带在窗口内水平居中（其余元素均为绝对定位），

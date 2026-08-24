@@ -23,7 +23,7 @@ enum NotchGridMetrics {
 
 // MARK: - 布局数据模型（文档 §5.4）
 
-/// 紧凑槽位引用（长度 3 数组的元素，可为 null 或块引用）。
+/// 紧凑块引用（`compactSlots` 数组元素：长度即当前图标数，宽度随其动态伸缩）。
 struct CompactSlotReference: Codable, Equatable, Identifiable {
     let pluginID: String
     let blockID: String
@@ -48,10 +48,12 @@ struct PlacedBlock: Codable, Equatable, Identifiable {
 /// 布局持久化模型（layout.json，文档 §5.4）。
 struct LayoutModel: Codable, Equatable {
     static let currentSchemaVersion = 1
-    static let compactSlotCount = 3
 
     var schemaVersion: Int
     var maxColumns: Int
+    /// 紧凑块引用数组：**长度即当前紧凑图标数**（宽度随其动态伸缩，文档 §5.2）。
+    /// 元素始终非空（移除即删除元素、闭合空隙）；旧版固定 3 槽文件里的
+    /// `null` 在加载时被 `normalizedCompactSlots` 剥除。
     var compactSlots: [CompactSlotReference?]
     var drawerBlocks: [PlacedBlock]
     var enabledPluginIDs: [String]
@@ -59,7 +61,7 @@ struct LayoutModel: Codable, Equatable {
     init(
         schemaVersion: Int = LayoutModel.currentSchemaVersion,
         maxColumns: Int = 4,
-        compactSlots: [CompactSlotReference?] = [nil, nil, nil],
+        compactSlots: [CompactSlotReference?] = [],
         drawerBlocks: [PlacedBlock] = [],
         enabledPluginIDs: [String] = []
     ) {
@@ -70,16 +72,10 @@ struct LayoutModel: Codable, Equatable {
         self.enabledPluginIDs = enabledPluginIDs
     }
 
-    /// 槽位数固定为 3（不足补齐，超出截断）。
+    /// 紧凑槽位归一化：剥除旧版遗留的空槽 `null`（闭合空隙），长度即图标数，
+    /// 不再补齐/截断到固定值。
     static func normalizedCompactSlots(_ slots: [CompactSlotReference?]) -> [CompactSlotReference?] {
-        var result = slots
-        while result.count < compactSlotCount {
-            result.append(nil)
-        }
-        if result.count > compactSlotCount {
-            result = Array(result.prefix(compactSlotCount))
-        }
-        return result
+        slots.filter { $0 != nil }
     }
 }
 

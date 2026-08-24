@@ -42,43 +42,50 @@ final class LayoutEngineTests: XCTestCase {
 
     // MARK: 默认模型（文档 §5.4）
 
-    func testDefaultModelHasThreeEmptySlotsAndFourColumns() throws {
+    func testDefaultModelHasEmptyCompactSlotsAndFourColumns() throws {
         let (engine, directory, _) = try makeEngine()
-        XCTAssertEqual(engine.compactSlots.count, 3)
-        XCTAssertTrue(engine.compactSlots.allSatisfy { $0 == nil })
+        XCTAssertTrue(engine.compactSlots.isEmpty, "紧凑槽位不固定：默认无图标，宽度为 0 → 随添加伸缩")
         XCTAssertEqual(engine.userMaxColumns, 4)
         XCTAssertTrue(engine.enabledPluginIDs.isEmpty)
         XCTAssertTrue(engine.validate().isEmpty)
         try? FileManager.default.removeItem(at: directory)
     }
 
-    // MARK: 紧凑槽位（文档 §5.2）
+    // MARK: 紧凑槽位（文档 §5.2：数组长度即图标数，宽度随其动态伸缩）
 
     func testCompactSlotAddSwapRemove() throws {
-        register(blockID: "notes.compact", kind: .compact)
+        register(blockID: "a.compact", kind: .compact)
+        register(blockID: "b.compact", kind: .compact)
         let (engine, directory, _) = try makeEngine()
 
-        XCTAssertTrue(engine.addCompactBlock(pluginID: "com.test.plugin", blockID: "notes.compact"))
-        XCTAssertEqual(engine.compactSlot(at: 0)?.blockID, "notes.compact")
+        XCTAssertTrue(engine.addCompactBlock(pluginID: "com.test.plugin", blockID: "a.compact"))
+        XCTAssertEqual(engine.compactSlot(at: 0)?.blockID, "a.compact")
 
-        XCTAssertTrue(engine.addCompactBlock(pluginID: "com.test.plugin", blockID: "notes.compact"))
-        XCTAssertEqual(engine.compactSlot(at: 1)?.blockID, "notes.compact")
+        XCTAssertTrue(engine.addCompactBlock(pluginID: "com.test.plugin", blockID: "b.compact"))
+        XCTAssertEqual(engine.compactSlot(at: 1)?.blockID, "b.compact")
+        XCTAssertEqual(engine.compactSlots.count, 2)
 
         engine.swapCompactSlots(0, 1)
-        XCTAssertNotNil(engine.compactSlot(at: 0))
-        XCTAssertEqual(engine.compactSlot(at: 1)?.blockID, "notes.compact")
+        XCTAssertEqual(engine.compactSlot(at: 0)?.blockID, "b.compact")
+        XCTAssertEqual(engine.compactSlot(at: 1)?.blockID, "a.compact")
 
+        // 移除闭合空隙：删除索引 0 后原索引 1 前移到 0（带宽随之收缩）。
         engine.setCompactSlot(0, to: nil)
-        XCTAssertNil(engine.compactSlot(at: 0))
+        XCTAssertEqual(engine.compactSlots.count, 1)
+        XCTAssertEqual(engine.compactSlot(at: 0)?.blockID, "a.compact")
+        XCTAssertNil(engine.compactSlot(at: 1))
+        try? FileManager.default.removeItem(at: directory)
     }
 
-    func testAddingCompactBlockFailsWhenAllSlotsAreFilled() throws {
+    func testAddingCompactBlockGrowsUnbounded() throws {
         register(blockID: "notes.compact", kind: .compact)
         let (engine, directory, _) = try makeEngine()
-        for _ in 0..<3 {
+        for _ in 0..<5 {
             XCTAssertTrue(engine.addCompactBlock(pluginID: "com.test.plugin", blockID: "notes.compact"))
         }
-        XCTAssertFalse(engine.addCompactBlock(pluginID: "com.test.plugin", blockID: "notes.compact"))
+        XCTAssertEqual(engine.compactSlots.count, 5)
+        XCTAssertTrue(engine.compactSlots.allSatisfy { $0 != nil })
+        try? FileManager.default.removeItem(at: directory)
     }
 
     // MARK: 抽屉网格放置（文档 §5.3）
@@ -280,9 +287,43 @@ final class LayoutEngineTests: XCTestCase {
         let (engine, directory, fileURL) = try makeEngine()
         XCTAssertFalse(engine.didLoadFromDisk)
         XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
-        // 空默认布局也要能重建。
+        // 空默认布局也要能重建（紧凑槽位不固定：空数组）。
         let model = try JSONDecoder().decode(LayoutModel.self, from: Data(contentsOf: fileURL))
-        XCTAssertEqual(model.compactSlots.count, 3)
+        XCTAssertEqual(model.compactSlots.count, 0)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testLoadsLegacyFixedThreeSlotLayoutEatingNulls() throws {
+        // 旧版固定 3 槽（含 null 占位）的 layout.json：加载时剥除空槽、闭合
+        // 空隙，数组长度变为实际图标数（带宽随其伸缩）。
+        register(blockID: "a", kind: .compact)
+        register(blockID: "c", kind: .compact)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nc-legacy-compact-\(UUID().uuidString).json")
+        let legacy = """
+        {
+          "schemaVersion": 1,
+          "maxColumns": 4,
+          "compactSlots": [
+            {"pluginID": "com.test.plugin", "blockID": "a", "placementID": "A"},
+            null,
+            {"pluginID": "com.test.plugin", "blockID": "c", "placementID": "C"}
+          ],
+          "drawerBlocks": [],
+          "enabledPluginIDs": []
+        }
+        """
+        try legacy.write(to: url, atomically: true, encoding: .utf8)
+
+        let engine = LayoutEngine(fileURL: url, blockResolver: { [weak self] pluginID, blockID in
+            self?.registry["\(pluginID)|\(blockID)"]
+        })
+        XCTAssertTrue(engine.didLoadFromDisk)
+        XCTAssertEqual(engine.compactSlots.count, 2, "旧版空槽 null 应在加载时剥除")
+        XCTAssertEqual(engine.compactSlot(at: 0)?.blockID, "a")
+        XCTAssertEqual(engine.compactSlot(at: 1)?.blockID, "c")
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: url)
     }
 
     // MARK: 尺寸模型

@@ -15,13 +15,12 @@ struct CatalogPluginGroup: Identifiable {
 }
 
 /// 编辑模式的横向 AddBlock 区域：插入在紧凑带与网格之间，自身分上下两栏。
-/// 上栏：紧凑块目录，点击加入第一个空槽（槽满时条目置灰禁用、区域保持占位）；
-/// 下栏：抽屉块目录，按插件内联分组（插件名小标签 → 块条目 → 竖分隔线），
-/// 单行横向滚动不换行。条目统一为“图标 + 块名”药丸；块未声明 symbolName
-/// 时回退纯文本。
+/// 上栏：紧凑块目录，点击即追加到紧凑带末尾（带宽随图标数动态伸缩，
+/// 不设数量上限，无需置灰）；下栏：抽屉块目录，按插件内联分组（插件名
+/// 小标签 → 块条目 → 竖分隔线），单行横向滚动不换行。条目统一为
+/// “图标 + 块名”药丸；块未声明 symbolName 时回退纯文本。
 struct AddBlockArea: View {
     let plugins: [CatalogPluginGroup]
-    let canAddCompact: Bool
     let onAddBlock: (String, String) -> Void
 
     /// 行高（上下两栏一致，条目在行内垂直居中）。
@@ -80,10 +79,8 @@ struct AddBlockArea: View {
                     catalogPill(
                         entry.block,
                         pluginID: entry.pluginID,
-                        disabled: !canAddCompact,
-                        help: canAddCompact
-                            ? "Add to the compact strip"
-                            : "All compact slots are full"
+                        disabled: false,
+                        help: "Add to the compact strip"
                     )
                 }
             }

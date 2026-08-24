@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - 块种类与尺寸（文档 §4.2）
 
-/// 块所属区域：紧凑区（刘海下方 3 槽）或抽屉区（展开网格）。
+/// 块所属区域：紧凑区（刘海两侧，槽位数随图标动态伸缩）或抽屉区（展开网格）。
 public enum BlockKind: Sendable, Hashable {
     case compact
     case drawer
