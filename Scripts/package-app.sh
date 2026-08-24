@@ -95,7 +95,7 @@ else
 fi
 
 # 内置官方插件 bundle。
-for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin CalibrePlugin; do
+for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin CalibrePlugin OpenCodeUsagePlugin; do
   DYLIB="$PRODUCTS_DIR/lib$product.dylib"
   if [[ ! -f "$DYLIB" ]]; then
     echo "找不到插件产物：$DYLIB" >&2
@@ -138,6 +138,12 @@ for product in NotesPlugin ScratchpadPlugin CaffeinatePlugin DshPlugin CalibrePl
       PLUGIN_VERSION="1.0.0"
       DISPLAY_NAME="Calibre Server"
       DESCRIPTION="Controls the calibre-server launchd service."
+      ;;
+    OpenCodeUsagePlugin)
+      PLUGIN_ID="com.zhouzihang.notchcenter.opencode"
+      PLUGIN_VERSION="1.0.0"
+      DISPLAY_NAME="OpenCode Usage"
+      DESCRIPTION="Shows OpenCode Go usage windows and Zen balance."
       ;;
   esac
 

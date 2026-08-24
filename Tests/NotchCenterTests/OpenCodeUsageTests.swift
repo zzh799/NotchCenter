@@ -1,0 +1,283 @@
+import XCTest
+
+@testable import OpenCodeUsagePlugin
+
+/// OpenCodeUsagePlugin 纯逻辑测试：cookie 归一化、SSR HTML 解析、
+/// 时长短语解析。不发真实网络请求，不触碰 opencode.ai。
+final class OpenCodeUsageTests: XCTestCase {
+    // MARK: cookie 归一化（对齐 config.ts normalizeCookie）
+
+    func testNormalizeCookieBareToken() throws {
+        XCTAssertEqual(
+            OpenCodeUsageConfigLogic.normalizeCookie("Fe26.2*abcDEF123"),
+            "auth=Fe26.2*abcDEF123; oc_locale=en"
+        )
+    }
+
+    func testNormalizeCookieFullHeaderKeepsExtrasAndAddsLocale() {
+        XCTAssertEqual(
+            OpenCodeUsageConfigLogic.normalizeCookie("c_locale=zh; auth=TOKEN123; x=1"),
+            "auth=TOKEN123; c_locale=zh; x=1; oc_locale=en"
+        )
+    }
+
+    func testNormalizeCookieTwoSegmentsKeepsExistingLocale() {
+        XCTAssertEqual(
+            OpenCodeUsageConfigLogic.normalizeCookie("TOKEN; oc_locale=zh"),
+            "auth=TOKEN; oc_locale=zh"
+        )
+    }
+
+    func testNormalizeCookieExplicitAuthOnly() {
+        XCTAssertEqual(
+            OpenCodeUsageConfigLogic.normalizeCookie("auth=TOKEN"),
+            "auth=TOKEN; oc_locale=en"
+        )
+    }
+
+    func testNormalizeCookieRejectsPairsWithoutAuth() {
+        XCTAssertNil(OpenCodeUsageConfigLogic.normalizeCookie("a=b; c=d"))
+        XCTAssertNil(OpenCodeUsageConfigLogic.normalizeCookie("   "))
+        XCTAssertNil(OpenCodeUsageConfigLogic.normalizeCookie(nil))
+    }
+
+    // MARK: 掩码
+
+    func testMaskedSecretShowsTail4() {
+        XCTAssertEqual(OpenCodeUsageConfigLogic.maskedSecret("abcdefgh"), .init(isSet: true, tail: "efgh"))
+        XCTAssertEqual(OpenCodeUsageConfigLogic.maskedSecret("abc"), .init(isSet: true, tail: "abc"))
+        XCTAssertEqual(OpenCodeUsageConfigLogic.maskedSecret(nil), .init(isSet: false, tail: ""))
+    }
+
+    // MARK: 配置派生值
+
+    func testCacheTTLClampedToRange() {
+        var config = OpenCodeUsageConfig()
+        XCTAssertEqual(OpenCodeUsageConfigLogic.effectiveCacheTTL(config), 300)
+        config.cacheTTLSeconds = 5
+        XCTAssertEqual(OpenCodeUsageConfigLogic.effectiveCacheTTL(config), 60)
+        config.cacheTTLSeconds = 99_999
+        XCTAssertEqual(OpenCodeUsageConfigLogic.effectiveCacheTTL(config), 3600)
+    }
+
+    func testBaseURLFallback() {
+        var config = OpenCodeUsageConfig()
+        XCTAssertEqual(OpenCodeUsageConfigLogic.effectiveBaseURL(config)?.absoluteString, "https://opencode.ai")
+        config.baseURL = "  "
+        XCTAssertEqual(OpenCodeUsageConfigLogic.effectiveBaseURL(config)?.absoluteString, "https://opencode.ai")
+        config.baseURL = "https://example.com"
+        XCTAssertEqual(OpenCodeUsageConfigLogic.effectiveBaseURL(config)?.absoluteString, "https://example.com")
+    }
+
+    // MARK: 时长短语 → 秒（对齐 api.ts parseDurationToSec）
+
+    func testParseDurationToSec() {
+        XCTAssertEqual(OpenCodeUsageParser.parseDurationToSec("2 hours 29 minutes"), 8940)
+        XCTAssertEqual(OpenCodeUsageParser.parseDurationToSec("45 minutes"), 2700)
+        XCTAssertEqual(OpenCodeUsageParser.parseDurationToSec("5 days"), 432000)
+        XCTAssertEqual(OpenCodeUsageParser.parseDurationToSec("30 seconds"), 30)
+        XCTAssertEqual(OpenCodeUsageParser.parseDurationToSec("1 week"), 604800)
+        XCTAssertEqual(OpenCodeUsageParser.parseDurationToSec("garbage"), 0)
+        XCTAssertEqual(OpenCodeUsageParser.parseDurationToSec(""), 0)
+    }
+
+    // MARK: Go 用量页解析
+
+    private let goFixture = """
+    <html><body>
+    <div data-slot="usage-item">
+      <span data-slot="usage-label">Rolling usage</span>
+      <div data-slot="usage-value"><!--$-->42<!--/-->
+        <span data-slot="reset-time">Resets in<!--/--> 2 hours 29 minutes<!--/--></span>
+      </div>
+    </div>
+    <div data-slot="usage-item">
+      <span data-slot="usage-label">Weekly usage</span>
+      <div data-slot="usage-value"><!--$-->100<!--/-->
+        <span data-slot="reset-time">Resets in<!--/--> 5 days<!--/--></span>
+      </div>
+    </div>
+    <div data-slot="usage-item">
+      <span data-slot="usage-label">Monthly usage</span>
+      <div data-slot="usage-value"><!--$-->3<!--/-->
+        <span data-slot="reset-time">Resets in<!--/--> 25 days<!--/--></span>
+      </div>
+    </div>
+    <script>rollingUsage:$R[3]={status:"ok",resetInSec:8900,usagePercent:42}</script>
+    </body></html>
+    """
+
+    func testParseGoPageWindowsAndInlineResetPrecedence() {
+        let result = OpenCodeUsageParser.parseGoPage(goFixture)
+        XCTAssertEqual(result.windows.count, 3)
+
+        // 内联 $R 状态的精确 resetInSec（8900）优先于短语解析结果（8940）。
+        let rolling = try! XCTUnwrap(result.windows[.rolling])
+        XCTAssertEqual(rolling.percent, 42)
+        XCTAssertEqual(rolling.resetInSec, 8900)
+        XCTAssertFalse(rolling.isRateLimited)
+
+        // 耗尽的窗口标记限流；无内联状态时回退短语解析。
+        let weekly = try! XCTUnwrap(result.windows[.weekly])
+        XCTAssertTrue(weekly.isRateLimited)
+        XCTAssertEqual(weekly.resetInSec, 432000)
+
+        let monthly = try! XCTUnwrap(result.windows[.monthly])
+        XCTAssertEqual(monthly.percent, 3)
+    }
+
+    func testParseGoPageWithoutInlineStateUsesPhrase() {
+        let html = """
+        <div data-slot="usage-item">
+          <span data-slot="usage-label">Rolling usage</span>
+          <div data-slot="usage-value"><!--$-->7<!--/-->
+            <span data-slot="reset-time">Resets in<!--/--> 45 minutes<!--/--></span>
+          </div>
+        </div>
+        """
+        let result = OpenCodeUsageParser.parseGoPage(html)
+        XCTAssertEqual(result.windows[.rolling]?.resetInSec, 2700)
+    }
+
+    func testParseGoPageIgnoresUnknownLabels() {
+        let html = """
+        <div data-slot="usage-item">
+          <span data-slot="usage-label">Something else</span>
+          <div data-slot="usage-value"><!--$-->50<!--/--></div>
+        </div>
+        """
+        XCTAssertTrue(OpenCodeUsageParser.parseGoPage(html).windows.isEmpty)
+    }
+
+    func testInlineResetInSecKeyMismatchReturnsNil() {
+        XCTAssertNil(OpenCodeUsageParser.inlineResetInSec(goFixture, key: "weeklyUsage"))
+        XCTAssertEqual(OpenCodeUsageParser.inlineResetInSec(goFixture, key: "rollingUsage"), 8900)
+    }
+
+    // MARK: Zen workspace 页解析
+
+    private let zenFixture = """
+    <html><body>
+    <div data-slot="balance"><span><!--$-->Current balance<!--/--></span> <b>$<!--$-->12.34<!--/--></b></div>
+    <script>$R[1]={balance:12.34,reload:null,reloadAmount:20,reloadTrigger:10,monthlyLimit:null,paymentMethodType:"alipay",subscriptionPlan:"go"}</script>
+    </body></html>
+    """
+
+    func testParseZenPageFullState() {
+        let zen = OpenCodeUsageParser.parseZenPage(zenFixture)
+        XCTAssertEqual(zen.balance, 12.34)
+        XCTAssertEqual(zen.autoReload, false)
+        XCTAssertEqual(zen.reloadAmount, 20)
+        XCTAssertEqual(zen.reloadTrigger, 10)
+        XCTAssertNil(zen.monthlyLimit)
+        XCTAssertEqual(zen.paymentMethodType, "alipay")
+        XCTAssertEqual(zen.subscriptionPlan, "go")
+    }
+
+    func testParseZenPageBalanceHTMLFallback() {
+        // 无内联状态对象时回退 HTML 展示层（含千分位逗号）。
+        let html = #"<div data-slot="balance"><b>$<!--$-->1,234.56<!--/--></b></div>"#
+        let zen = OpenCodeUsageParser.parseZenPage(html)
+        XCTAssertEqual(zen.balance, 1234.56)
+        XCTAssertNil(zen.autoReload)
+    }
+
+    // MARK: 空结果判定（等价 cookie 失效被 302 到登录页）
+
+    func testParsedEmptyDetection() {
+        let emptyZen = OpenCodeUsageParser.parseZenPage("<html><body>login</body></html>")
+        XCTAssertTrue(emptyZen.balance == nil)
+        let emptyGo = OpenCodeUsageParser.parseGoPage("<html><body>login</body></html>")
+        XCTAssertTrue(OpenCodeUsageParser.isParsedEmpty(go: emptyGo, zen: emptyZen))
+        XCTAssertFalse(OpenCodeUsageParser.isParsedEmpty(go: OpenCodeUsageParser.parseGoPage(goFixture), zen: emptyZen))
+    }
+
+    // MARK: 展示辅助
+
+    func testFormatReset() {
+        XCTAssertEqual(OpenCodeUsageParser.formatReset(seconds: 0), "soon")
+        XCTAssertEqual(OpenCodeUsageParser.formatReset(seconds: 8940), "2h 29m")
+        XCTAssertEqual(OpenCodeUsageParser.formatReset(seconds: 432000), "5d")
+    }
+}
+
+/// 峰谷时钟纯逻辑测试（固定 UTC 偏移，不依赖运行机器时区）。
+final class PeakClockLogicTests: XCTestCase {
+    /// 2024-01-15 HH:mm UTC 的固定时刻。
+    private func utc(_ hour: Int, _ minute: Int = 0) -> Date {
+        var components = DateComponents()
+        components.year = 2024; components.month = 1; components.day = 15
+        components.hour = hour; components.minute = minute
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar.date(from: components)!
+    }
+
+    private let utcTZ = 0
+    private let plus8TZ = 8 * 3600
+
+    func testPeakWindowsUTC() {
+        XCTAssertTrue(PeakClockLogic.isPeak(utc(1)))
+        XCTAssertTrue(PeakClockLogic.isPeak(utc(3, 59)))
+        XCTAssertFalse(PeakClockLogic.isPeak(utc(4)))
+        XCTAssertTrue(PeakClockLogic.isPeak(utc(6)))
+        XCTAssertTrue(PeakClockLogic.isPeak(utc(9, 59)))
+        XCTAssertFalse(PeakClockLogic.isPeak(utc(10)))
+        XCTAssertFalse(PeakClockLogic.isPeak(utc(0, 30)))
+    }
+
+    func testPhaseRemaining() {
+        // 峰时内：距峰末。
+        XCTAssertEqual(PeakClockLogic.phaseRemainingSeconds(utc(2)), 2 * 3600)
+        XCTAssertEqual(PeakClockLogic.phaseRemainingSeconds(utc(7, 30)), 2 * 3600 + 1800)
+        // 谷时：距下一个峰时起点；10 点后跨零点到次日 01:00。
+        XCTAssertEqual(PeakClockLogic.phaseRemainingSeconds(utc(5)), 3600)
+        XCTAssertEqual(PeakClockLogic.phaseRemainingSeconds(utc(12)), 13 * 3600)
+    }
+
+    func testPeakArcsUTCAndPlusEight() {
+        // UTC 时区：01:00-04:00 → 15°..60°，06:00-10:00 → 90°..150°。
+        XCTAssertEqual(
+            PeakClockLogic.peakArcs(utc(12), utcOffsetSeconds: utcTZ),
+            [
+                PeakClockLogic.ClockArc(startDegree: 15, endDegree: 60),
+                PeakClockLogic.ClockArc(startDegree: 90, endDegree: 150),
+            ]
+        )
+        // UTC+8：窗口整体 +480 分钟 → 09:00-12:00 (135°..180°) 与 15:00-18:00 (225°..270°)。
+        XCTAssertEqual(
+            PeakClockLogic.peakArcs(utc(12), utcOffsetSeconds: plus8TZ),
+            [
+                PeakClockLogic.ClockArc(startDegree: 135, endDegree: 180),
+                PeakClockLogic.ClockArc(startDegree: 210, endDegree: 270),
+            ]
+        )
+    }
+
+    func testOffPeaksAreComplement() {
+        let peaks = PeakClockLogic.peakArcs(utc(12), utcOffsetSeconds: utcTZ)
+        XCTAssertEqual(
+            PeakClockLogic.offPeakArcs(of: peaks),
+            [
+                PeakClockLogic.ClockArc(startDegree: 0, endDegree: 15),
+                PeakClockLogic.ClockArc(startDegree: 60, endDegree: 90),
+                PeakClockLogic.ClockArc(startDegree: 150, endDegree: 360),
+            ]
+        )
+    }
+
+    func testHandAngleFullDay() {
+        var timeZone = TimeZone(identifier: "UTC")!
+        XCTAssertEqual(PeakClockLogic.handAngle(utc(6), timeZone: timeZone), 90)
+        XCTAssertEqual(PeakClockLogic.handAngle(utc(12), timeZone: timeZone), 180)
+        // 东八区本地 6 点 = UTC 22:00 前一天，但表盘读的是本地钟面。
+        timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        XCTAssertEqual(PeakClockLogic.handAngle(utc(22), timeZone: timeZone), 90)
+    }
+
+    func testFormatCountdown() {
+        XCTAssertEqual(PeakClockLogic.formatCountdown(8940), "02:29:00")
+        XCTAssertEqual(PeakClockLogic.formatCountdown(0), "00:00:00")
+        XCTAssertEqual(PeakClockLogic.formatCountdown(-5), "00:00:00")
+    }
+}

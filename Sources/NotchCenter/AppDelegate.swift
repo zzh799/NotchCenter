@@ -165,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         print("discovered: \(panelController.pluginManager.entries.map(\.metadata.pluginID))")
         print("invalidBundles: \(panelController.pluginManager.invalidBundles)")
         for entry in panelController.pluginManager.entries {
-            print("plugin: \(entry.metadata.pluginID) enabled=\(entry.isEnabled) loaded=\(entry.instance != nil) blocks=\(entry.blocks.count) error=\(entry.loadError ?? "nil")")
+            print("plugin: \(entry.metadata.pluginID) enabled=\(entry.isEnabled) loaded=\(entry.instance != nil) blocks=\(entry.blocks.count) error=\(entry.loadError ?? "nil") settingsView=\(entry.instance?.settingsView != nil) stateStore=\(entry.stateStore != nil)")
         }
         print("layout: maxColumns=\(panelController.layoutEngine.userMaxColumns) enabled=\(panelController.layoutEngine.enabledPluginIDs.sorted())")
         print("layout issues: \(panelController.layoutEngine.validate().count)")
