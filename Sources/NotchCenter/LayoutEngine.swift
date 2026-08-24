@@ -266,6 +266,7 @@ final class LayoutEngine: ObservableObject {
     func removeDrawerBlock(placementID: String) {
         model.drawerBlocks.removeAll { $0.placementID == placementID }
         compactEmptyRows()
+        compactEmptyColumns()
         saveToDisk()
     }
 
@@ -348,6 +349,7 @@ final class LayoutEngine: ObservableObject {
         target.originRow = max(target.originRow, 0)
         model.drawerBlocks[index] = target
         compactEmptyRows()
+        compactEmptyColumns()
         saveToDisk()
         return true
     }
@@ -388,6 +390,7 @@ final class LayoutEngine: ObservableObject {
         model.drawerBlocks[index] = resized
         applyOrigins(pushDownOrigins(changed: resized))
         compactEmptyRows()
+        compactEmptyColumns()
         saveToDisk()
         return true
     }
@@ -506,14 +509,43 @@ final class LayoutEngine: ObservableObject {
         return changed
     }
 
+    /// 水平压实（编辑模式契约：不留空列）：自左向右找到首个完全空置的列，
+    /// 把其右所有块整体左移一列，重复直到没有空列。列内的部分留白保留
+    /// （只消整列空洞）；右侧块整体左移、相对位置不变，不产生新重叠。
+    /// 与 compactEmptyRows 对称，仅由变更路径调用（移动/移除/缩放/提交后），
+    /// 加载净化不经过这里（无重叠布局的留白受 sanitized 保护）。
+    @discardableResult
+    private func compactEmptyColumns() -> Bool {
+        var changed = false
+        while true {
+            let maxColumn = model.drawerBlocks.map { $0.originColumn + $0.widthColumns }.max() ?? 0
+            guard maxColumn > 0 else { break }
+            var occupiedColumns = Set<Int>()
+            for block in model.drawerBlocks {
+                for col in block.originColumn..<block.originColumn + block.widthColumns {
+                    occupiedColumns.insert(col)
+                }
+            }
+            // 空列必在其左有块（maxColumn 内）且其右有块（否则推不出 maxColumn），
+            // 左移后该列被填充，每轮严格减少总列数——必然终止。
+            guard let emptyColumn = (0..<maxColumn).first(where: { !occupiedColumns.contains($0) }) else { break }
+            for index in model.drawerBlocks.indices where model.drawerBlocks[index].originColumn > emptyColumn {
+                model.drawerBlocks[index].originColumn -= 1
+            }
+            changed = true
+        }
+        return changed
+    }
+
     /// 提交拖拽预览结果（与 previewArrangement 同一算法，保证所见即所得），
-    /// 随后压实空行（拖走后遗留的整行空洞由下方块上移闭合）。
+    /// 随后压实空行与空列（拖走后遗留的整行/整列空洞由下方/右侧块上移/左移闭合）。
     @discardableResult
     func commitArrangement(_ origins: [String: GridOrigin]) -> Bool {
         guard !origins.isEmpty else { return false }
         let before = model.drawerBlocks.map { "\($0.placementID):\($0.originColumn),\($0.originRow)" }
         applyOrigins(origins)
         compactEmptyRows()
+        compactEmptyColumns()
         let after = model.drawerBlocks.map { "\($0.placementID):\($0.originColumn),\($0.originRow)" }
         let changed = before != after
         if changed {
