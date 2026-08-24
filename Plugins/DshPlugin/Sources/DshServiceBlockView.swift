@@ -43,7 +43,7 @@ struct DshServiceBlockView: View {
         }
         // 手势顺序、长按抑制点击、开关自行消费点击等语义都在触发器内统一实现。
         .blockPopoverTrigger(
-            onTap: { monitor.openWeb() },
+            onTap: { _ in monitor.openWeb() },
             onLongPress: { frameInWindow in
                 DshPopover.present(monitor: monitor, frameInWindow: frameInWindow)
             }

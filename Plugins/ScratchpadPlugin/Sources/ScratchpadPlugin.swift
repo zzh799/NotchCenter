@@ -3,7 +3,7 @@ import NotchCenterKit
 import SwiftUI
 
 /// ScratchpadPlugin（官方文件暂存插件，由 NotchNotes 的 FileShelfStore/FileShelfView 移植而来）。
-/// 提供一个紧凑块（点击展开抽屉）与一个抽屉块（文件暂存区，只保存路径引用）。
+/// 提供一个紧凑块（点击弹出清空确认浮窗）与一个抽屉块（文件暂存区，只保存路径引用）。
 @objc(ScratchpadPlugin) @MainActor public final class ScratchpadPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
     public static var blocks: [NotchBlock] = [
         NotchBlock(
@@ -63,16 +63,11 @@ private final class ScratchpadModel {
     }
 }
 
-/// 紧凑块：暂存图标 + 条目数量角标；点击 = 确认后清空暂存区（.custom 交互）。
+/// 紧凑块：暂存图标 + 条目数量角标；点击/长按 = 弹出「清空暂存区」确认浮窗
+/// （Kit 的 BlockPopover：单例互斥、点击外部关闭、收回抽屉时随之消失）。
 private struct ScratchpadCompactView: View {
     let context: BlockContext
-    @StateObject private var workspaceState: ScratchpadWorkspaceState
     @State private var itemCount = -1
-
-    init(context: BlockContext) {
-        self.context = context
-        _workspaceState = StateObject(wrappedValue: ScratchpadModel.shared.workspaceState)
-    }
 
     var body: some View {
         // 跟随宿主分配的槽位尺寸（紧凑区为刘海高度带内的小槽位）。
@@ -103,12 +98,23 @@ private struct ScratchpadCompactView: View {
             itemCount = ScratchpadModel.shared.store?.items.count ?? -1
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            // 仅在暂存区有内容时请求确认；空区点击无操作。
-            guard itemCount > 0 else { return }
-            workspaceState.isClearConfirmationPending = true
-            // 抽屉收起时先展开，确认浮层显示在抽屉块内。
-            context.hostController.expandDrawer()
+        // 锚点追踪与手势分类统一走 Kit 触发器；点击与长按都弹同一确认浮窗。
+        .blockPopoverTrigger(
+            onTap: { frame in presentClearConfirmation(anchoredTo: frame) },
+            onLongPress: { frame in presentClearConfirmation(anchoredTo: frame) }
+        )
+    }
+
+    /// 仅在暂存区有内容时弹确认；空区点击无操作。不再先展开抽屉——
+    /// 浮窗贴在本图标下方弹出（紧凑图标位于屏幕最顶端），独立于抽屉开合。
+    private func presentClearConfirmation(anchoredTo frameInWindow: CGRect) {
+        guard itemCount > 0, let store = ScratchpadModel.shared.store else { return }
+        BlockPopover.shared.present(
+            anchoredTo: frameInWindow,
+            cardSize: ClearConfirmationPopoverContentView.cardSize,
+            placement: .below
+        ) {
+            ClearConfirmationPopoverContentView(store: store)
         }
     }
 }
@@ -137,24 +143,6 @@ private struct ScratchpadShelfBlockView: View {
                 size: proxy.size
             )
             .frame(width: proxy.size.width, height: proxy.size.height)
-            .overlay {
-                if workspaceState.isClearConfirmationPending {
-                    ClearConfirmationOverlay(
-                        itemCount: store.items.count,
-                        onConfirm: {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                                store.removeAll()
-                                workspaceState.isClearConfirmationPending = false
-                            }
-                        },
-                        onCancel: {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                                workspaceState.isClearConfirmationPending = false
-                            }
-                        }
-                    )
-                }
-            }
         }
         .onAppear {
             NotificationCenter.default.post(name: .scratchpadItemsDidChange, object: nil)
@@ -165,85 +153,70 @@ private struct ScratchpadShelfBlockView: View {
     }
 }
 
-/// 清空确认浮层：显示在抽屉块可视区域内（不弹独立窗口——面板会随鼠标
-/// 移开收起，独立弹窗层级/激活状态都不可靠）。半透明遮罩 + 居中卡片，
-/// 视觉遵循 DESIGN.md 深色语言。
-private struct ClearConfirmationOverlay: View {
-    let itemCount: Int
-    let onConfirm: () -> Void
-    let onCancel: () -> Void
+/// 清空确认浮窗内容（窗口、外观与弹出动画由 Kit 的 BlockPopover 统一提供，
+/// 这里只排布内容）。确认后清空全部暂存引用——只移除路径记录，原文件不受影响。
+private struct ClearConfirmationPopoverContentView: View {
+    @ObservedObject var store: ScratchpadStore
+
+    /// 卡片尺寸（BlockPopover 需要定值；高度留足双行提示文案的余量）。
+    static let cardSize = CGSize(width: 220, height: 184)
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.black.opacity(0.55))
-                .contentShape(Rectangle())
-                .onTapGesture(perform: onCancel)
+        VStack(spacing: 12) {
+            Image(systemName: "tray.and.trash")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
 
-            VStack(spacing: 12) {
-                Image(systemName: "tray.and.trash")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.85))
+            Text(L("clear.confirm.title"))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
 
-                Text(L("clear.confirm.title"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-
-                // 中英复数习惯不同：en 单数走独立键（无占位符），zh 两键同文。
-                if itemCount == 1 {
+            // 中英复数习惯不同：en 单数走独立键（无占位符），zh 两键同文。
+            Group {
+                if store.items.count == 1 {
                     Text(L("clear.confirm.message.one"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    Text(LF("clear.confirm.message", itemCount))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                HStack(spacing: 8) {
-                    Button(action: onCancel) {
-                        Text(L("common.cancel"))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.75))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule().fill(.white.opacity(0.1))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.cancelAction)
-
-                    Button(action: onConfirm) {
-                        Text(L("clear.confirm.removeAll"))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule().fill(Color.red.opacity(0.75))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.defaultAction)
+                    Text(LF("clear.confirm.message", store.items.count))
                 }
             }
-            .padding(18)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(red: 0.09, green: 0.09, blue: 0.105))
-                    .shadow(color: .black.opacity(0.4), radius: 16, y: 6)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(.white.opacity(0.12), lineWidth: 1)
+            .font(.system(size: 11))
+            .foregroundStyle(.white.opacity(0.6))
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button(action: { BlockPopover.shared.dismiss() }) {
+                    Text(L("common.cancel"))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule().fill(.white.opacity(0.1))
+                        )
+                }
+                .buttonStyle(.plain)
+
+                Button(action: clearAll) {
+                    Text(L("clear.confirm.removeAll"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule().fill(Color.red.opacity(0.75))
+                        )
+                }
+                .buttonStyle(.plain)
             }
-            .padding(16)
-            .transition(.opacity.combined(with: .scale(scale: 0.94)))
         }
+        .padding(14)
+    }
+
+    private func clearAll() {
+        store.removeAll()
+        // 抽屉块可能不在屏（收起态直接清空）：主动广播，紧凑角标立即刷新。
+        NotificationCenter.default.post(name: .scratchpadItemsDidChange, object: nil)
+        BlockPopover.shared.dismiss()
     }
 }

@@ -4,12 +4,32 @@ import SwiftUI
 // MARK: - 长按浮窗基础组件（决策 6 的框架级统一实现）
 //
 // 生命周期：进程内单例，所有插件共享、任一时刻至多一个浮窗在屏；
-// 再次 present 先收旧窗，点击浮窗以外区域自动关闭。
+// 再次 present 先收旧窗，点击浮窗以外区域或宿主抽屉收起时自动关闭。
 // 基本表现：近黑半透明卡片 + 白色发丝描边（DESIGN.md §2.1 / §2.3），
-// 叠在原块正上方（同心），层级由原生窗口阴影压在被覆盖块上表达；
+// 默认叠在原块正上方（同心），层级由原生窗口阴影压在被覆盖块上表达；
+// 也可改为紧贴块下方弹出（`placement: .below`，紧凑区小图标用）。
 // 打开时卡片从小到大 spring 弹出。
 //
 // 插件侧只需提供内容视图与卡片尺寸，见各官方插件 Popover.swift 的薄入口。
+
+/// 浮窗与锚定块的相对摆放。
+public enum BlockPopoverPlacement {
+    /// 同心叠在块正上方（默认）：服务卡类浮窗的既有表现，直接盖住原块。
+    case overlay
+    /// 紧贴块下缘弹出：窗口顶缘与块底缘相接（透明留白即视觉间距），
+    /// 水平居中对齐块；紧凑区图标在屏幕最顶端，同心叠加会被钳回后
+    /// 悬在半空且盖住整条刘海带，贴下方更符合「从按钮垂下来」的直觉。
+    case below
+}
+
+// MARK: - 抽屉收起联动（浮窗锚定的块随抽屉消失，必须跟着收）
+
+extension Notification.Name {
+    /// 宿主在抽屉开始收起时投递（`NotchPanelController.collapse`）。
+    /// `BlockPopover` 订阅它自动关闭：否则鼠标移开后抽屉缩回刘海，
+    /// 浮窗仍以独立窗口残留在已消失的块上方。
+    public static let notchCenterDrawerDidCollapse = Notification.Name("NotchCenter.drawerDidCollapse")
+}
 
 @MainActor
 public final class BlockPopover {
@@ -23,8 +43,19 @@ public final class BlockPopover {
     private var panel: NSPanel?
     /// 点击外部关闭：本地鼠标监听。
     private var eventMonitor: Any?
+    /// 抽屉收起 → 浮窗随之消失：宿主通知的观察令牌（需持有防注销）。
+    private var drawerCollapseObserver: NSObjectProtocol?
 
-    private init() {}
+    private init() {
+        // queue 指定 .main：宿主在主线程投递，回调可安全假设主执行者。
+        drawerCollapseObserver = NotificationCenter.default.addObserver(
+            forName: .notchCenterDrawerDidCollapse, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.dismiss()
+            }
+        }
+    }
 
     // MARK: 公共 API
 
@@ -33,17 +64,23 @@ public final class BlockPopover {
     /// - Parameters:
     ///   - cardSize: 卡片尺寸；内容由 `content` 自行排布，外观（背景/描边/深色环境）
     ///     与弹出动画由本组件统一施加。
+    ///   - placement: 与锚定块的相对摆放（同心覆盖 / 贴块下方），默认同心。
     public func present(
         anchoredTo frameInWindow: CGRect,
         cardSize: CGSize,
+        placement: BlockPopoverPlacement = .overlay,
         @ViewBuilder content: () -> some View
     ) {
         dismiss()
 
-        // 块视图挂在某个 NotchPanel 的 hosting 树里：取包含当前鼠标位置的
-        // 可见窗口作为宿主（长按发生时光标就在块上）。
+        // 块视图挂在某个 NotchPanel 的 hosting 树里：长按/点击发生时光标就在
+        // 块上。但同一鼠标点可能同时落在多个可见窗口内（展开态下抽屉岛顶的
+        // 紧凑带在 drawerPanel 里，而 hotPanel 热区条带仍叠在同一屏幕区域）；
+        // NSApp.windows 的顺序不是 z 序（热区窗口先创建），取错窗口会把
+        // .global 帧按错误的高度做 y 翻转换算，浮窗整体错位。因此按
+        // CGWindowList 的屏幕 z 序取包含鼠标的最前层可见窗口。
         let mouse = NSEvent.mouseLocation
-        guard let hostWindow = NSApp.windows.first(where: { $0.isVisible && $0.frame.contains(mouse) }) else {
+        guard let hostWindow = BlockPopover.frontmostVisibleWindow(containing: mouse) else {
             return
         }
         // SwiftUI .global 是左上原点、y 向下；convertToScreen 要 AppKit
@@ -64,7 +101,8 @@ public final class BlockPopover {
         let origin = BlockPopoverGeometry.windowOrigin(
             blockFrame: blockFrame,
             windowSize: windowSize,
-            screenVisibleFrame: hostWindow.screen?.visibleFrame
+            screenVisibleFrame: hostWindow.screen?.visibleFrame,
+            placement: placement
         )
 
         let hosting = PopoverHostingView(
@@ -113,24 +151,57 @@ public final class BlockPopover {
         panel?.orderOut(nil)
         panel = nil
     }
+
+    // MARK: 宿主窗口解析
+
+    /// 包含 `point` 的最前层可见窗口（本进程）。CGWindowList 按屏幕 z 序
+    /// 返回 on-screen 窗口（下标 0 最前），候选里取 z 序最小者；拿不到
+    /// CG 列表时退化为 NSApp.windows 的自然顺序。
+    private static func frontmostVisibleWindow(containing point: NSPoint) -> NSWindow? {
+        let candidates = NSApp.windows.filter { $0.isVisible && $0.frame.contains(point) }
+        guard candidates.count > 1 else { return candidates.first }
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
+            return candidates.first
+        }
+        // windowNumber → z 序下标（0 = 最前）。
+        var zIndexByID: [Int: Int] = [:]
+        for (index, info) in list.enumerated() {
+            if let number = info[kCGWindowNumber as String] as? Int {
+                zIndexByID[number] = index
+            }
+        }
+        return candidates.min { (zIndexByID[$0.windowNumber] ?? .max) < (zIndexByID[$1.windowNumber] ?? .max) }
+    }
 }
 
 // MARK: - 定位几何（纯函数，BlockPopoverTests 覆盖）
 
 public enum BlockPopoverGeometry {
-    /// 浮窗**窗口**原点：卡片与块同心叠加（直接盖住原组件）；
-    /// 窗口含四周留白，越出屏幕可见区域时整体钳回可见范围（`edgeInset` 边距）。
+    /// 浮窗**窗口**原点：`.overlay` 时卡片与块同心叠加（直接盖住原组件）；
+    /// `.below` 时窗口顶缘与块底缘相接、水平居中对齐块。窗口含四周留白，
+    /// 越出屏幕可见区域时整体钳回可见范围（`edgeInset` 边距）。
     /// 坐标为屏幕坐标系（y 自底向上）。纯函数便于单元测试。
     public static func windowOrigin(
         blockFrame: CGRect,
         windowSize: CGSize,
         screenVisibleFrame: CGRect?,
-        edgeInset: CGFloat = 8
+        edgeInset: CGFloat = 8,
+        placement: BlockPopoverPlacement = .overlay
     ) -> CGPoint {
-        var origin = CGPoint(
-            x: blockFrame.midX - windowSize.width / 2,
-            y: blockFrame.midY - windowSize.height / 2
-        )
+        var origin: CGPoint
+        switch placement {
+        case .overlay:
+            origin = CGPoint(
+                x: blockFrame.midX - windowSize.width / 2,
+                y: blockFrame.midY - windowSize.height / 2
+            )
+        case .below:
+            // 窗口顶缘贴块底缘：透明留白（24pt）即卡片与按钮间的视觉间距。
+            origin = CGPoint(
+                x: blockFrame.midX - windowSize.width / 2,
+                y: blockFrame.minY - windowSize.height
+            )
+        }
         guard let visible = screenVisibleFrame else { return origin }
         origin.x = min(max(origin.x, visible.minX + edgeInset), visible.maxX - windowSize.width - edgeInset)
         origin.y = min(max(origin.y, visible.minY + edgeInset), visible.maxY - windowSize.height - edgeInset)

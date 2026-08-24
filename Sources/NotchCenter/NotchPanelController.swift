@@ -245,6 +245,9 @@ final class NotchPanelController: NSObject {
             isEditing = false
         }
         setDrawerRevealed(false, animated: animated)
+        // 浮窗锚定的块随抽屉消失：Kit 的 BlockPopover 订阅此通知立即关闭，
+        // 不等收起动画结束（否则浮窗悬在已消失的块上方）。
+        NotificationCenter.default.post(name: .notchCenterDrawerDidCollapse, object: nil)
         let completion = { [weak self] in
             guard let self else { return }
             // 等待期内可能再次展开（同屏返回，或移到了另一块屏）：只保留

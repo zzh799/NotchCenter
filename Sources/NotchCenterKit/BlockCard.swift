@@ -100,10 +100,11 @@ public enum BlockTapClassifier {
 
 public extension View {
     /// 块交互层（按需叠加）：按住满 0.2s 的瞬间即回调 `onLongPress`，
-    /// **无需等鼠标释放**；回调携带块在宿主窗口坐标系中的 frame
-    /// （SwiftUI `.global` 空间），供 `BlockPopover.present(anchoredTo:)` 定位。
-    /// 按压期间在内容上方叠加增亮覆盖，提示浮窗即将弹出；提前松手/
-    /// 拖走（滚动意图）自动复位。
+    /// **无需等鼠标释放**；两个回调都携带块在宿主窗口坐标系中的 frame
+    /// （SwiftUI `.global` 空间），供 `BlockPopover.present(anchoredTo:)`
+    /// 定位——点击即弹浮窗的块（如暂存区清空确认）与长按弹浮窗的块
+    /// 走同一套锚点追踪。按压期间在内容上方叠加增亮覆盖，提示浮窗即将
+    /// 弹出；提前松手/拖走（滚动意图）自动复位。
     ///
     /// `onTap` 为可选点击动作，长按期间自动抑制（保住“开关等子控件
     /// 自行消费点击”的语义）。挂在整卡上（含背景区）。
@@ -113,7 +114,7 @@ public extension View {
     /// （DSH/Calibre「点击开网页」失效的根因），而 DragGesture 管线与
     /// 缩放握把/滚动探针同路，行为可靠。分类阈值见 `BlockTapClassifier`。
     func blockPopoverTrigger(
-        onTap: (() -> Void)? = nil,
+        onTap: ((_ frameInWindow: CGRect) -> Void)? = nil,
         onLongPress: @escaping (_ frameInWindow: CGRect) -> Void
     ) -> some View {
         modifier(BlockPopoverTriggerModifier(onTap: onTap, onLongPress: onLongPress))
@@ -121,7 +122,7 @@ public extension View {
 }
 
 private struct BlockPopoverTriggerModifier: ViewModifier {
-    let onTap: (() -> Void)?
+    let onTap: ((CGRect) -> Void)?
     let onLongPress: (CGRect) -> Void
 
     /// 块在宿主窗口坐标系中的 frame（GeometryReader 实时捕获），用于浮窗定位。
@@ -222,7 +223,9 @@ private struct BlockPopoverTriggerModifier: ViewModifier {
                     translation: value.translation,
                     longPressFired: longPressFired
                 ) {
-                    onTap?()
+                    // frame 由背景 GeometryReader 持续追踪，点击时必然已就位；
+                    // 兜底 .zero 只防理论竞态（浮窗会锚定到窗口原点而非误闭包崩溃）。
+                    onTap?(frameInWindow ?? .zero)
                 }
             }
     }

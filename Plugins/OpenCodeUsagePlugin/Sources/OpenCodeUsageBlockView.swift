@@ -20,7 +20,7 @@ struct OpenCodeUsageBlockView: View {
         }
         // 手势顺序、长按抑制点击等语义都在触发器内统一实现。
         .blockPopoverTrigger(
-            onTap: { openDashboard() },
+            onTap: { _ in openDashboard() },
             onLongPress: { frameInWindow in
                 OpenCodeUsagePopover.present(store: store, frameInWindow: frameInWindow)
             }
