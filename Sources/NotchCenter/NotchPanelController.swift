@@ -368,19 +368,24 @@ final class NotchPanelController: NSObject {
             max(columnRange.max - columnRange.min, 1),
             layoutEngine.effectiveMaxColumns()
         )
+        let bottomRow = layoutEngine.previewBottomRow(
+            origins: origins,
+            resized: resized.map { ($0.placementID, $0.heightRows) }
+        )
         let size = drawerWindowSize(
             for: pair,
-            previewRows: layoutEngine.previewBottomRow(
-                origins: origins,
-                resized: resized.map { ($0.placementID, $0.heightRows) }
-            ),
+            previewRows: bottomRow,
             previewColumns: layoutEngine.previewOccupiedColumns(origins: origins, resized: resizedColumns)
         )
         withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
             uiState.drawerGridLeftColumn = columnRange.min
+            // 容器高度随预览最低行同步更新（曾只更新宽度、高度钉在提交布局
+            // 的旧行高）：缩小时网格内容比可视区高一截，ScrollView 反复亮起
+            // 滚动条。与宽度一样按预览几何计，DrawerPanelView 的网格高度
+            // 只读这个值。
             uiState.drawerContentSize = CGSize(
                 width: NotchGridMetrics.contentWidth(columns: columnSpan),
-                height: layoutEngine.drawerContentSize().height
+                height: NotchGridMetrics.contentHeight(rows: max(bottomRow, 1))
             )
             guard uiState.drawerWindowSize != size else { return }
             uiState.drawerWindowSize = size

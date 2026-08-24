@@ -99,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    #if DEBUG
     /// 收起动画中帧诊断（NOTCHCENTER_COLLAPSE_PROBE=1）：展开抽屉（钉住防
     /// 自动收起）→ 收起 → 抓收起过程中帧。验证岛顶紧凑带是否钉死容器顶缘：
     /// 收起时 `content` 退出布局后，若动画容器 frame 的对齐为默认垂直居中，
@@ -130,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
         }
     }
+    #endif
 
     private func maybeRunSmokeTest() {
         guard ProcessInfo.processInfo.environment["NOTCHCENTER_SMOKE_TEST"] == "1" else { return }
@@ -141,6 +143,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if ProcessInfo.processInfo.environment["NOTCHCENTER_RESIZE_AUTO"] == "1" {
             panelController.runResizeAutoDiagnostic()
+            return
+        }
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_SHRINKSCROLL_PROBE"] == "1" {
+            panelController.runShrinkScrollProbe()
             return
         }
         if ProcessInfo.processInfo.environment["NOTCHCENTER_EDIT_FIRST"] == "1" {

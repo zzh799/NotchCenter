@@ -123,7 +123,14 @@ struct DrawerPanelView: View {
             // 主面板内容真实下移（不再覆盖网格的浮动侧栏）。
             addBlockStrip
 
-            ScrollView(showsIndicators: true) {
+            // 滚动指示条必须隐藏：网格内容高度与可视区高度是两个独立动画值
+            // （gridFrameHeight 与窗口高度各自的 spring 表现层，逐帧量化差
+            // ±0.1~0.3pt），多行缩少行时 doc/clip 反复跨越相等点，NSScrollView
+            // 的滚动条随之反复亮灭（NOTCHCENTER_SHRINKSCROLL_PROBE 实测：同一
+            // 收缩动画中 vHidden 翻转多次）。抽屉本来就是内容自适应面板，静止态
+            // 内容 ≡ 可视区，滚动条没有存在意义；屏幕封顶时滚轮滚动依旧可用
+            // （仅无指示条）。与紧凑带 HorizontalDragScroll 同理。
+            ScrollView(showsIndicators: false) {
                 grid
             }
         }
@@ -273,10 +280,16 @@ struct DrawerPanelView: View {
 
     }
 
-    /// 网格高度：预览可能把块压到（或长到）提交布局之外，按预览最低行扩展
-    /// （窗口由控制器同步增高），避免预览块被 ScrollView 裁掉。正在缩放的
-    /// 块以预览行数计——模型里的 heightRows 还是旧值，底层块长高时它是
-    /// 唯一增高来源。
+    /// 网格高度 = 块实占行数（预览/非预览一律按块包围盒计）：预览可能把
+    /// 块压到（或长到）提交布局之外，按预览最低行扩展（窗口由控制器同步
+    /// 增高），避免预览块被 ScrollView 裁掉。正在缩放的块以预览行数计——
+    /// 模型里的 heightRows 还是旧值，底层块长高时它是唯一增高来源。
+    /// 不要与 drawerContentSize.height 取 max：它永远是**提交布局**的行高，
+    /// 缩放/增删使行数减少时仍是旧的高值——网格内容被撑得比已收缩的可视区
+    /// 高一截，ScrollView 随即亮起滚动条（内容其实滚不出这块“多出来”的区域，
+    /// 净闪烁），松手后滚动条还会拖到提交动画末尾才消失。网格高度必须与
+    /// 窗口高度（同源行数、同一 spring）同相收缩：内容 ≡ 可视区，滚动条
+    /// 只在屏幕封顶截断内容（真正可滚）时出现。
     private var gridFrameHeight: CGFloat {
         let previewRows = ui.drawerElements
             .map { element -> Int in
@@ -287,10 +300,7 @@ struct DrawerPanelView: View {
                 return origin.row + rows
             }
             .max() ?? 1
-        return max(
-            ui.drawerContentSize.height,
-            NotchGridMetrics.contentHeight(rows: previewRows)
-        )
+        return NotchGridMetrics.contentHeight(rows: previewRows)
     }
 
     @State private var previewPositions: [String: LayoutEngine.GridOrigin] = [:]
