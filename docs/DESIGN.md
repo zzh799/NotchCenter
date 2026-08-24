@@ -1,6 +1,6 @@
-# NotchNotes 设计规范（Design Spec）
+# NotchCenter 设计规范（Design Spec）
 
-> 本文档汇总 NotchNotes 的视觉语言、排版、动效、组件与交互模型，供 UI 改动与新增界面时遵循。
+> 本文档汇总 NotchCenter 的视觉语言、排版、动效、组件与交互模型，供 UI 改动与新增界面时遵循。
 > 源码标识符与 UI 字符串用英文，注释可用中文（与项目约定一致）。
 
 ---

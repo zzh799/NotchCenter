@@ -6,8 +6,8 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 
 ## 下载与安装
 
-- [下载最新版](https://github.com/oil-oil/NotchNotes/releases/latest/download/NotchCenter.zip)
-- [打开产品官网](https://oil-oil.github.io/NotchNotes/)
+- [下载最新版](https://github.com/oil-oil/NotchCenter/releases/latest/download/NotchCenter.zip)
+- [打开产品官网](https://oil-oil.github.io/NotchCenter/)
 
 下载包同时支持 Apple Silicon 和 Intel，要求 macOS 14 或更高版本。
 

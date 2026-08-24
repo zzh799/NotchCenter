@@ -1,6 +1,7 @@
 .build/
 .DS_Store
 DerivedData/
+NotchCenter.app/
 NotchNotes.app/
 dist/
 dist.noindex/
