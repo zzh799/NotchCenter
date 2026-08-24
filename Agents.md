@@ -59,7 +59,8 @@ NotchCenter/
 │   ├── ScratchpadPlugin/         # 文件暂存（只保存路径引用）
 │   ├── CaffeinatePlugin/         # 防休眠（SystemSleepGuard，管理员 pmset）
 │   ├── DshPlugin/                # dsh-web 服务控制卡（launchd 服务控制插件，见 docs/服务控制插件开发指南.md）
-│   └── CalibrePlugin/            # calibre-server 服务控制卡（同上）
+│   ├── CalibrePlugin/            # calibre-server 服务控制卡（同上）
+│   └── OpenCodeUsagePlugin/      # OpenCode 用量卡（抓取 opencode.ai SSR 页，同心环用量图 + Zen 余额）
 ├── LaunchdControlKit/            # launchd 管理基础库（独立本地包，仅服务控制类插件使用）
 ├── Vendor/swift-markdown-engine/ # vendored 依赖，仅 NotesPlugin 使用
 ├── Scripts/package-app.sh        # 通用 .app + PlugIns/*.bundle + Frameworks + zip/sha256
@@ -117,7 +118,7 @@ open dist.noindex/NotchCenter.app
 ## 测试
 
 - 运行：`swift test`；单文件调试可 `swift test --filter <Name>`。
-- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）。
+- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`OpenCodeUsageTests`（cookie 归一化 / SSR HTML 解析 / 时长短语，不发真实网络请求）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）。
 - 涉及 `pmset` / 休眠的逻辑测试应确保**不真正改变系统睡眠状态**。
 - 涉及 AppKit 窗口/事件的逻辑依赖 App 运行环境，注意保持 `@MainActor` 测试隔离（`setUp`/`tearDown` 是非隔离上下文，不要在里面改 @MainActor 属性）。
 

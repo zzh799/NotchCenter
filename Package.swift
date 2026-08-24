@@ -15,7 +15,8 @@ let package = Package(
         .library(name: "ScratchpadPlugin", type: .dynamic, targets: ["ScratchpadPlugin"]),
         .library(name: "CaffeinatePlugin", type: .dynamic, targets: ["CaffeinatePlugin"]),
         .library(name: "DshPlugin", type: .dynamic, targets: ["DshPlugin"]),
-        .library(name: "CalibrePlugin", type: .dynamic, targets: ["CalibrePlugin"])
+        .library(name: "CalibrePlugin", type: .dynamic, targets: ["CalibrePlugin"]),
+        .library(name: "OpenCodeUsagePlugin", type: .dynamic, targets: ["OpenCodeUsagePlugin"])
     ],
     dependencies: [
         // 共享 API 动态库：宿主与插件以「产品」方式链接同一份 Kit 代码（架构文档 §2.2 / §15）。
@@ -105,6 +106,18 @@ let package = Package(
                 ])
             ]
         ),
+        .target(
+            name: "OpenCodeUsagePlugin",
+            dependencies: [
+                .product(name: "NotchCenterKit", package: "NotchCenterKit")
+            ],
+            path: "Plugins/OpenCodeUsagePlugin",
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../../../../Frameworks"
+                ])
+            ]
+        ),
         .testTarget(
             name: "NotchCenterTests",
             dependencies: [
@@ -115,6 +128,7 @@ let package = Package(
                 "CaffeinatePlugin",
                 "DshPlugin",
                 "CalibrePlugin",
+                "OpenCodeUsagePlugin",
                 .product(name: "LaunchdControlKit", package: "LaunchdControlKit")
             ],
             path: "Tests/NotchCenterTests"

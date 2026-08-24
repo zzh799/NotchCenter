@@ -8,14 +8,22 @@ import SwiftUI
 public protocol NotchCenterPlugin: AnyObject {
     /// 插件提供的块类型清单（静态，宿主在实例化前即可读取）。
     static var blocks: [NotchBlock] { get }
+    /// 插件设置界面（文档 §4.7）。返回 nil 时插件管理窗口只显示元数据。
+    ///
+    /// 注意：必须是协议**要求**（而非仅 extension 默认实现）。宿主通过存在类型
+    /// `any NotchCenterPlugin` 访问，Swift 只按 witness table 分发；若是纯 extension
+    /// 成员，遵守类里声明的同名属性永远不会被调用（历史 bug：设置界面与菜单项全部静默失效）。
+    var settingsView: (@MainActor (PluginSettingsContext) -> AnyView)? { get }
+    /// 状态栏菜单贡献（文档 §4.8），最多 3 项。同上必须作为协议要求。
+    var menuItems: [PluginMenuItem] { get }
     init()
 }
 
 extension NotchCenterPlugin {
-    /// 插件设置界面（文档 §4.7）。返回 nil 时插件管理窗口只显示元数据。
+    /// 默认无设置界面。
     public var settingsView: (@MainActor (PluginSettingsContext) -> AnyView)? { nil }
 
-    /// 状态栏菜单贡献（文档 §4.8），最多 3 项。
+    /// 默认不贡献菜单项。
     public var menuItems: [PluginMenuItem] { [] }
 }
 
