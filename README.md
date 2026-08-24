@@ -4,6 +4,10 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 
 核心只负责刘海区域交互、窗口管理、插件加载与生命周期、布局引擎与状态存储；笔记、文件暂存、防休眠等功能以官方插件形式提供，第三方插件可动态安装（`.bundle`）。架构基线见 [`docs/NotchCenter 架构设计文档.md`](docs/NotchCenter%20架构设计文档.md)。
 
+> **引用**：NotchCenter 由 [NotchNotes] 重构而来，原项目承担的笔记 / 暂存 / 防休眠等能力已拆分为本仓库的官方插件，核心交互与视觉规范沿用原项目，详见下方“引用”一节。
+
+[NotchNotes]: https://github.com/oil-oil/NotchNotes
+
 ## 下载与安装
 
 - [下载最新版](https://github.com/oil-oil/NotchCenter/releases/latest/download/NotchCenter.zip)
@@ -21,11 +25,14 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 
 启动后，将鼠标移到或点击屏幕顶部中央展开抽屉。已启用插件的块显示在刘海下方的 3 个紧凑槽位与抽屉网格中；点击状态栏图标可进入“插件管理…”启用/禁用插件、安装第三方 `.bundle`，或通过“编辑布局”拖拽重排、缩放与添加块。
 
-官方插件：
+官方插件（6 个，随 `Contents/PlugIns/` 内置）：
 
-- **Notes**：多标签 Markdown 笔记（TextKit 2 编辑器，支持内嵌图片）。
-- **Scratchpad**：文件暂存区，只保留文件引用，不会移动或删除原文件。
-- **Keep Awake**：一键防止 Mac 休眠（需要管理员权限）。
+- **Notes**：多标签 Markdown 笔记（TextKit 2 编辑器，支持内嵌图片、待办与代码块）。
+- **Scratchpad**：文件暂存区，只保留文件引用，不会移动或删除原文件，支持拖拽进出与 QuickLook。
+- **Keep Awake（Caffeinate）**：一键防止 Mac 休眠（`pmset` + `caffeinate`，需管理员权限）。
+- **DSH Service**：`dsh-web` 服务控制卡（`LaunchdControlKit`），开关服务、切换自启、查看 PID/端口/状态、重启。
+- **Calibre Server**：`calibre-server` 服务控制卡，能力与 DSH Service 一致，管理本地书库服务。
+- **OpenCode Usage**：OpenCode Go 用量卡，抓取 `opencode.ai` SSR 页，展示 5h / Weekly / Monthly 同心环与 Zen 余额。
 
 笔记和暂存记录保存在本机，不会因覆盖安装应用而删除。
 
@@ -66,3 +73,11 @@ NOTARY_PROFILE="notary-profile" \
 - SwiftUI：紧凑区、抽屉网格、编辑模式与插件管理界面。
 - 插件系统：动态 `.bundle` + `NSPrincipalClass`，共享 `NotchCenterKit` 动态库，插件状态经 `StateStore` 键值持久化。
 - MarkdownEngine：Notes 插件的 Markdown 编辑和内嵌图片。
+- LaunchdControlKit：DSH / Calibre 服务控制类插件复用的 launchd 探测与控制基础库（见 `docs/服务控制插件开发指南.md`）。
+
+## 引用
+
+- **原项目**：[oil-oil/NotchNotes] — 本仓库的前身，早期单体版的笔记 + 文件暂存 + 防休眠实现。现已重构为插件宿主，历史提交与设计文档仍保留于本仓库 `git log` 与 `docs/`。
+- **迁移说明**：架构与数据不自动迁移旧版 `NotchNotes` 数据（见 `docs/NotchCenter 架构设计文档.md` §决策 C）；视觉与交互沿用 `docs/DESIGN.md`，原项目信息在此以引用形式保留，不再正文中展开。
+
+[oil-oil/NotchNotes]: https://github.com/oil-oil/NotchNotes
