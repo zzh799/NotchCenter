@@ -157,7 +157,7 @@ struct FileShelfView: View {
                 store.removeAll()
             }
         } label: {
-            Label("Remove All Shelf Items", systemImage: "xmark.circle")
+            Label(L("menu.removeAll.shelfItems"), systemImage: "xmark.circle")
         }
         .disabled(store.items.isEmpty)
     }
@@ -167,7 +167,7 @@ struct FileShelfView: View {
             Image(systemName: "tray.and.arrow.down")
                 .font(.system(size: 9, weight: .semibold))
 
-            Text("Release to add")
+            Text(L("drop.releaseToAdd"))
                 .font(.system(size: 10, weight: .semibold))
         }
         .foregroundStyle(Color.white.opacity(0.58))
@@ -179,7 +179,7 @@ struct FileShelfView: View {
                 .font(.system(size: 28, weight: .regular))
                 .foregroundStyle(.white.opacity(0.35))
 
-            Text("暂存区")
+            Text(L("shelf.empty.title"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.55))
         }

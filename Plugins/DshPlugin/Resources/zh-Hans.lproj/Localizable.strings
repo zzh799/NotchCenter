@@ -1,0 +1,28 @@
+/* DshPlugin UI 简体中文文案。品牌名 DSH Web / DSH Service 保持英文。 */
+
+/* 服务状态（浮窗完整版 / 块副标题短版） */
+"dsh.state.managed" = "由 launchd 管理";
+"dsh.state.loadedNotRunning" = "已加载未运行";
+"dsh.state.unmanagedExternal" = "检测到非托管进程";
+"dsh.state.unmanagedShort" = "⚠️ 非托管进程";
+"dsh.conflict.popover" = "%d 个实例冲突";
+"dsh.conflict.block" = "⚠️ %d 个实例在监听";
+"dsh.state.stopped" = "已停止";
+"dsh.state.runningPort" = "运行中 · 端口 %@";
+
+/* 动作进行中的提示文案（busy 期间显示，成功后也会短暂驻留） */
+"dsh.action.starting" = "正在启动…";
+"dsh.action.stopping" = "正在停止…";
+"dsh.action.restarting" = "正在重启…";
+"dsh.action.autostartOn" = "正在开启自启动…";
+"dsh.action.autostartOff" = "正在关闭自启动…";
+"dsh.action.creatingPlist" = "正在创建 plist 并启动…";
+
+/* 动作失败提示 */
+"dsh.error.createPlist" = "无法在 %@ 创建 plist 文件";
+"dsh.error.bootstrap" = "launchctl bootstrap 失败。";
+
+/* 浮窗行标签与控件（PID / Port 为通用缩写，保留英文） */
+"dsh.label.status" = "状态";
+"dsh.launchAtLogin" = "登录时启动";
+"dsh.restart" = "重启";

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  开发态（swift run / swift build）裸可执行文件没有旁边的 Info.plist，
+  由 Package.swift 经链接参数嵌入 __TEXT,__info_plist 段，Bundle.main 会在运行时读取它。
+
+  为什么必须有它：CFBundle 的语言匹配把用户偏好语言与「应用声明的可用本地化」求交集，
+  而这个清单来自主可执行文件的 CFBundleLocalizations。开发态没有声明时交集只剩
+  开发区域 en，宿主资源 bundle 与所有插件 bundle 的本地化查找都会永远回退英文，
+  设置面板的语言切换（写 AppleLanguages）也就完全失效。打包态不受影响：
+  build.sh 把 Resources/Info.plist（同样声明了这两个键）复制进 .app。
+
+  只保留本地化匹配需要的最小键集；版本号、图标等打包元数据仍归 Resources/Info.plist。
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.notchcenter.app.dev</string>
+    <key>CFBundleName</key>
+    <string>NotchCenter</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>zh-Hans</string>
+    </array>
+</dict>
+</plist>

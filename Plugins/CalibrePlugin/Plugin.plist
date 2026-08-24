@@ -10,6 +10,17 @@
   <string>Calibre Server</string>
   <key>Description</key>
   <string>Controls the calibre-server launchd service.</string>
+  <!-- 元数据本地化：build.sh 把这些译文生成为 bundle 内 zh-Hans.lproj/InfoPlist.strings；en 基准是上方原始字段 -->
+  <key>DisplayNameLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>Calibre 服务</string>
+  </dict>
+  <key>DescriptionLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>控制 calibre-server launchd 服务。</string>
+  </dict>
   <key>Dependencies</key>
   <array>
     <string>LaunchdControlKit</string>

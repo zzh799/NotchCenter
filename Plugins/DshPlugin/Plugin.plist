@@ -10,6 +10,17 @@
   <string>DSH Service</string>
   <key>Description</key>
   <string>Controls the dsh-web launchd service.</string>
+  <!-- 元数据本地化（build.sh 生成 bundle 内 zh-Hans.lproj/InfoPlist.strings）；en 基准为上方字段 -->
+  <key>DisplayNameLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>DSH 服务</string>
+  </dict>
+  <key>DescriptionLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>管理 dsh-web 的 launchd 服务。</string>
+  </dict>
   <key>Dependencies</key>
   <array>
     <string>LaunchdControlKit</string>

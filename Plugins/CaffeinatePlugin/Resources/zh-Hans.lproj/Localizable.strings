@@ -1,0 +1,21 @@
+/* CaffeinatePlugin 简体中文文案 */
+
+/* 块与菜单 */
+"caffeinate.block.name" = "保持唤醒";
+"caffeinate.menu.start" = "保持 Mac 唤醒";
+"caffeinate.menu.stop" = "停止保持 Mac 唤醒";
+
+/* 紧凑块交互提示与无障碍 */
+"caffeinate.help.start" = "保持 Mac 唤醒";
+"caffeinate.help.stop" = "停止保持 Mac 唤醒";
+"caffeinate.a11y.keepAwake" = "保持 Mac 唤醒";
+"caffeinate.a11y.on" = "开";
+"caffeinate.a11y.off" = "关";
+
+/* 设置界面 */
+"caffeinate.settings.title" = "保持 Mac 唤醒";
+"caffeinate.settings.description" = "在本插件关闭或 NotchCenter 退出前，阻止 Mac 休眠（包括合盖时）。需要管理员权限。";
+
+/* 错误信息（管理员权限） */
+"caffeinate.error.adminRequired.restore" = "恢复正常休眠需要管理员权限。";
+"caffeinate.error.adminRequired.lidClosed" = "合盖时阻止睡眠需要管理员权限。";

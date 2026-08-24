@@ -10,5 +10,16 @@
   <string>Keep Awake</string>
   <key>Description</key>
   <string>Keeps your Mac awake on demand.</string>
+  <!-- 元数据本地化：build.sh 按语言键生成 bundle 内的 InfoPlist.strings（en 基准用上面两个字段） -->
+  <key>DisplayNameLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>保持唤醒</string>
+  </dict>
+  <key>DescriptionLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>按需保持你的 Mac 不休眠。</string>
+  </dict>
 </dict>
 </plist>

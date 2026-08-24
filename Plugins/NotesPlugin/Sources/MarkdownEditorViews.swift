@@ -123,7 +123,7 @@ struct MarkdownNoteEditor: View {
             }
 
             if store.text(for: activeTabID).isEmpty {
-                Text("Start typing…")
+                Text(L("notes.placeholder.startTyping"))
                     .font(.system(size: 15))
                     .foregroundStyle(.white.opacity(0.24))
                     .padding(.horizontal, 13)

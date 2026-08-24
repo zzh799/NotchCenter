@@ -1,0 +1,67 @@
+/* NotchCenter 宿主 UI 简体中文文案 */
+
+/* 通用 */
+"common.ok" = "好";
+"common.cancel" = "取消";
+
+/* 设置窗口 */
+"settings.window.title" = "NotchCenter 设置";
+"settings.section.interaction" = "交互";
+"settings.triggerMode" = "触发方式";
+"trigger.hover" = "悬停展开";
+"trigger.click" = "点击展开";
+"settings.section.layout" = "布局";
+"settings.columns" = "抽屉列数";
+"settings.column.count" = "%d 列";
+"settings.section.plugins" = "插件";
+"settings.pluginManager" = "插件管理…";
+"settings.quit" = "退出 NotchCenter";
+
+/* 语言覆盖（重启生效） */
+"settings.language" = "语言";
+"language.system" = "跟随系统";
+"language.restartHint" = "重启后生效。";
+
+/* 插件管理窗口 */
+"manager.window.title" = "插件管理";
+"manager.header.plugins" = "插件";
+"manager.install.help" = "安装插件包…";
+"manager.badge.builtIn" = "内置";
+"manager.badge.user" = "用户";
+"manager.badge.incompatible" = "不兼容";
+"manager.uninstall" = "卸载";
+"manager.version.api" = "版本 %@ · API %@";
+"manager.loadFailed" = "该插件加载失败：%@";
+"manager.noSettings" = "此插件没有可用的设置项。";
+"manager.selectHint" = "选择一个插件查看详情";
+"manager.alert.title" = "插件错误";
+"manager.uninstall.confirmTitle" = "卸载“%@”？";
+"manager.uninstall.confirmBody" = "插件包将从你的插件目录中移除。";
+"manager.openPanel.title" = "选择插件包";
+"manager.openPanel.message" = "选择要为所有用户安装的 .bundle 插件。";
+
+/* 面板交互 help 标签 */
+"panel.help.removeBlock" = "移除块";
+"panel.help.resize" = "拖动调整大小";
+"panel.help.settings" = "设置";
+"panel.help.tidy" = "整理布局（自上而下、自左向右）";
+"panel.help.pin" = "固定抽屉常开";
+"panel.help.unpin" = "取消固定抽屉";
+"panel.help.editLayout" = "编辑布局";
+"panel.help.doneEditing" = "完成布局编辑";
+"panel.help.closeDrawer" = "关闭抽屉";
+
+/* 编辑模式添加块目录条 */
+"addblock.compact" = "紧凑区";
+"addblock.drawer" = "抽屉";
+"addblock.help.compact" = "添加到紧凑带";
+"addblock.help.drawer" = "添加到抽屉格网";
+
+/* PluginManager 错误信息（经 LocalizedError.errorDescription 展示） */
+"pluginManager.error.notFound" = "找不到插件：%@";
+"pluginManager.error.apiIncompatible" = "插件 %@ 声明的 API 为 %@，不包含当前核心 API %@。";
+"pluginManager.error.failedToLoad" = "加载 %@ 的 bundle 失败：%@";
+"pluginManager.error.invalidPrincipalClass" = "%@ 的 bundle 未暴露 NotchCenterPlugin 主类。";
+"pluginManager.error.notUserPlugin" = "%@ 是内置插件，无法卸载。";
+"pluginManager.error.installFailed" = "插件安装失败：%@";
+"pluginMetadata.error.missingKey" = "位于 %@ 的 bundle 缺少必需的 Info.plist 键：%@";

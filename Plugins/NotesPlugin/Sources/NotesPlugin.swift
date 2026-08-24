@@ -8,7 +8,7 @@ import SwiftUI
     public static var blocks: [NotchBlock] = [
         NotchBlock(
             id: "notes.compact",
-            displayName: "Notes",
+            displayName: L("notes.block.compact"),
             kind: .compact,
             // 自定义交互：点击 = 新建笔记 + 展开抽屉 + 焦点落到新笔记。
             interaction: .custom,
@@ -19,7 +19,7 @@ import SwiftUI
         ),
         NotchBlock(
             id: "notes.notebook",
-            displayName: "Notebook",
+            displayName: L("notes.block.notebook"),
             kind: .drawer,
             supportedSizes: [.large, .extraLarge],
             defaultSize: .extraLarge,
@@ -59,7 +59,7 @@ import SwiftUI
         [
             PluginMenuItem(
                 id: "notes.menu.new",
-                title: "New Note",
+                title: L("notes.newNote"),
                 systemImage: "square.and.pencil",
                 action: { [weak self] in
                     self?.createNewNote()
@@ -215,8 +215,8 @@ private struct NotesCompactView: View {
             .onTapGesture {
                 NotesModel.shared.createNoteFromCompactIcon(hostController: context.hostController)
             }
-            .help("New Note")
-            .accessibilityLabel("New Note")
+            .help(L("notes.newNote"))
+            .accessibilityLabel(L("notes.newNote"))
     }
 }
 
@@ -227,15 +227,18 @@ private struct NotesSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("\(store.tabs.count) note\(store.tabs.count == 1 ? "" : "s")")
+            // 中英文单复数形式不同，分键处理；中文两键同文。
+            Text(store.tabs.count == 1
+                 ? LF("notes.count.one", store.tabs.count)
+                 : LF("notes.count.other", store.tabs.count))
                 .font(.system(size: 12, weight: .semibold))
 
-            Text("Markdown notes with TextKit 2 rendering. Images are stored inside the plugin's data directory.")
+            Text(L("notes.settings.description"))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button("New Note") {
+            Button(L("notes.newNote")) {
                 store.addTab()
             }
             .controlSize(.small)

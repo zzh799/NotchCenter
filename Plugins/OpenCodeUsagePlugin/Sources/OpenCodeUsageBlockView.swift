@@ -68,7 +68,7 @@ struct OpenCodeUsageBlockView: View {
             VStack(spacing: 6) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Loading usage…")
+                Text(L("usage.loading"))
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.58))
             }
@@ -93,7 +93,7 @@ struct OpenCodeUsageBlockView: View {
                         .foregroundStyle(Color.white.opacity(0.92))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                    Text("Zen balance")
+                    Text(L("usage.zenBalance"))
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.58))
                 }
@@ -128,7 +128,7 @@ struct OpenCodeUsageBlockView: View {
             Image(systemName: "gauge")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.38))
-            Text("Set cookie & workspace in Plugin Manager")
+            Text(L("usage.notConfigured"))
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.58))
                 .multilineTextAlignment(.center)
@@ -142,7 +142,7 @@ struct OpenCodeUsageBlockView: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color.orange.opacity(0.72))
-            Text(store.errorMessage ?? "Usage unavailable.")
+            Text(store.errorMessage ?? L("usage.unavailable"))
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.58))
                 .multilineTextAlignment(.center)
@@ -167,7 +167,7 @@ struct OpenCodeUsageBlockView: View {
         .buttonStyle(.plain)
         .disabled(store.isLoading || !store.isConfigured)
         .opacity((store.isLoading || !store.isConfigured) ? 0.35 : 1)
-        .help("Refresh usage")
+        .help(L("usage.refreshHelp"))
     }
 
     // MARK: 长按手势 / 动作

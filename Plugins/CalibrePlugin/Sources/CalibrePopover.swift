@@ -13,15 +13,15 @@ struct CalibrePopoverContentView: View {
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.white.opacity(0.92))
 
-            row("Status", text: statusText, warning: isWarning)
-            row("PID", text: monitor.status.pid.map(String.init) ?? "—", warning: false)
-            row("Port", text: monitor.status.port.map(String.init) ?? "—", warning: false)
+            row(L("calibre.popover.status"), text: statusText, warning: isWarning)
+            row(L("calibre.popover.pid"), text: monitor.status.pid.map(String.init) ?? "—", warning: false)
+            row(L("calibre.popover.port"), text: monitor.status.port.map(String.init) ?? "—", warning: false)
 
             Divider()
                 .overlay(Color.white.opacity(0.045))
 
             HStack {
-                Text("Launch at Login")
+                Text(L("calibre.popover.launchAtLogin"))
                     .font(.system(size: 11))
                     .foregroundStyle(Color.white.opacity(0.76))
                 Spacer()
@@ -38,7 +38,7 @@ struct CalibrePopoverContentView: View {
             Button {
                 monitor.restart()
             } label: {
-                Label("Restart", systemImage: "arrow.clockwise")
+                Label(L("calibre.popover.restart"), systemImage: "arrow.clockwise")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.92))
                     .frame(maxWidth: .infinity)
@@ -74,11 +74,11 @@ struct CalibrePopoverContentView: View {
 
     private var statusText: String {
         switch monitor.status.state {
-        case .managed: return "Managed by launchd"
-        case .loadedNotRunning: return "Loaded, not running"
-        case .unmanagedExternal: return "Unmanaged process listening"
-        case .portConflict(let n): return "\(n) instances conflict"
-        case .stopped: return "Stopped"
+        case .managed: return L("calibre.state.managed")
+        case .loadedNotRunning: return L("calibre.state.loadedNotRunning")
+        case .unmanagedExternal: return L("calibre.state.unmanagedExternal")
+        case .portConflict(let n): return LF("calibre.state.portConflict", n)
+        case .stopped: return L("calibre.state.stopped")
         }
     }
 

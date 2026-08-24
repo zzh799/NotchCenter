@@ -116,16 +116,18 @@ struct CalibreServiceBlockView: View {
         // busy 时直接把 Starting… / Stopping… 显示在状态位上，不单独占一行。
         if monitor.isBusy { return busyText }
         switch monitor.status.state {
-        case .managed: return "Running · port \(monitor.status.port.map(String.init) ?? "—")"
-        case .loadedNotRunning: return "Loaded, not running"
-        case .unmanagedExternal: return "⚠️ Unmanaged process"
-        case .portConflict(let n): return "⚠️ \(n) instances listening"
-        case .stopped: return "Stopped"
+        case .managed:
+            // 端口探测缺失时用 em dash 占位，与浮窗行展示保持一致。
+            return LF("calibre.subtitle.running", monitor.status.port.map(String.init) ?? "—")
+        case .loadedNotRunning: return L("calibre.state.loadedNotRunning")
+        case .unmanagedExternal: return L("calibre.subtitle.unmanaged")
+        case .portConflict(let n): return LF("calibre.subtitle.portConflict", n)
+        case .stopped: return L("calibre.state.stopped")
         }
     }
 
     private var busyText: String {
-        monitor.isServiceOn ? "Stopping…" : "Starting…"
+        monitor.isServiceOn ? L("calibre.action.stopping") : L("calibre.action.starting")
     }
 
     // MARK: 长按手势

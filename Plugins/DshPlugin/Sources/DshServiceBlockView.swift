@@ -116,16 +116,16 @@ struct DshServiceBlockView: View {
         // busy 时直接把 Starting… / Stopping… 显示在状态位上，不单独占一行。
         if monitor.isBusy { return busyText }
         switch monitor.status.state {
-        case .managed: return "Running · port \(monitor.status.port.map(String.init) ?? "—")"
-        case .loadedNotRunning: return "Loaded, not running"
-        case .unmanagedExternal: return "⚠️ Unmanaged process"
-        case .portConflict(let n): return "⚠️ \(n) instances listening"
-        case .stopped: return "Stopped"
+        case .managed: return LF("dsh.state.runningPort", monitor.status.port.map(String.init) ?? "—")
+        case .loadedNotRunning: return L("dsh.state.loadedNotRunning")
+        case .unmanagedExternal: return L("dsh.state.unmanagedShort")
+        case .portConflict(let n): return LF("dsh.conflict.block", n)
+        case .stopped: return L("dsh.state.stopped")
         }
     }
 
     private var busyText: String {
-        monitor.isServiceOn ? "Stopping…" : "Starting…"
+        monitor.isServiceOn ? L("dsh.action.stopping") : L("dsh.action.starting")
     }
 
     // MARK: 长按手势

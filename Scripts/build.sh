@@ -45,6 +45,10 @@ PLUGIN_DISPLAYS=()
 PLUGIN_DESCRIPTIONS=()
 PLUGIN_PRINCIPALS=()
 PLUGIN_API_RANGES_XML=()
+# 可选的元数据本地化（多语言方案）：Plugin.plist 里 DisplayNameLocales /
+# DescriptionLocales 字典按语言键存放译文，这里只取 zh-Hans（en 用基准字段）。
+PLUGIN_DISPLAY_ZH=()
+PLUGIN_DESC_ZH=()
 
 # 读取 plist 字符串键；键缺失时输出空串（是否致命由调用方判断）。
 # 注意：plutil 失败时会把错误文本写到 stdout，必须整体丢弃，否则错误文本会被当成值捕获。
@@ -100,15 +104,18 @@ discover_plugins() {
     PLUGIN_DESCRIPTIONS+=("$description")
     PLUGIN_PRINCIPALS+=("$principal")
     PLUGIN_API_RANGES_XML+=("$api_xml")
+    PLUGIN_DISPLAY_ZH+=("$(plist_get "DisplayNameLocales.zh-Hans" "$plist")")
+    PLUGIN_DESC_ZH+=("$(plist_get "DescriptionLocales.zh-Hans" "$plist")")
   done
   (( ${#PLUGIN_NAMES[@]} > 0 )) || die "$PLUGINS_SRC_DIR 下没有发现任何插件目录"
 }
 
 # 组装单个插件 bundle 并生成 Info.plist（模板结构见架构文档 §3.2）。
-assemble_bundle() { # $1=目标PlugIns目录 $2=索引
+# $4 = SPM 产物目录（含 <Name>_<Name>.bundle 资源包），dev 与 package 的路径不同。
+assemble_bundle() { # $1=目标PlugIns目录 $2=索引 $3=dylib路径 $4=SPM产物目录
   local dest_root="$1" i="$2"
   local name="${PLUGIN_NAMES[$i]}" dylib="$3"
-  local bundle_dir contents_dir
+  local bundle_dir contents_dir resources_dir
 
   if [[ ! -f "$dylib" ]]; then
     die "找不到插件产物：lib$name.dylib"
@@ -116,14 +123,39 @@ assemble_bundle() { # $1=目标PlugIns目录 $2=索引
 
   bundle_dir="$dest_root/$name.bundle"
   contents_dir="$bundle_dir/Contents"
-  mkdir -p "$contents_dir/MacOS"
+  resources_dir="$contents_dir/Resources"
+  mkdir -p "$contents_dir/MacOS" "$resources_dir"
   cp "$dylib" "$contents_dir/MacOS/$name"
+
+  # 本地化 UI 文案：把 SPM 资源包里的 lproj 平铺复制进 Contents/Resources，
+  # 插件代码用 Bundle(for:) 在这个 bundle 里查 Localizable.strings。
+  # SPM 资源包命名规则是 <包名>_<target名>.bundle。
+  local spm_res_bundle="$4/NotchCenter_${name}.bundle"
+  if [[ -d "$spm_res_bundle" ]]; then
+    cp -R "$spm_res_bundle/"*.lproj "$resources_dir/" 2>/dev/null || true
+  else
+    echo "警告：找不到 $name 的本地化资源包 ${spm_res_bundle}，插件 UI 将回退英文。" >&2
+  fi
+
+  # 本地化元数据：DisplayNameLocales / DescriptionLocales 生成 InfoPlist.strings。
+  local display_zh="${PLUGIN_DISPLAY_ZH[$i]}" desc_zh="${PLUGIN_DESC_ZH[$i]}"
+  if [[ -n "$display_zh" || -n "$desc_zh" ]]; then
+    mkdir -p "$resources_dir/zh-Hans.lproj"
+    cat > "$resources_dir/zh-Hans.lproj/InfoPlist.strings" <<EOF
+/* 由 build.sh 从 Plugin.plist 自动生成，不要手工修改。 */
+"NotchCenterPluginDisplayName" = "${display_zh//\\/\\\\}";
+"NotchCenterPluginDescription" = "${desc_zh//\\/\\\\}";
+EOF
+  fi
 
   cat > "$contents_dir/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- 开发区域语言：本地化缺失时的回退基准 -->
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
   <key>CFBundleIdentifier</key>
   <string>${PLUGIN_IDS[$i]}.bundle</string>
   <key>CFBundleExecutable</key>
@@ -177,7 +209,7 @@ cmd_dev() {
 
   for i in "${!PLUGIN_NAMES[@]}"; do
     dylib="$(find_plugin_dylib "${PLUGIN_NAMES[$i]}" "$config")"
-    assemble_bundle "$plugins_out" "$i" "$dylib"
+    assemble_bundle "$plugins_out" "$i" "$dylib" "$bin_dir"
     echo "Prepared $plugins_out/${PLUGIN_NAMES[$i]}.bundle"
   done
   echo "Dev plugin bundles ready at $plugins_out"
@@ -233,6 +265,15 @@ cmd_package() {
   plutil -replace CFBundleShortVersionString -string "$app_version" "$contents_dir/Info.plist"
   plutil -replace CFBundleVersion -string "$build_number" "$contents_dir/Info.plist"
 
+  # 宿主本地化资源：SPM 生成的资源 bundle 复制进 Contents/Resources，
+  # Bundle.module 在打包态经 Bundle.main.resourceURL 定位到它。
+  host_res_bundle="$products_dir/${app_name}_${app_name}.bundle"
+  if [[ -d "$host_res_bundle" ]]; then
+    cp -R "$host_res_bundle" "$resources_dir/"
+  else
+    die "找不到宿主本地化资源：$host_res_bundle"
+  fi
+
   # 共享框架（宿主与插件通过 @rpath 解析），同样要求通用架构。
   copy_universal_dylib() { # $1=产物名
     local dylib="$products_dir/lib$1.dylib"
@@ -259,7 +300,7 @@ cmd_package() {
     if [[ "$plugin_archs" != *"arm64"* || "$plugin_archs" != *"x86_64"* ]]; then
       die "插件不是通用架构：${PLUGIN_NAMES[$i]} ($plugin_archs)"
     fi
-    assemble_bundle "$plugins_out" "$i" "$dylib"
+    assemble_bundle "$plugins_out" "$i" "$dylib" "$products_dir"
   done
 
   if [[ -f "$source_icon" ]]; then

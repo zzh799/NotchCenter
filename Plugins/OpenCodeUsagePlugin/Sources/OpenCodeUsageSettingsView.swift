@@ -12,6 +12,8 @@ struct OpenCodeUsageSettingsView: View {
     @State private var baseURLDraft = ""
     @State private var cookieDraft = ""
     @State private var message: String?
+    /// 最近一次保存是否成功（决定状态文字颜色，与语言无关）。
+    @State private var messageIsError = false
     @State private var didLoadCurrentValues = false
 
     var body: some View {
@@ -23,7 +25,7 @@ struct OpenCodeUsageSettingsView: View {
                     .controlSize(.small)
                     .frame(maxWidth: 260)
             } label: {
-                Text("Workspace ID")
+                Text(L("settings.workspaceID"))
                     .font(.system(size: 12, weight: .semibold))
             }
 
@@ -33,10 +35,10 @@ struct OpenCodeUsageSettingsView: View {
                     .controlSize(.small)
                     .frame(maxWidth: 260)
             } label: {
-                Text("Cookie")
+                Text(L("settings.cookie"))
                     .font(.system(size: 12, weight: .semibold))
             }
-            .help("Paste the raw auth token, a full Cookie header, or anything in between.")
+            .help(L("settings.cookieHelp"))
 
             LabeledContent {
                 TextField(OpenCodeUsageConfigLogic.defaultBaseURL, text: $baseURLDraft)
@@ -44,22 +46,22 @@ struct OpenCodeUsageSettingsView: View {
                     .controlSize(.small)
                     .frame(maxWidth: 260)
             } label: {
-                Text("Base URL")
+                Text(L("settings.baseURL"))
                     .font(.system(size: 12, weight: .semibold))
             }
 
             HStack(spacing: 8) {
-                Button("Save") { save() }
+                Button(L("common.save")) { save() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                 if store.isConfigured {
-                    Text("Cookie set (\(store.maskedCookie.tail)) · workspace \(workspaceSummary)")
+                    Text(LF("settings.statusConfigured", store.maskedCookie.tail, workspaceSummary))
                         .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.55))
                 }
             }
 
-            Text("Usage is scraped from the opencode.ai dashboard pages (no public API). Cached for 5 minutes; failed fetches cool down for 60 seconds. The cookie is never logged.")
+            Text(L("settings.explanation"))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
@@ -67,7 +69,8 @@ struct OpenCodeUsageSettingsView: View {
             if let message {
                 Text(message)
                     .font(.system(size: 11))
-                    .foregroundStyle(message.hasPrefix("Saved") ? Color.green.opacity(0.9) : .red.opacity(0.9))
+                    // 成功/失败用显式状态区分：不再用文案前缀判断（本地化后前缀随语言变）。
+                    .foregroundStyle(messageIsError ? Color.red.opacity(0.9) : Color.green.opacity(0.9))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -82,12 +85,12 @@ struct OpenCodeUsageSettingsView: View {
 
     private var workspaceSummary: String {
         let masked = store.maskedWorkspaceID
-        return masked.isSet ? "set" : "not set"
+        return masked.isSet ? L("common.set") : L("common.notSet")
     }
 
     private var maskedCookiePlaceholder: String {
         let masked = store.maskedCookie
-        return masked.isSet ? "Leave blank to keep (…\(masked.tail))" : "auth=…"
+        return masked.isSet ? LF("settings.cookiePlaceholderKeep", masked.tail) : "auth=…"
     }
 
     private func save() {
@@ -97,8 +100,10 @@ struct OpenCodeUsageSettingsView: View {
             baseURL: baseURLDraft
         ) {
             message = error
+            messageIsError = true
         } else {
-            message = "Saved. Refreshing usage…"
+            message = L("settings.saved")
+            messageIsError = false
             cookieDraft = ""
         }
     }

@@ -159,7 +159,7 @@ struct DrawerPanelView: View {
             // 原标题位置改为设置按钮（accessory 应用无菜单栏，这是常驻入口）。
             topBarButton(
                 systemImage: "gearshape",
-                help: "Settings",
+                help: L("panel.help.settings"),
                 action: actions.onShowSettings,
                 tint: .white.opacity(0.65)
             )
@@ -171,7 +171,7 @@ struct DrawerPanelView: View {
             if ui.isEditing {
                 topBarButton(
                     systemImage: "arrow.down.forward.and.arrow.up.backward",
-                    help: "Tidy layout (top-to-bottom, left-to-right)",
+                    help: L("panel.help.tidy"),
                     action: actions.onReorderBlocks,
                     tint: .white.opacity(0.9)
                 )
@@ -179,7 +179,7 @@ struct DrawerPanelView: View {
             } else {
                 topBarButton(
                     systemImage: ui.isPinned ? "pin.fill" : "pin",
-                    help: ui.isPinned ? "Unpin drawer" : "Pin drawer open",
+                    help: ui.isPinned ? L("panel.help.unpin") : L("panel.help.pin"),
                     action: actions.onTogglePin,
                     tint: ui.isPinned ? .white.opacity(0.9) : .white.opacity(0.65)
                 )
@@ -188,14 +188,14 @@ struct DrawerPanelView: View {
 
             topBarButton(
                 systemImage: ui.isEditing ? "pencil.slash" : "pencil",
-                help: ui.isEditing ? "Done editing layout" : "Edit layout",
+                help: ui.isEditing ? L("panel.help.doneEditing") : L("panel.help.editLayout"),
                 action: actions.onToggleEdit,
                 tint: ui.isEditing ? .white.opacity(0.9) : .white.opacity(0.65)
             )
 
             topBarButton(
                 systemImage: "chevron.down",
-                help: "Close drawer",
+                help: L("panel.help.closeDrawer"),
                 action: actions.onCollapse,
                 tint: .white.opacity(0.65)
             )

@@ -8,7 +8,7 @@ import SwiftUI
     public static var blocks: [NotchBlock] = [
         NotchBlock(
             id: "scratchpad.compact",
-            displayName: "Scratchpad",
+            displayName: L("block.compact.name"),
             kind: .compact,
             // 自定义交互：点击 = 确认后清空暂存区。
             interaction: .custom,
@@ -19,7 +19,7 @@ import SwiftUI
         ),
         NotchBlock(
             id: "scratchpad.shelf",
-            displayName: "File Shelf",
+            displayName: L("block.shelf.name"),
             kind: .drawer,
             supportedSizes: [.medium, .large, .wide, .extraLarge],
             defaultSize: .large,
@@ -185,19 +185,28 @@ private struct ClearConfirmationOverlay: View {
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(.white.opacity(0.85))
 
-                Text("Clear Scratchpad")
+                Text(L("clear.confirm.title"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
 
-                Text("Remove all \(itemCount) item\(itemCount == 1 ? "" : "s")? Original files are not affected.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                // 中英复数习惯不同：en 单数走独立键（无占位符），zh 两键同文。
+                if itemCount == 1 {
+                    Text(L("clear.confirm.message.one"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text(LF("clear.confirm.message", itemCount))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 HStack(spacing: 8) {
                     Button(action: onCancel) {
-                        Text("Cancel")
+                        Text(L("common.cancel"))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.white.opacity(0.75))
                             .padding(.horizontal, 14)
@@ -210,7 +219,7 @@ private struct ClearConfirmationOverlay: View {
                     .keyboardShortcut(.cancelAction)
 
                     Button(action: onConfirm) {
-                        Text("Remove All")
+                        Text(L("clear.confirm.removeAll"))
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14)

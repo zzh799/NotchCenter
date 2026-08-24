@@ -13,15 +13,15 @@ enum OpenCodeUsageError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingConfig:
-            return "Set your OpenCode cookie and workspace ID in plugin settings."
+            return L("error.missingConfig")
         case .http(let status):
-            return "HTTP \(status) from opencode.ai"
+            return LF("error.http", status)
         case .timedOut:
-            return "Request to opencode.ai timed out."
+            return L("error.timedOut")
         case .network(let message):
             return message
         case .emptyParse:
-            return "Could not read usage page (cookie expired or invalid?)"
+            return L("error.emptyParse")
         }
     }
 }

@@ -10,6 +10,18 @@
   <string>Notes</string>
   <key>Description</key>
   <string>Markdown notes with TextKit 2 rendering.</string>
+  <!-- 元数据本地化：build.sh 据此生成 bundle 内 zh-Hans.lproj/InfoPlist.strings；
+       en 基准即上方 DisplayName / Description。 -->
+  <key>DisplayNameLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>笔记</string>
+  </dict>
+  <key>DescriptionLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>基于 TextKit 2 渲染的 Markdown 笔记。</string>
+  </dict>
   <key>Dependencies</key>
   <array>
     <string>MarkdownEngine</string>

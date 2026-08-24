@@ -1,0 +1,32 @@
+/* CalibrePlugin 英文文案（开发基准语言，键缺失时兜底）。品牌名 Calibre 保持原文。 */
+
+/* 抽屉块副标题 */
+"calibre.subtitle.running" = "Running · port %@";
+"calibre.subtitle.unmanaged" = "⚠️ Unmanaged process";
+"calibre.subtitle.portConflict" = "⚠️ %d instances listening";
+
+/* 服务状态（浮窗） */
+"calibre.state.managed" = "Managed by launchd";
+"calibre.state.loadedNotRunning" = "Loaded, not running";
+"calibre.state.unmanagedExternal" = "Unmanaged process listening";
+"calibre.state.portConflict" = "%d instances conflict";
+"calibre.state.stopped" = "Stopped";
+
+/* 浮窗行标签与控件 */
+"calibre.popover.status" = "Status";
+"calibre.popover.pid" = "PID";
+"calibre.popover.port" = "Port";
+"calibre.popover.launchAtLogin" = "Launch at Login";
+"calibre.popover.restart" = "Restart";
+
+/* 动作进行中的 busy 提示（浮窗 message 与块副标题共用） */
+"calibre.action.starting" = "Starting…";
+"calibre.action.stopping" = "Stopping…";
+"calibre.action.restarting" = "Restarting…";
+"calibre.action.enableAutostart" = "Enabling autostart…";
+"calibre.action.disableAutostart" = "Disabling autostart…";
+"calibre.action.creatingPlist" = "Creating plist & starting…";
+
+/* 动作失败的错误提示 */
+"calibre.error.createPlist" = "Failed to create plist at %@";
+"calibre.error.bootstrap" = "launchctl bootstrap failed.";

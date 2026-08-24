@@ -1,0 +1,21 @@
+/* CaffeinatePlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 块与菜单 */
+"caffeinate.block.name" = "Keep Awake";
+"caffeinate.menu.start" = "Keep Mac Awake";
+"caffeinate.menu.stop" = "Stop Keeping Mac Awake";
+
+/* 紧凑块交互提示与无障碍 */
+"caffeinate.help.start" = "Keep Mac awake";
+"caffeinate.help.stop" = "Stop keeping Mac awake";
+"caffeinate.a11y.keepAwake" = "Keep Mac awake";
+"caffeinate.a11y.on" = "On";
+"caffeinate.a11y.off" = "Off";
+
+/* 设置界面 */
+"caffeinate.settings.title" = "Keep Mac Awake";
+"caffeinate.settings.description" = "Prevents the Mac from sleeping (including with the lid closed) until this plugin is turned off or NotchCenter quits. Requires administrator permission.";
+
+/* 错误信息（管理员权限） */
+"caffeinate.error.adminRequired.restore" = "Administrator permission is required to restore normal sleep.";
+"caffeinate.error.adminRequired.lidClosed" = "Administrator permission is required to prevent sleep when the lid is closed.";

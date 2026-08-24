@@ -1,0 +1,29 @@
+/* NotesPlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 块与菜单 */
+"notes.block.compact" = "Notes";
+"notes.block.notebook" = "Notebook";
+"notes.newNote" = "New Note";
+
+/* 设置界面 */
+"notes.count.one" = "%d note";
+"notes.count.other" = "%d notes";
+"notes.settings.description" = "Markdown notes with TextKit 2 rendering. Images are stored inside the plugin's data directory.";
+
+/* 标签页控制 */
+"notes.tab.current" = "Current note: %@";
+"notes.tab.open" = "Open note: %@";
+"notes.deleteTab" = "Delete This Note";
+"notes.untitled" = "Untitled %d";
+
+/* 编辑器 */
+"notes.placeholder.startTyping" = "Start typing…";
+"notes.editor.bold" = "Bold";
+"notes.editor.italic" = "Italic";
+"notes.editor.strikethrough" = "Strikethrough";
+"notes.editor.inlineCode" = "Inline code";
+"notes.editor.link" = "Link";
+"notes.editor.quote" = "Quote";
+"notes.editor.bulletedList" = "Bulleted list";
+"notes.editor.numberedList" = "Numbered list";
+"notes.editor.todoList" = "Todo list";

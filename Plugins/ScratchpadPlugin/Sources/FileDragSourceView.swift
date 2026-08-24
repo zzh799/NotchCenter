@@ -184,10 +184,10 @@ final class FileDragSourceNSView: NSView, NSDraggingSource {
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
 
-        menu.addItem(menuItem(title: "Open", action: #selector(openItem)))
-        menu.addItem(menuItem(title: "Show in Finder", action: #selector(revealItem)))
+        menu.addItem(menuItem(title: L("menu.open"), action: #selector(openItem)))
+        menu.addItem(menuItem(title: L("menu.showInFinder"), action: #selector(revealItem)))
         menu.addItem(.separator())
-        menu.addItem(menuItem(title: "Remove from Shelf", action: #selector(removeItem)))
+        menu.addItem(menuItem(title: L("menu.removeFromShelf"), action: #selector(removeItem)))
         return menu
     }
 

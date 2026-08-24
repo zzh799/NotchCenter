@@ -8,7 +8,7 @@ import SwiftUI
     public static var blocks: [NotchBlock] = [
         NotchBlock(
             id: "caffeinate.toggle",
-            displayName: "Keep Awake",
+            displayName: L("caffeinate.block.name"),
             kind: .compact,
             interaction: .custom,
             symbolName: "cup.and.saucer",
@@ -22,7 +22,7 @@ import SwiftUI
         [
             PluginMenuItem(
                 id: "caffeinate.menu.toggle",
-                title: store?.isKeepingAwake == true ? "Stop Keeping Mac Awake" : "Keep Mac Awake",
+                title: store?.isKeepingAwake == true ? L("caffeinate.menu.stop") : L("caffeinate.menu.start"),
                 systemImage: store?.isKeepingAwake == true ? "cup.and.saucer.fill" : "cup.and.saucer",
                 action: { [weak self] in
                     self?.store?.toggleKeepAwake()
@@ -102,9 +102,9 @@ private struct KeepAwakeCompactView: View {
             )
         }
         .buttonStyle(.plain)
-        .help(store.isKeepingAwake ? "Stop keeping Mac awake" : "Keep Mac awake")
-        .accessibilityLabel("Keep Mac awake")
-        .accessibilityValue(store.isKeepingAwake ? "On" : "Off")
+        .help(store.isKeepingAwake ? L("caffeinate.help.stop") : L("caffeinate.help.start"))
+        .accessibilityLabel(L("caffeinate.a11y.keepAwake"))
+        .accessibilityValue(store.isKeepingAwake ? L("caffeinate.a11y.on") : L("caffeinate.a11y.off"))
         .onChange(of: store.isKeepingAwake) { _, _ in
             // 状态变化后请求核心刷新紧凑区外观。
             context.hostController.refreshCompactDisplay()
@@ -122,13 +122,13 @@ private struct KeepAwakeSettingsView: View {
                 get: { store.isKeepingAwake },
                 set: { _ in store.toggleKeepAwake() }
             )) {
-                Text("Keep Mac Awake")
+                Text(L("caffeinate.settings.title"))
                     .font(.system(size: 12, weight: .semibold))
             }
             .toggleStyle(.switch)
             .disabled(store.isChangingKeepAwake)
 
-            Text("Prevents the Mac from sleeping (including with the lid closed) until this plugin is turned off or NotchCenter quits. Requires administrator permission.")
+            Text(L("caffeinate.settings.description"))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)

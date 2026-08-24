@@ -143,10 +143,24 @@ let hostTarget = Target.executableTarget(
         .product(name: "NotchCenterKit", package: "NotchCenterKit")
     ],
     path: "Sources/NotchCenter",
+    // 本地化资源：en / zh-Hans 的 Localizable.strings（Bundle.module 在运行时定位）。
+    resources: [
+        .copy("Resources/en.lproj"),
+        .copy("Resources/zh-Hans.lproj")
+    ],
     linkerSettings: [
         // 打包后宿主位于 NotchCenter.app/Contents/MacOS，通过 @rpath 找到 Frameworks/NotchCenterKit.dylib
         .unsafeFlags([
             "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"
+        ]),
+        // 开发态裸可执行文件没有 Info.plist，嵌入最小声明（见 Resources/Info.dev.plist 头部注释）。
+        // CFBundle 的语言匹配用主可执行文件的 CFBundleLocalizations 圈定可选语言，
+        // 缺了它本地化永远回退 en，设置面板切换语言在 swift run 下完全失效。
+        // 用 #filePath 推导绝对路径，不依赖 swift build 的调用目录。
+        .unsafeFlags([
+            "-Xlinker", "-sectcreate",
+            "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
+            "-Xlinker", packageRoot.appendingPathComponent("Resources/Info.dev.plist").path,
         ])
     ]
 )
@@ -168,6 +182,11 @@ let pluginTargets: [Target] = pluginNames.map { name in
         path: "Plugins/\(name)",
         // Plugin.plist 是构建脚本消费的元数据，不是源码或资源，显式排除免得 SPM 告警。
         exclude: ["Plugin.plist"],
+        // 本地化 UI 文案：每个插件自带 en / zh-Hans 的 Localizable.strings（build.sh 组装时平铺进 bundle）。
+        resources: [
+            .copy("Resources/en.lproj"),
+            .copy("Resources/zh-Hans.lproj")
+        ],
         linkerSettings: [
             .unsafeFlags([
                 "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../../../../Frameworks"
@@ -192,6 +211,8 @@ let testTarget = Target.testTarget(
 
 let package = Package(
     name: "NotchCenter",
+    // 本地化资源的基准开发语言（en）：声明了 .lproj 资源后 SPM 强制要求。
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v14)
     ],

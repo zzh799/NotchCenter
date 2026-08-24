@@ -74,7 +74,7 @@ NotchCenter/
 ├── LaunchdControlKit/            # launchd 管理基础库（独立本地包，仅服务控制类插件使用）
 ├── Vendor/swift-markdown-engine/ # vendored 依赖，仅 NotesPlugin 使用
 ├── Scripts/build.sh              # 统一构建脚本：dev（组装插件 bundle）/ package（发布 .app）/ clean
-├── Resources/                    # AppIcon.png、Info.plist
+├── Resources/                    # AppIcon.png、Info.plist（打包态）、Info.dev.plist（开发态嵌入二进制的最小声明，见 Package.swift linkerSettings）
 ├── docs/                         # 官网（GitHub Pages 读取 main 分支）
 └── .github/workflows/release.yml # CI：测试 → 构建 → 更新 GitHub Release
 ```
@@ -125,6 +125,7 @@ open dist.noindex/NotchCenter.app
 - **Chicken-and-egg 初始化**：`NotchPanelController.init` 在 `super.init()` 之后才构建 `pluginManager` / `layoutEngine`（属性是 `private(set) var ...!`）。改动核心初始化顺序时注意。
 - **UI 风格**：抽屉强制深色（`.environment(\.colorScheme, .dark)`），背景接近纯黑半透明，顶部圆角遮罩（`TopAttachedRoundedShape`）。改动视觉时保持“贴近刘海”的观感。
 - **命名 / 语言**：源码标识符与 UI 字符串用英文；注释可用中文。保持与现有文件一致的风格（缩进、分组、注释密度）。
+- **多语言（en / zh-Hans）**：所有面向用户的字符串一律走本地化表，不许硬编码。机制是 Apple 原生 `.lproj` + `Localizable.strings`，每个模块自带翻译：宿主用 `L()`/`LF()`（`Sources/NotchCenter/Localization.swift`，资源经 SPM 打进 `NotchCenter_NotchCenter.bundle`）；插件用各自 Sources 里的 `L()`/`LF()`（基于 Kit 的 `L10n.string` + `Bundle(for:)`）；插件的显示名/描述双语写在各 `Plugin.plist` 的 `DisplayNameLocales` / `DescriptionLocales` 字典（build.sh 生成 InfoPlist.strings）。en 是基准键集，zh-Hans 必须保持键集合一致（`LocalizationTests` 强制校验）。语言跟随系统，设置面板可覆盖（写 AppleLanguages，重启生效）。品牌名（DSH、Calibre、OpenCode、Zen）不翻译。
 - **不要引入新的 SPM 远程依赖**，除非任务要求；优先复用 AppKit / SwiftUI / vendored 引擎。
 
 ## 测试

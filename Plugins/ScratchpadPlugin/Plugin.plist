@@ -10,5 +10,16 @@
   <string>Scratchpad</string>
   <key>Description</key>
   <string>A tray that references files you may want later.</string>
+  <!-- 元数据译文：build.sh 生成为 bundle 内 zh-Hans.lproj/InfoPlist.strings -->
+  <key>DisplayNameLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>暂存区</string>
+  </dict>
+  <key>DescriptionLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>引用你可能稍后需要的文件的暂存架。</string>
+  </dict>
 </dict>
 </plist>

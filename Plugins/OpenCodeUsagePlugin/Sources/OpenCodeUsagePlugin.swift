@@ -10,7 +10,7 @@ import SwiftUI
     public static var blocks: [NotchBlock] = [
         NotchBlock(
             id: "opencode.usage",
-            displayName: "OpenCode Usage",
+            displayName: L("block.displayName"),
             kind: .drawer,
             supportedSizes: [.small, .medium],
             defaultSize: .medium,

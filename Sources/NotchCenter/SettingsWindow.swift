@@ -11,12 +11,12 @@ final class SettingsWindowController: NSWindowController {
         self.panelController = panelController
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 260),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 340),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
-        window.title = "NotchCenter Settings"
+        window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.contentView = NSHostingView(
@@ -50,8 +50,8 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Interaction") {
-                Picker("Trigger Mode", selection: $settingsStore.triggerMode) {
+            Section(L("settings.section.interaction")) {
+                Picker(L("settings.triggerMode"), selection: $settingsStore.triggerMode) {
                     ForEach(SettingsStore.TriggerMode.allCases) { mode in
                         Label(mode.title, systemImage: mode.systemImage).tag(mode)
                     }
@@ -59,28 +59,42 @@ struct SettingsView: View {
                 .pickerStyle(.inline)
             }
 
-            Section("Layout") {
-                Picker("Drawer Columns", selection: columnBinding) {
+            Section(L("settings.section.layout")) {
+                Picker(L("settings.columns"), selection: columnBinding) {
                     ForEach(2...8, id: \.self) { columns in
-                        Text("\(columns) Columns").tag(columns)
+                        Text(LF("settings.column.count", columns)).tag(columns)
                     }
                 }
             }
 
-            Section("Plugins") {
-                Button("Plugin Manager…") {
+            Section(L("settings.section.plugins")) {
+                Button(L("settings.pluginManager")) {
                     controller.showPluginManager()
                 }
             }
 
+            // 语言覆盖写入 AppleLanguages，须重启才能让已加载的 bundle 重新选 lproj。
+            Section(L("settings.language")) {
+                Picker(L("settings.language"), selection: $settingsStore.languageOverride) {
+                    Text(L("language.system")).tag(SettingsStore.LanguageOverride.system)
+                    Text("简体中文").tag(SettingsStore.LanguageOverride.simplifiedChinese)
+                    Text("English").tag(SettingsStore.LanguageOverride.english)
+                }
+                if settingsStore.languageOverride != .system {
+                    Text(L("language.restartHint"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section {
-                Button("Quit NotchCenter", role: .destructive) {
+                Button(L("settings.quit"), role: .destructive) {
                     NSApp.terminate(nil)
                 }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 260)
+        .frame(width: 420, height: 340)
         .environment(\.colorScheme, .dark)
     }
 

@@ -74,13 +74,13 @@ struct AddBlockArea: View {
     private var compactRow: some View {
         HorizontalDragScroll {
             HStack(spacing: 8) {
-                rowCaption("Compact")
+                rowCaption(L("addblock.compact"))
                 ForEach(flatCompactEntries) { entry in
                     catalogPill(
                         entry.block,
                         pluginID: entry.pluginID,
                         disabled: false,
-                        help: "Add to the compact strip"
+                        help: L("addblock.help.compact")
                     )
                 }
             }
@@ -92,7 +92,7 @@ struct AddBlockArea: View {
         let groups = plugins.filter { !$0.drawerBlocks.isEmpty }
         return HorizontalDragScroll {
             HStack(spacing: 8) {
-                rowCaption("Drawer")
+                rowCaption(L("addblock.drawer"))
                 ForEach(Array(groups.enumerated()), id: \.element.id) { index, plugin in
                     HStack(spacing: 6) {
                         Text(plugin.displayName)
@@ -104,7 +104,7 @@ struct AddBlockArea: View {
                                 block,
                                 pluginID: plugin.pluginID,
                                 disabled: false,
-                                help: "Add to the drawer grid"
+                                help: L("addblock.help.drawer")
                             )
                         }
                     }

@@ -173,7 +173,7 @@ final class NotesStore: ObservableObject {
         }
 
         title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { return "Untitled \(index + 1)" }
+        guard !title.isEmpty else { return LF("notes.untitled", index + 1) }
         return title.count > 42 ? String(title.prefix(41)) + "…" : title
     }
 

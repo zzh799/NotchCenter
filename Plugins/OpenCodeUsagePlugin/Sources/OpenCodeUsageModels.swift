@@ -8,12 +8,12 @@ enum UsageWindowKind: String, Codable, Sendable, CaseIterable {
     case weekly
     case monthly
 
-    /// 块内图例的短标签。
+    /// 块内图例的短标签（rolling 的 "5h" 是技术缩写，不随语言变）。
     var shortLabel: String {
         switch self {
         case .rolling: return "5h"
-        case .weekly: return "Week"
-        case .monthly: return "Month"
+        case .weekly: return L("windows.weekly")
+        case .monthly: return L("windows.monthly")
         }
     }
 

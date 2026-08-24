@@ -26,17 +26,18 @@ enum MarkdownCommand: CaseIterable, Identifiable {
         }
     }
 
+    // 编辑器工具栏按钮的 help 提示，走插件本地化表。
     var help: String {
         switch self {
-        case .bold: return "Bold"
-        case .italic: return "Italic"
-        case .strikethrough: return "Strikethrough"
-        case .inlineCode: return "Inline code"
-        case .link: return "Link"
-        case .quote: return "Quote"
-        case .unorderedList: return "Bulleted list"
-        case .orderedList: return "Numbered list"
-        case .todoList: return "Todo list"
+        case .bold: return L("notes.editor.bold")
+        case .italic: return L("notes.editor.italic")
+        case .strikethrough: return L("notes.editor.strikethrough")
+        case .inlineCode: return L("notes.editor.inlineCode")
+        case .link: return L("notes.editor.link")
+        case .quote: return L("notes.editor.quote")
+        case .unorderedList: return L("notes.editor.bulletedList")
+        case .orderedList: return L("notes.editor.numberedList")
+        case .todoList: return L("notes.editor.todoList")
         }
     }
 }

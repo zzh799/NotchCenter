@@ -1,0 +1,29 @@
+/* ScratchpadPlugin UI 文案（英文为基准语言） */
+
+/* 块与元数据显示名 */
+"block.compact.name" = "Scratchpad";
+"block.shelf.name" = "File Shelf";
+
+/* 抽屉块空态 */
+"shelf.empty.title" = "Shelf";
+
+/* 清空确认浮层 */
+"clear.confirm.title" = "Clear Scratchpad";
+"clear.confirm.message" = "Remove all %d items? Original files are not affected.";
+"clear.confirm.message.one" = "Remove this item? Original files are not affected.";
+"clear.confirm.removeAll" = "Remove All";
+"common.cancel" = "Cancel";
+
+/* 右键菜单 */
+"menu.open" = "Open";
+"menu.showInFinder" = "Show in Finder";
+"menu.removeFromShelf" = "Remove from Shelf";
+"menu.removeAll.shelfItems" = "Remove All Shelf Items";
+
+/* 拖放提示与文件片 help */
+"drop.releaseToAdd" = "Release to add";
+"chip.help.remove" = "Remove from shelf (file stays on disk)";
+"chip.help.available" = "%@ · %@ · Press Space to preview";
+"chip.help.unavailable" = "%@ is unavailable";
+"fileKind.folder" = "Folder";
+"fileKind.file" = "File";

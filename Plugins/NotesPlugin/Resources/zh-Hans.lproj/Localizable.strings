@@ -1,0 +1,29 @@
+/* NotesPlugin 简体中文文案 */
+
+/* 块与菜单 */
+"notes.block.compact" = "笔记";
+"notes.block.notebook" = "笔记本";
+"notes.newNote" = "新建笔记";
+
+/* 设置界面 */
+"notes.count.one" = "%d 条笔记";
+"notes.count.other" = "%d 条笔记";
+"notes.settings.description" = "基于 TextKit 2 渲染的 Markdown 笔记。图片保存在插件的数据目录内。";
+
+/* 标签页控制 */
+"notes.tab.current" = "当前笔记：%@";
+"notes.tab.open" = "打开笔记：%@";
+"notes.deleteTab" = "删除这条笔记";
+"notes.untitled" = "未命名 %d";
+
+/* 编辑器 */
+"notes.placeholder.startTyping" = "开始输入…";
+"notes.editor.bold" = "加粗";
+"notes.editor.italic" = "斜体";
+"notes.editor.strikethrough" = "删除线";
+"notes.editor.inlineCode" = "行内代码";
+"notes.editor.link" = "链接";
+"notes.editor.quote" = "引用";
+"notes.editor.bulletedList" = "无序列表";
+"notes.editor.numberedList" = "有序列表";
+"notes.editor.todoList" = "待办列表";

@@ -4,6 +4,14 @@
 <dict>
   <key>CFBundleDisplayName</key>
   <string>NotchCenter</string>
+  <!-- 开发区域语言与可用语言声明：本地化查找的回退基准（en）与语言清单 -->
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>en</string>
+    <string>zh-Hans</string>
+  </array>
   <key>CFBundleExecutable</key>
   <string>NotchCenter</string>
   <key>CFBundleIconFile</key>

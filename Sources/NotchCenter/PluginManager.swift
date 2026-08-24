@@ -65,17 +65,17 @@ final class PluginManager: ObservableObject {
         var errorDescription: String? {
             switch self {
             case let .notFound(pluginID):
-                return "Plugin not found: \(pluginID)"
+                return LF("pluginManager.error.notFound", pluginID)
             case let .apiIncompatible(pluginID, declared, current):
-                return "Plugin \(pluginID) declares API \(declared), which does not include current core API \(current)."
+                return LF("pluginManager.error.apiIncompatible", pluginID, declared, current)
             case let .failedToLoad(pluginID, reason):
-                return "Failed to load bundle for \(pluginID): \(reason)"
+                return LF("pluginManager.error.failedToLoad", pluginID, reason)
             case let .invalidPrincipalClass(pluginID):
-                return "Bundle for \(pluginID) does not expose a NotchCenterPlugin principal class."
+                return LF("pluginManager.error.invalidPrincipalClass", pluginID)
             case let .notUserPlugin(pluginID):
-                return "\(pluginID) is a built-in plugin and cannot be uninstalled."
+                return LF("pluginManager.error.notUserPlugin", pluginID)
             case let .installFailed(reason):
-                return "Plugin install failed: \(reason)"
+                return LF("pluginManager.error.installFailed", reason)
             }
         }
     }

@@ -41,7 +41,7 @@ struct OpenCodeUsagePopoverContentView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("OpenCode Usage")
+            Text(L("popover.title"))
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.white.opacity(0.92))
             Spacer()
@@ -69,7 +69,7 @@ struct OpenCodeUsagePopoverContentView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(Color.white.opacity(0.58))
         } else {
-            Text(store.isConfigured ? "Loading usage…" : "Set cookie & workspace in Plugin Manager")
+            Text(store.isConfigured ? L("usage.loading") : L("usage.notConfigured"))
                 .font(.system(size: 10))
                 .foregroundStyle(Color.white.opacity(0.58))
         }
@@ -80,7 +80,7 @@ struct OpenCodeUsagePopoverContentView: View {
         var parts: [String] = []
         if let plan = snapshot.zen?.subscriptionPlan { parts.append(plan) }
         if let payment = snapshot.zen?.paymentMethodType { parts.append(payment) }
-        parts.append("updated \(OpenCodeUsageParser.formatReset(seconds: max(0, Int(Date().timeIntervalSince(snapshot.updatedAt))))) ago")
+        parts.append(LF("popover.updatedAgo", OpenCodeUsageParser.formatReset(seconds: max(0, Int(Date().timeIntervalSince(snapshot.updatedAt))))))
         return Text(parts.joined(separator: " · "))
             .font(.system(size: 9))
             .foregroundStyle(Color.white.opacity(0.38))
@@ -121,7 +121,7 @@ private struct WindowDetailRow: View {
                 .font(.system(size: 9))
                 .foregroundStyle(Color.white.opacity(0.58))
             Spacer()
-            Text("in \(OpenCodeUsageParser.formatReset(seconds: window.resetInSec))")
+            Text(LF("popover.resetsIn", OpenCodeUsageParser.formatReset(seconds: window.resetInSec)))
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(window.isRateLimited ? Color.red.opacity(0.9) : Color.white.opacity(0.58))
         }
@@ -130,10 +130,10 @@ private struct WindowDetailRow: View {
 
     /// 重置的绝对本地时刻（now + resetInSec）。
     private var resetAbsoluteTime: String {
-        guard window.resetInSec > 0 else { return "Resets soon" }
+        guard window.resetInSec > 0 else { return L("popover.resetsSoon") }
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d HH:mm"
-        return "Resets \(formatter.string(from: Date().addingTimeInterval(TimeInterval(window.resetInSec))))"
+        return LF("popover.resetsAt", formatter.string(from: Date().addingTimeInterval(TimeInterval(window.resetInSec))))
     }
 
     private static func barColor(percent: Int) -> Color {
@@ -170,7 +170,7 @@ struct PeakClockView: View {
                     Circle()
                         .fill(liveColor)
                         .frame(width: 6, height: 6)
-                    Text(peak ? "Peak remaining " : "Off-peak remaining ")
+                    Text(peak ? L("clock.peakRemaining") : L("clock.offPeakRemaining"))
                         .font(.system(size: 9))
                         .foregroundStyle(Color.white.opacity(0.58))
                     Text(PeakClockLogic.formatCountdown(PeakClockLogic.phaseRemainingSeconds(now)))
@@ -192,9 +192,9 @@ struct PeakClockView: View {
     private var legend: some View {
         HStack(spacing: 4) {
             Circle().fill(Self.peakColor).frame(width: 6, height: 6)
-            Text("Peak").font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.58))
+            Text(L("clock.peak")).font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.58))
             Circle().fill(Self.offPeakColor).frame(width: 6, height: 6)
-            Text("Off-Peak").font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.58))
+            Text(L("clock.offPeak")).font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.58))
         }
     }
 

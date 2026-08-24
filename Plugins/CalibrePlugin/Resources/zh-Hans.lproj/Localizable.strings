@@ -1,0 +1,32 @@
+/* CalibrePlugin 简体中文文案。品牌名 Calibre 保持原文。 */
+
+/* 抽屉块副标题 */
+"calibre.subtitle.running" = "运行中 · 端口 %@";
+"calibre.subtitle.unmanaged" = "⚠️ 有未受管的进程";
+"calibre.subtitle.portConflict" = "⚠️ %d 个实例在监听";
+
+/* 服务状态（浮窗） */
+"calibre.state.managed" = "由 launchd 管理";
+"calibre.state.loadedNotRunning" = "已加载，未运行";
+"calibre.state.unmanagedExternal" = "有未受管的进程在监听";
+"calibre.state.portConflict" = "%d 个实例端口冲突";
+"calibre.state.stopped" = "已停止";
+
+/* 浮窗行标签与控件（PID 为通用缩写，中英一致） */
+"calibre.popover.status" = "状态";
+"calibre.popover.pid" = "PID";
+"calibre.popover.port" = "端口";
+"calibre.popover.launchAtLogin" = "登录时启动";
+"calibre.popover.restart" = "重启";
+
+/* 动作进行中的 busy 提示（浮窗 message 与块副标题共用） */
+"calibre.action.starting" = "正在启动…";
+"calibre.action.stopping" = "正在停止…";
+"calibre.action.restarting" = "正在重启…";
+"calibre.action.enableAutostart" = "正在开启自启…";
+"calibre.action.disableAutostart" = "正在关闭自启…";
+"calibre.action.creatingPlist" = "正在创建 plist 并启动…";
+
+/* 动作失败的错误提示 */
+"calibre.error.createPlist" = "在 %@ 创建 plist 失败";
+"calibre.error.bootstrap" = "launchctl bootstrap 失败。";

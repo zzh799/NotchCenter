@@ -1,0 +1,67 @@
+/* NotchCenter 宿主 UI 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 通用 */
+"common.ok" = "OK";
+"common.cancel" = "Cancel";
+
+/* 设置窗口 */
+"settings.window.title" = "NotchCenter Settings";
+"settings.section.interaction" = "Interaction";
+"settings.triggerMode" = "Trigger Mode";
+"trigger.hover" = "Hover to Expand";
+"trigger.click" = "Click to Expand";
+"settings.section.layout" = "Layout";
+"settings.columns" = "Drawer Columns";
+"settings.column.count" = "%d Columns";
+"settings.section.plugins" = "Plugins";
+"settings.pluginManager" = "Plugin Manager…";
+"settings.quit" = "Quit NotchCenter";
+
+/* 语言覆盖（重启生效） */
+"settings.language" = "Language";
+"language.system" = "Follow System";
+"language.restartHint" = "Takes effect after relaunch.";
+
+/* 插件管理窗口 */
+"manager.window.title" = "Plugin Manager";
+"manager.header.plugins" = "Plugins";
+"manager.install.help" = "Install plugin bundle…";
+"manager.badge.builtIn" = "Built-in";
+"manager.badge.user" = "User";
+"manager.badge.incompatible" = "Incompatible";
+"manager.uninstall" = "Uninstall";
+"manager.version.api" = "Version %@ · API %@";
+"manager.loadFailed" = "This plugin failed to load: %@";
+"manager.noSettings" = "This plugin provides no settings.";
+"manager.selectHint" = "Select a plugin to view details";
+"manager.alert.title" = "Plugin Error";
+"manager.uninstall.confirmTitle" = "Uninstall “%@”?";
+"manager.uninstall.confirmBody" = "The plugin bundle will be removed from your plugin folder.";
+"manager.openPanel.title" = "Choose a Plugin Bundle";
+"manager.openPanel.message" = "Select a .bundle plugin to install for all users of NotchCenter.";
+
+/* 面板交互 help 标签 */
+"panel.help.removeBlock" = "Remove block";
+"panel.help.resize" = "Drag to resize";
+"panel.help.settings" = "Settings";
+"panel.help.tidy" = "Tidy layout (top-to-bottom, left-to-right)";
+"panel.help.pin" = "Pin drawer open";
+"panel.help.unpin" = "Unpin drawer";
+"panel.help.editLayout" = "Edit layout";
+"panel.help.doneEditing" = "Done editing layout";
+"panel.help.closeDrawer" = "Close drawer";
+
+/* 编辑模式添加块目录条 */
+"addblock.compact" = "Compact";
+"addblock.drawer" = "Drawer";
+"addblock.help.compact" = "Add to the compact strip";
+"addblock.help.drawer" = "Add to the drawer grid";
+
+/* PluginManager 错误信息（经 LocalizedError.errorDescription 展示） */
+"pluginManager.error.notFound" = "Plugin not found: %@";
+"pluginManager.error.apiIncompatible" = "Plugin %@ declares API %@, which does not include current core API %@.";
+"pluginManager.error.failedToLoad" = "Failed to load bundle for %@: %@";
+"pluginManager.error.invalidPrincipalClass" = "Bundle for %@ does not expose a NotchCenterPlugin principal class.";
+"pluginManager.error.notUserPlugin" = "%@ is a built-in plugin and cannot be uninstalled.";
+"pluginManager.error.installFailed" = "Plugin install failed: %@";
+"pluginMetadata.error.missingKey" = "Bundle at %@ is missing required Info.plist key: %@";

@@ -66,7 +66,7 @@ struct DrawerBlockContainer: View {
                             .shadow(color: .black.opacity(0.6), radius: 2)
                     }
                     .buttonStyle(.plain)
-                    .help("Remove block")
+                    .help(L("panel.help.removeBlock"))
                     .padding(6)
                 }
             }
@@ -148,7 +148,7 @@ struct DrawerBlockContainer: View {
                 }
             }
             .highPriorityGesture(resizeGesture)
-            .help("Drag to resize")
+            .help(L("panel.help.resize"))
     }
 
     /// 缩放手势：基于位移增量的目标格数。**平移量必须在稳定坐标系度量**

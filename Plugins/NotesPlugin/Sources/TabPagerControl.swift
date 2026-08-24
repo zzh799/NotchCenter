@@ -45,8 +45,8 @@ struct TabPagerControl: View {
                     .help(store.title(for: tab.id))
                     .accessibilityLabel(
                         isSelected
-                            ? "Current note: \(store.title(for: tab.id))"
-                            : "Open note: \(store.title(for: tab.id))"
+                            ? LF("notes.tab.current", store.title(for: tab.id))
+                            : LF("notes.tab.open", store.title(for: tab.id))
                     )
                     .contextMenu {
                         Button(role: .destructive) {
@@ -55,7 +55,7 @@ struct TabPagerControl: View {
                                 store.removeTab(tab.id)
                             }
                         } label: {
-                            Label("Delete This Note", systemImage: "trash")
+                            Label(L("notes.deleteTab"), systemImage: "trash")
                         }
                         .disabled(store.tabs.count <= 1)
                     }
@@ -83,8 +83,8 @@ struct TabPagerControl: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("New note")
-            .accessibilityLabel("New note")
+            .help(L("notes.newNote"))
+            .accessibilityLabel(L("notes.newNote"))
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 2)

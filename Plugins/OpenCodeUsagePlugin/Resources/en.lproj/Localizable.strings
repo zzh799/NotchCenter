@@ -1,0 +1,51 @@
+/* OpenCodeUsagePlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 通用 */
+"common.save" = "Save";
+"common.set" = "set";
+"common.notSet" = "not set";
+
+/* 设置界面（嵌入插件管理窗口） */
+"settings.workspaceID" = "Workspace ID";
+"settings.cookie" = "Cookie";
+"settings.baseURL" = "Base URL";
+"settings.cookieHelp" = "Paste the raw auth token, a full Cookie header, or anything in between.";
+"settings.cookiePlaceholderKeep" = "Leave blank to keep (…%@)";
+"settings.statusConfigured" = "Cookie set (%@) · workspace %@";
+"settings.saved" = "Saved. Refreshing usage…";
+"settings.explanation" = "Usage is scraped from the opencode.ai dashboard pages (no public API). Cached for 5 minutes; failed fetches cool down for 60 seconds. The cookie is never logged.";
+
+/* 用量块视图 */
+"block.displayName" = "OpenCode Usage";
+"usage.loading" = "Loading usage…";
+"usage.notConfigured" = "Set cookie & workspace in Plugin Manager";
+"usage.unavailable" = "Usage unavailable.";
+"usage.zenBalance" = "Zen balance";
+"usage.refreshHelp" = "Refresh usage";
+
+/* 用量窗口标签（块内图例与浮窗行共用；5h 为技术缩写不译） */
+"windows.weekly" = "Week";
+"windows.monthly" = "Month";
+
+/* 长按浮窗 */
+"popover.title" = "OpenCode Usage";
+"popover.updatedAgo" = "Updated %@ ago";
+"popover.resetsIn" = "in %@";
+"popover.resetsSoon" = "Resets soon";
+"popover.resetsAt" = "Resets %@";
+
+/* 峰谷时钟 */
+"clock.peak" = "Peak";
+"clock.offPeak" = "Off-Peak";
+"clock.peakRemaining" = "Peak remaining";
+"clock.offPeakRemaining" = "Off-peak remaining";
+
+/* 错误信息 */
+"error.persist" = "Failed to persist config: %@";
+
+/* 抓取与配置错误 */
+"error.missingConfig" = "Set your OpenCode cookie and workspace ID in plugin settings.";
+"error.http" = "HTTP %d from opencode.ai";
+"error.timedOut" = "Request to opencode.ai timed out.";
+"error.emptyParse" = "Could not read usage page (cookie expired or invalid?)";
+"error.badCookie" = "Could not parse the cookie value.";

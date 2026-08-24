@@ -76,7 +76,7 @@ final class KeepAwakeStore: ObservableObject {
             self.isKeepingAwake = !didStop && SystemSleepGuard.isSleepDisabled()
             self.isChangingKeepAwake = false
             if !didStop {
-                self.keepAwakeErrorMessage = "Administrator permission is required to restore normal sleep."
+                self.keepAwakeErrorMessage = L("caffeinate.error.adminRequired.restore")
             }
             self.keepAwakeTask = nil
         }
@@ -100,7 +100,7 @@ final class KeepAwakeStore: ObservableObject {
         } catch {
             setOwnsSleepDisabled(false)
             isChangingKeepAwake = false
-            keepAwakeErrorMessage = "Administrator permission is required to prevent sleep when the lid is closed."
+            keepAwakeErrorMessage = L("caffeinate.error.adminRequired.lidClosed")
             return
         }
 
@@ -114,7 +114,7 @@ final class KeepAwakeStore: ObservableObject {
                 self.setOwnsSleepDisabled(!didReset)
                 self.isKeepingAwake = !didReset && SystemSleepGuard.isSleepDisabled()
                 self.isChangingKeepAwake = false
-                self.keepAwakeErrorMessage = "Administrator permission is required to prevent sleep when the lid is closed."
+                self.keepAwakeErrorMessage = L("caffeinate.error.adminRequired.lidClosed")
                 self.keepAwakeTask = nil
                 return
             }
@@ -157,7 +157,7 @@ final class KeepAwakeStore: ObservableObject {
         isKeepingAwake = !didReset && SystemSleepGuard.isSleepDisabled()
         isChangingKeepAwake = false
         if !didReset {
-            keepAwakeErrorMessage = "Administrator permission is required to restore normal sleep."
+            keepAwakeErrorMessage = L("caffeinate.error.adminRequired.restore")
         }
         keepAwakeTask = nil
     }

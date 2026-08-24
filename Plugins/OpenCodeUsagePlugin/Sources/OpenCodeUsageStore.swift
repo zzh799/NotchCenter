@@ -110,7 +110,7 @@ final class OpenCodeUsageStore: ObservableObject {
                 next.cookie = nil
             } else {
                 next.cookie = OpenCodeUsageConfigLogic.normalizeCookie(cookie)
-                if next.cookie == nil { return "Could not parse the cookie value." }
+                if next.cookie == nil { return L("error.badCookie") }
             }
         }
         if let workspaceID {
@@ -125,7 +125,7 @@ final class OpenCodeUsageStore: ObservableObject {
         do {
             try stateStore?.setObject(next, forKey: OpenCodeUsageConfigLogic.storeKey)
         } catch {
-            return "Failed to persist config: \(error.localizedDescription)"
+            return LF("error.persist", error.localizedDescription)
         }
         config = next
         // 新配置立即可用：清掉旧缓存、错误与冷却。

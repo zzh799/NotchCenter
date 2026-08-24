@@ -20,7 +20,7 @@ final class PluginManagerWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Plugin Manager"
+        window.title = L("manager.window.title")
         window.minSize = NSSize(width: 720, height: 440)
         window.isReleasedWhenClosed = false
         super.init(window: window)
@@ -59,13 +59,13 @@ struct PluginManagerView: View {
         }
         .background(Color(red: 0.08, green: 0.08, blue: 0.09))
         .alert(
-            "Plugin Error",
+            L("manager.alert.title"),
             isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
             )
         ) {
-            Button("OK") { errorMessage = nil }
+            Button(L("common.ok")) { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
         }
@@ -76,7 +76,7 @@ struct PluginManagerView: View {
     private var pluginList: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Plugins")
+                Text(L("manager.header.plugins"))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer()
@@ -85,7 +85,7 @@ struct PluginManagerView: View {
                         .font(.system(size: 11, weight: .bold))
                 }
                 .buttonStyle(.plain)
-                .help("Install plugin bundle…")
+                .help(L("manager.install.help"))
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -112,10 +112,10 @@ struct PluginManagerView: View {
                         .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
 
-                    badge(entry.metadata.isBuiltIn ? "Built-in" : "User", tint: .white.opacity(0.35))
+                    badge(entry.metadata.isBuiltIn ? L("manager.badge.builtIn") : L("manager.badge.user"), tint: .white.opacity(0.35))
 
                     if !entry.metadata.isAPICompatible {
-                        badge("Incompatible", tint: .red.opacity(0.9))
+                        badge(L("manager.badge.incompatible"), tint: .red.opacity(0.9))
                     }
                 }
 
@@ -175,14 +175,14 @@ struct PluginManagerView: View {
                     }
                     Spacer()
                     if !entry.metadata.isBuiltIn {
-                        Button("Uninstall") {
+                        Button(L("manager.uninstall")) {
                             uninstall(entry)
                         }
                         .controlSize(.small)
                     }
                 }
 
-                Text("Version \(entry.metadata.pluginVersion) · API \(entry.metadata.apiVersion)")
+                Text(LF("manager.version.api", entry.metadata.pluginVersion, entry.metadata.apiVersion))
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.5))
 
@@ -200,11 +200,11 @@ struct PluginManagerView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 } else if entry.loadError != nil {
-                    Text("This plugin failed to load: \(entry.loadError ?? "")")
+                    Text(LF("manager.loadFailed", entry.loadError ?? ""))
                         .font(.system(size: 11))
                         .foregroundStyle(.red.opacity(0.9))
                 } else {
-                    Text("This plugin provides no settings.")
+                    Text(L("manager.noSettings"))
                         .font(.system(size: 11))
                         .foregroundStyle(.white.opacity(0.4))
                 }
@@ -217,7 +217,7 @@ struct PluginManagerView: View {
                 Image(systemName: "shippingbox")
                     .font(.system(size: 26))
                     .foregroundStyle(.white.opacity(0.25))
-                Text("Select a plugin to view details")
+                Text(L("manager.selectHint"))
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.35))
             }
@@ -256,11 +256,11 @@ struct PluginManagerView: View {
 
     private func uninstall(_ entry: PluginEntry) {
         let alert = NSAlert()
-        alert.messageText = "Uninstall “\(entry.metadata.displayName)”?"
-        alert.informativeText = "The plugin bundle will be removed from your plugin folder."
+        alert.messageText = LF("manager.uninstall.confirmTitle", entry.metadata.displayName)
+        alert.informativeText = L("manager.uninstall.confirmBody")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Uninstall")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: L("manager.uninstall"))
+        alert.addButton(withTitle: L("common.cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         do {
             try pluginManager.uninstall(pluginID: entry.id)
@@ -271,8 +271,8 @@ struct PluginManagerView: View {
 
     private func installBundle() {
         let panel = NSOpenPanel()
-        panel.title = "Choose a Plugin Bundle"
-        panel.message = "Select a .bundle plugin to install for all users of NotchCenter."
+        panel.title = L("manager.openPanel.title")
+        panel.message = L("manager.openPanel.message")
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = true
         panel.canChooseFiles = true

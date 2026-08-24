@@ -42,10 +42,31 @@ struct PluginMetadata: Equatable, Sendable {
         self.pluginID = parsed[Self.pluginIDKey]!
         self.pluginVersion = parsed[Self.pluginVersionKey]!
         self.apiVersion = parsed[Self.apiVersionKey]!
-        self.displayName = parsed[Self.displayNameKey]!
-        self.pluginDescription = infoDictionary[Self.descriptionKey] as? String
+        // 显示名 / 描述支持本地化：build.sh 把各插件的 DisplayNameLocales /
+        // DescriptionLocales 生成为 bundle 内 <lang>.lproj/InfoPlist.strings，
+        // 这里按当前语言取串；表或键缺失时回退原始值。
+        self.displayName = Self.localizedString(
+            bundleURL: bundleURL,
+            key: Self.displayNameKey,
+            fallback: parsed[Self.displayNameKey]!
+        )
+        if let rawDescription = infoDictionary[Self.descriptionKey] as? String {
+            self.pluginDescription = Self.localizedString(
+                bundleURL: bundleURL,
+                key: Self.descriptionKey,
+                fallback: rawDescription
+            )
+        } else {
+            self.pluginDescription = nil
+        }
         self.principalClassName = parsed[Self.principalClassKey]!
         self.isBuiltIn = isBuiltIn
+    }
+
+    /// 从 bundle 的 InfoPlist.strings 取本地化元数据；bundle 无该表时原样返回 fallback。
+    private static func localizedString(bundleURL: URL, key: String, fallback: String) -> String {
+        guard let bundle = Bundle(url: bundleURL) else { return fallback }
+        return bundle.localizedString(forKey: key, value: fallback, table: "InfoPlist")
     }
 
     /// 解析声明 API 范围；无法解析视为不兼容。
@@ -66,7 +87,7 @@ enum PluginMetadataError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case let .missingRequiredKey(bundleURL, key):
-            return "Bundle at \(bundleURL.path) is missing required Info.plist key: \(key)"
+            return LF("pluginMetadata.error.missingKey", bundleURL.path, key)
         }
     }
 }

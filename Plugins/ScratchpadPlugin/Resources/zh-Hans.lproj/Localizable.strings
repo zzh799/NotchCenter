@@ -1,0 +1,29 @@
+/* ScratchpadPlugin UI 文案（简体中文） */
+
+/* 块与元数据显示名 */
+"block.compact.name" = "暂存区";
+"block.shelf.name" = "文件架";
+
+/* 抽屉块空态 */
+"shelf.empty.title" = "暂存区";
+
+/* 清空确认浮层 */
+"clear.confirm.title" = "清空暂存区";
+"clear.confirm.message" = "移除全部 %d 个条目？原文件不受影响。";
+"clear.confirm.message.one" = "移除全部条目？原文件不受影响。";
+"clear.confirm.removeAll" = "全部移除";
+"common.cancel" = "取消";
+
+/* 右键菜单 */
+"menu.open" = "打开";
+"menu.showInFinder" = "在 Finder 中显示";
+"menu.removeFromShelf" = "从暂存区移除";
+"menu.removeAll.shelfItems" = "移除所有暂存条目";
+
+/* 拖放提示与文件片 help */
+"drop.releaseToAdd" = "松开以添加";
+"chip.help.remove" = "从暂存区移除（原文件保留在磁盘上）";
+"chip.help.available" = "%@ · %@ · 按空格键预览";
+"chip.help.unavailable" = "%@ 当前不可用";
+"fileKind.folder" = "文件夹";
+"fileKind.file" = "文件";

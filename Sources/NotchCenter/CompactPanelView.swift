@@ -124,7 +124,7 @@ private struct CompactBlockContainer: View {
                 }
                 .buttonStyle(.plain)
                 .offset(x: 3, y: -2)
-                .help("Remove block")
+                .help(L("panel.help.removeBlock"))
             }
         }
     }

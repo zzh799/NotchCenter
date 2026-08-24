@@ -82,7 +82,7 @@ final class DshServiceMonitor: ObservableObject {
         guard !isBusy else { return }
         // 开关语义是 launchd 服务：off（含 loadedNotRunning / 野进程占用）→ 启动。
         let shouldStart = !isServiceOn
-        runAction(shouldStart ? "Starting…" : "Stopping…") { control in
+        runAction(shouldStart ? L("dsh.action.starting") : L("dsh.action.stopping")) { control in
             if shouldStart {
                 _ = control.start()
             } else {
@@ -94,7 +94,7 @@ final class DshServiceMonitor: ObservableObject {
 
     func restart() {
         guard !isBusy else { return }
-        runAction("Restarting…") { control in
+        runAction(L("dsh.action.restarting")) { control in
             _ = control.restart()
             return nil
         }
@@ -102,7 +102,7 @@ final class DshServiceMonitor: ObservableObject {
 
     func setAutostart(_ on: Bool) {
         guard !isBusy else { return }
-        runAction(on ? "Enabling autostart…" : "Disabling autostart…") { control in
+        runAction(on ? L("dsh.action.autostartOn") : L("dsh.action.autostartOff")) { control in
             _ = control.setAutostart(on)
             return nil
         }
@@ -111,12 +111,12 @@ final class DshServiceMonitor: ObservableObject {
     /// 确保 plist 存在（缺失时按固定模板创建），成功后尝试启动。
     func ensurePlistAndStart() {
         guard !isBusy else { return }
-        runAction("Creating plist & starting…") { control in
+        runAction(L("dsh.action.creatingPlist")) { control in
             let plist = LaunchdPlist(plistPath: DshServiceConfig.plistPath)
             guard plist.createIfMissing(contents: DshServiceConfig.plistContents) else {
-                return "Failed to create plist at \(DshServiceConfig.plistPath)"
+                return LF("dsh.error.createPlist", DshServiceConfig.plistPath)
             }
-            return control.start() ? nil : "launchctl bootstrap failed."
+            return control.start() ? nil : L("dsh.error.bootstrap")
         }
     }
 

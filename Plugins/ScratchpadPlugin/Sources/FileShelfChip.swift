@@ -101,7 +101,7 @@ struct FileShelfChip: View {
                     .frame(width: 14, height: 14)
             }
             .buttonStyle(ShelfRemoveButtonStyle())
-            .help("Remove from shelf (file stays on disk)")
+            .help(L("chip.help.remove"))
             .offset(x: 1, y: -1)
             .opacity(isHovering ? 1 : 0)
             .scaleEffect(isHovering ? 1 : 0.86)
@@ -124,8 +124,8 @@ struct FileShelfChip: View {
         .animation(.easeOut(duration: 0.12), value: isSelected)
         .help(
             isAvailable
-                ? "\(displayName) · \(fileKind) · Press Space to preview"
-                : "\(displayName) is unavailable"
+                ? LF("chip.help.available", displayName, fileKind)
+                : LF("chip.help.unavailable", displayName)
         )
         .accessibilityLabel(displayName)
     }
@@ -145,9 +145,9 @@ struct FileShelfChip: View {
 
     private var fileKind: String {
         if item.isDirectory == true {
-            return "Folder"
+            return L("fileKind.folder")
         }
-        return effectiveFileExtension?.uppercased() ?? "File"
+        return effectiveFileExtension?.uppercased() ?? L("fileKind.file")
     }
 
     @ViewBuilder
