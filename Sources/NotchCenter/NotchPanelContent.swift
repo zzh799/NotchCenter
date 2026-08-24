@@ -78,20 +78,11 @@ extension NotchPanelController {
     /// 所有屏幕的宿主视图共享同一份状态。宿主视图只创建一次，之后不再重新赋值
     /// rootView——在透明无边框 NSPanel 上 rootView 重赋值不能保证立即重绘。
     /// `animated: true` 时状态变化套 spring（编辑模式目录条/窗口高度过渡）。
+    ///
+    /// 纯内容重建：紧凑区几何（缩放到当前图标数）由调用方先行
+    /// `refreshCompactGeometry()` 同步——只有增删紧凑图标/换屏的路径需要，
+    /// 其余路径计数未变无需调用。
     func rebuildContent(animated: Bool = false) {
-        // 紧凑区宽度动态：先同步每屏的紧凑图标数（紧凑带几何、热区窗口
-        // 宽度都随其伸缩），再构建内容。宽度未变化时 setFrame 同 frame
-        // 无副作用；变化时热区窗口即刻跟进新带宽（抽屉不参与——收起态
-        // 的岛顶带宽在 collapse/showDocked 时按当前数计算）。
-        let compactCount = layoutEngine.compactSlots.count
-        uiState.compactCount = compactCount
-        for pair in pairs {
-            if pair.compactCount != compactCount {
-                pair.compactCount = compactCount
-                positionCompactPanel(pair)
-            }
-        }
-
         // 紧凑元素的上下文 frame 以主屏几何近似（槽位尺寸跨屏一致，
         // 视觉几何由各面板的 layout 参数精确持有）。
         let contextLayout = primaryLayout()
@@ -173,8 +164,8 @@ extension NotchPanelController {
     }
 
     private func buildCompactElements(layout: NotchLayout) -> [CompactElement] {
-        (0..<layoutEngine.compactSlots.count).map { index in
-            let frame = compactSlotFrame(index: index, layout: layout)
+        (0..<compactIconCount).map { index in
+            let frame = compactSlotFrame(index: index, layout: layout, slotCount: compactIconCount)
             guard let reference = layoutEngine.compactSlot(at: index),
                   let entry = pluginManager.entry(for: reference.pluginID),
                   entry.isEnabled,
@@ -273,16 +264,19 @@ extension NotchPanelController {
 
     /// 槽位矩形（窗口内容坐标，左上原点）；与视图共享同一 strip 布局。
     /// 宽度随当前紧凑图标数动态伸缩。
-    func compactSlotFrame(index: Int, layout: NotchLayout) -> CGRect {
-        layout.compactStrip(slotCount: layoutEngine.compactSlots.count)
+    func compactSlotFrame(index: Int, layout: NotchLayout, slotCount: Int) -> CGRect {
+        layout.compactStrip(slotCount: slotCount)
             .slotRect(at: index) ?? .zero
     }
 
     private func compactActions() -> CompactActions {
         CompactActions(
             onRemoveBlock: { [weak self] index in
-                self?.layoutEngine.setCompactSlot(index, to: nil)
-                self?.rebuildContent()
+                guard let self else { return }
+                self.layoutEngine.setCompactSlot(index, to: nil)
+                // 紧凑图标数减少：先同步条带几何/热区窗口，再重建内容。
+                self.refreshCompactGeometry()
+                self.rebuildContent()
             },
             onTapBackground: { [weak self] in
                 self?.expand(animated: true, activate: true)
@@ -335,6 +329,8 @@ extension NotchPanelController {
                 if let block = self.pluginManager.block(pluginID: pluginID, blockID: blockID),
                    block.kind == .compact {
                     self.layoutEngine.addCompactBlock(pluginID: pluginID, blockID: blockID)
+                    // 紧凑图标数增加：先同步条带几何/热区窗口，再重建内容。
+                    self.refreshCompactGeometry()
                 } else {
                     self.layoutEngine.autoPlaceDrawerBlock(pluginID: pluginID, blockID: blockID)
                 }

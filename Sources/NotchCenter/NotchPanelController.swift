@@ -75,6 +75,9 @@ final class NotchPanelController: NSObject {
             seedDefaultLayout()
         }
 
+        // 首建/恢复后的 pairs 持默认 0 图标数：先同步紧凑区几何
+        // （带宽、热区窗口随图标数伸缩），再重建内容。
+        refreshCompactGeometry()
         rebuildContent()
         startMousePolling()
         observeScreenChanges()
@@ -120,7 +123,7 @@ final class NotchPanelController: NSObject {
     }
 
     /// 把某屏幕的紧凑面板摆到其刘海位置（宽度随当前紧凑图标数伸缩，
-    /// 由 `rebuildContent` 在图标增删时调用）。
+    /// 由 `refreshCompactGeometry` 在图标增删/换屏时调用）。
     func positionCompactPanel(_ pair: ScreenPanelPair) {
         pair.hotPanel.setFrame(pair.hotFrame, display: true)
         pair.hotPanel.orderFrontRegardless()
@@ -132,6 +135,31 @@ final class NotchPanelController: NSObject {
             for: pairs.first?.screen,
             compactCount: pairs.first?.compactCount ?? 0
         )
+    }
+
+    /// 当前紧凑图标数（唯一来源：布局引擎模型；各 pair 的镜像与
+    /// `uiState.compactCount` 经 `refreshCompactGeometry` 同步）。
+    var compactIconCount: Int { layoutEngine.compactSlots.count }
+
+    /// 某屏幕（或回退主屏）在当前图标数下的紧凑条带几何。
+    /// 面板/命中测试/收起尺寸都通过这里取带宽，不再各自读引擎。
+    func compactStrip(for pair: ScreenPanelPair?) -> CompactStripLayout {
+        if let pair { return pair.compactStrip }
+        return primaryLayout().compactStrip(slotCount: compactIconCount)
+    }
+
+    /// 紧凑区几何同步：把引擎的紧凑图标数推到各 pair 镜像与 `uiState`
+    /// （视图侧条带宽度随其伸缩），并按新带宽重摆热区窗口。
+    /// 任何**改变紧凑图标数**的路径必须先调它、再调 `rebuildContent`
+    /// （后者保持纯内容重建，不再有窗口副作用）；宽度未变化时
+    /// `setFrame` 同 frame 无副作用。
+    func refreshCompactGeometry() {
+        let compactCount = layoutEngine.compactSlots.count
+        uiState.compactCount = compactCount
+        for pair in pairs where pair.compactCount != compactCount {
+            pair.compactCount = compactCount
+            positionCompactPanel(pair)
+        }
     }
 
     /// 鼠标所在屏幕的面板对；不在任何激活区时返回 nil。
@@ -147,6 +175,8 @@ final class NotchPanelController: NSObject {
     // MARK: - 对外入口
 
     func showDocked() {
+        // 兜底同步（启动/唤起时计数未变则无副作用），保证收起带宽对应当前图标数。
+        refreshCompactGeometry()
         rebuildContent()
         isExpanded = false
         setCollapsedSize()
@@ -276,13 +306,7 @@ final class NotchPanelController: NSObject {
     /// 收起态的可见面板尺寸：紧凑带宽度（随当前图标数）× 0 内容高
     /// （容器总高 = 带高）。
     private func collapsedPanelSize() -> CGSize {
-        let strip: CompactStripLayout
-        if let pair = activePair {
-            strip = pair.layout.compactStrip(slotCount: pair.compactCount)
-        } else {
-            strip = primaryLayout().compactStrip(slotCount: layoutEngine.compactSlots.count)
-        }
-        return CGSize(width: strip.windowWidth, height: 0)
+        CGSize(width: compactStrip(for: activePair).windowWidth, height: 0)
     }
 
     private func setCollapsedSize() {

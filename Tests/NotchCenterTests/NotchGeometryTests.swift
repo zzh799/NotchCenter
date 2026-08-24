@@ -115,17 +115,17 @@ final class NotchGeometryTests: XCTestCase {
         let expectedY: CGFloat = (32 - slot.height) / 2
         let padding = NotchGeometry.compactHorizontalPadding
         let spacing = NotchGeometry.compactSlotSpacing
-        let bandLeft = strip.bandLeft
+        // 窗口与带同宽（bandLeft == 0）：槽位横坐标从窗口左缘起算。
 
         // 偶数索引在左：索引 0 靠刘海一侧（左列 0）、索引 2 向外（左列 1）。
         XCTAssertEqual(
             strip.slotRect(at: 0),
-            CGRect(x: bandLeft + padding, y: expectedY, width: slot.width, height: slot.height)
+            CGRect(x: padding, y: expectedY, width: slot.width, height: slot.height)
         )
         XCTAssertEqual(
             strip.slotRect(at: 2),
             CGRect(
-                x: bandLeft + padding + slot.width + spacing,
+                x: padding + slot.width + spacing,
                 y: expectedY,
                 width: slot.width,
                 height: slot.height
@@ -136,7 +136,7 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(
             strip.slotRect(at: 1),
             CGRect(
-                x: bandLeft + strip.rightPanelX + padding,
+                x: strip.rightPanelX + padding,
                 y: expectedY,
                 width: slot.width,
                 height: slot.height

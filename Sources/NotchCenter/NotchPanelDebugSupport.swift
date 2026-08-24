@@ -28,7 +28,7 @@ extension NotchPanelController {
         print("debug expanded=\(isExpanded) screens=\(pairs.count)")
         print("debug sizes: content=\(layoutEngine.drawerContentSize()) window=\(layoutEngine.drawerWindowSize()) blocks=\(layoutEngine.drawerBlocks.count)")
         let layout = primaryLayout()
-        print("debug compact: height=\(layout.compactHeight) notch=\(layout.notchSize) count=\(layoutEngine.compactSlots.count)")
+        print("debug compact: height=\(layout.compactHeight) notch=\(layout.notchSize) count=\(compactIconCount)")
     }
 
     func showPluginManager() {

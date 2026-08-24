@@ -63,20 +63,15 @@ struct CompactStripLayout: Equatable {
         leftPanelWidth + gap + notchWidth + gap
     }
 
-    /// 黑色带宽度。
+    /// 黑色带宽度（窗口与带同宽：窗口绕屏幕中线居中，带体恒占满窗口，
+    /// 刘海中心恒为带宽中心——不再有带内偏移）。
     var bandWidth: CGFloat {
         rightPanelX + rightPanelWidth
     }
 
-    /// 带体在窗口内的水平起点：窗口与带同宽（不再为编辑模式“+”预留
-    /// 右端占位），带体恒占满窗口并绕物理刘海左右对称。
-    var bandLeft: CGFloat {
-        (windowWidth - bandWidth) / 2
-    }
-
-    /// 刘海中心的窗口横坐标。
+    /// 刘海中心的窗口横坐标（== 带宽中心，窗口绕屏幕中线居中）。
     var notchCenterX: CGFloat {
-        bandLeft + leftPanelWidth + gap + notchWidth / 2
+        leftPanelWidth + gap + notchWidth / 2
     }
 
     /// 热区窗口总宽度（与黑色带同宽，带体绕刘海左右对称）。
@@ -90,8 +85,8 @@ struct CompactStripLayout: Equatable {
         let y = (height - slotSize.height) / 2
         let column = index / 2
         let x: CGFloat = index % 2 == 0
-            ? bandLeft + padding + CGFloat(column) * (slotSize.width + spacing)
-            : bandLeft + rightPanelX + padding + CGFloat(column) * (slotSize.width + spacing)
+            ? padding + CGFloat(column) * (slotSize.width + spacing)
+            : rightPanelX + padding + CGFloat(column) * (slotSize.width + spacing)
         return CGRect(x: x, y: y, width: slotSize.width, height: slotSize.height)
     }
 }

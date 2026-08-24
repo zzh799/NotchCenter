@@ -10,7 +10,7 @@ extension NotchPanelController {
             guard event.type == .leftMouseDown else { return }
             // 块视图自身处理点击；仅当点击落在槽位之外才视为面板级展开。
             let location = NSEvent.mouseLocation
-            if !self.isPointInAnyCompactSlot(location, layout: pair.layout, hotFrame: pair.hotFrame) {
+            if !self.isPointInAnyCompactSlot(location, pair: pair) {
                 self.expand(animated: true, activate: true)
             }
         }
@@ -131,6 +131,9 @@ extension NotchPanelController {
         cancelCollapse()
         syncScreens()
         updateScreenConstraint()
+        // 新接入的 pair 持默认 0 图标数：先同步紧凑区几何（带宽、热区
+        // 窗口随图标数伸缩），再重建内容。
+        refreshCompactGeometry()
         rebuildContent()
     }
 
@@ -219,9 +222,13 @@ extension NotchPanelController {
         return pairs.contains { $0.hotFrame.contains(point) }
     }
 
-    private func isPointInAnyCompactSlot(_ point: NSPoint, layout: NotchLayout, hotFrame: NSRect) -> Bool {
-        let slots = (0..<layoutEngine.compactSlots.count).map { index -> NSRect in
-            let slot = compactSlotFrame(index: index, layout: layout)
+    private func isPointInAnyCompactSlot(_ point: NSPoint, pair: ScreenPanelPair) -> Bool {
+        // 槽位几何一律问 pair（刘海/高度恒定 + 当前图标数镜像），
+        // 不再直接读引擎。
+        let layout = pair.layout
+        let hotFrame = pair.hotFrame
+        let slots = (0..<pair.compactCount).map { index -> NSRect in
+            let slot = compactSlotFrame(index: index, layout: layout, slotCount: pair.compactCount)
             // 槽位 frame 是内容坐标（左上原点）；换算到屏幕坐标。
             return NSRect(
                 x: hotFrame.minX + slot.minX,

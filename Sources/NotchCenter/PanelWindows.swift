@@ -101,13 +101,16 @@ final class ScreenPanelPair {
         configure(drawerPanel)
     }
 
-    /// 该屏幕当前的紧凑图标数（控制器在增删紧凑块后同步；紧凑带宽随其
-    /// 动态伸缩，布局/热区 frame 都按它计算）。
+    /// 该屏幕当前的紧凑图标数（控制器 `refreshCompactGeometry()` 在增删
+    /// 紧凑块后同步；紧凑带宽随其动态伸缩，热点/热区 frame 都按它计算）。
     var compactCount = 0
 
-    /// 该屏幕的刘海/回退布局（紧凑带宽按当前图标数）。
+    /// 该屏幕的刘海/回退布局（与图标数无关的恒定部分）。
     var layout: NotchLayout { NotchGeometry.layout(for: screen, compactCount: compactCount) }
     var screenFrame: NSRect { screen.frame }
+    /// 该屏幕当前的紧凑条带几何（宽度随当前图标数动态伸缩）——
+    /// 面板/命中测试/收起尺寸都通过它取宽度。
+    var compactStrip: CompactStripLayout { layout.compactStrip(slotCount: compactCount) }
     /// 紧凑热区在该屏幕上的 frame（宽度随当前图标数伸缩）。
     var hotFrame: NSRect { NotchGeometry.activationFrame(for: layout, slotCount: compactCount, in: screenFrame) }
 }
