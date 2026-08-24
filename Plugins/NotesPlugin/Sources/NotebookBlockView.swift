@@ -1,4 +1,5 @@
 import AppKit
+import NotchCenterKit
 import SwiftUI
 
 /// 笔记抽屉块视图（官方 NotesPlugin）。
@@ -43,6 +44,15 @@ struct NotesBlockView: View {
     }
 
     var body: some View {
+        // 卡片壳统一走 Kit 的 BlockCard：笔记本块与其他抽屉块共享底色与
+        // 发丝描边（hoverEffect 默认关，编辑区不做悬停反馈）。
+        BlockCard { _ in
+            editorContent
+        }
+        .environment(\.colorScheme, .dark)
+    }
+
+    private var editorContent: some View {
         GeometryReader { proxy in
             VStack(spacing: editorSpacing) {
                 TabPagerControl(
@@ -126,7 +136,6 @@ struct NotesBlockView: View {
                 NotesModel.shared.unregisterPlacement(placementID)
             }
         }
-        .environment(\.colorScheme, .dark)
     }
 
     private func editorSize(_ total: CGSize) -> CGSize {

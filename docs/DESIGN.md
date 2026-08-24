@@ -182,6 +182,13 @@
 
 所有圆角按钮共用 `RoundedHoverButtonBody`：常态/悬停/按下三态的「白底 alpha」与「前景白 alpha」由各自 `ButtonStyle` 注入，圆角固定 7、`.continuous`，按下与悬停各带极短 easeOut，并统一 `pointingHandCursor()`。新增按钮请复用该基类而非自绘。
 
+### 统一块卡片壳（Kit `BlockCard` + `blockPopoverTrigger`）
+
+抽屉块的表面与交互统一由 NotchCenterKit 提供，插件不再自绘背景描边或手写长按手势：
+
+- **`BlockCard`**（纯视觉、零手势）：圆角 10 `.continuous`，撑满宿主分配的网格区域；填充常态 `white.opacity(0.025)` / 悬停 `0.04`（`hoverEffect: true` 才启用） / 强调态 `0.055`；发丝描边常态 `white.opacity(0.09)` / 强调态 `0.16`。官方采用方：DSH / Calibre 服务卡、OpenCode 用量卡、文件暂存区（拖入高亮 = `highlighted: true`）、笔记本块。
+- **`.blockPopoverTrigger(onTap:onLongPress:)`**（按需叠加的交互层）：长按 0.2s 即弹浮窗（不等松手），内置 frameInWindow 追踪、按压增亮覆盖与「长按期间抑制点击」；浮窗本体统一走 `BlockPopover`。
+
 ---
 
 ## 10. 图标（Iconography）

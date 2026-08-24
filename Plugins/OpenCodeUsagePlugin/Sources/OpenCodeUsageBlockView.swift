@@ -6,56 +6,25 @@ import SwiftUI
 //
 // 外/中/内三环分别是 5h 滚动 / 每周 / 每月窗口；点击打开 dashboard，
 // 右上角小按钮手动刷新。medium 跨度额外显示余额与图例，small 只留环。
+// 卡片壳与长按浮窗触发统一走 Kit 的 BlockCard / blockPopoverTrigger。
 
 struct OpenCodeUsageBlockView: View {
     @ObservedObject private var store = OpenCodeUsageStore.shared
-    @State private var isHovering = false
-    /// 块在宿主窗口坐标系中的 frame（GeometryReader 实时捕获），用于浮窗定位。
-    @State private var frameInWindow: CGRect?
-    /// 长按进行中：背景微亮提示浮窗即将弹出（GestureState，手势中断自动复位）。
-    @GestureState private var isPressing = false
 
     var body: some View {
-        baseContent
-            .background(
-                // NSHostingView 里 SwiftUI 的 .global 空间即宿主窗口坐标。
-                // 块随抽屉动画/缩放移动时持续更新，长按弹出的锚点始终准确。
-                GeometryReader { geo in
-                    Color.clear
-                        .onAppear { frameInWindow = geo.frame(in: .global) }
-                        .onChange(of: geo.frame(in: .global)) { _, newFrame in
-                            frameInWindow = newFrame
-                        }
+        BlockCard(hoverEffect: true) { isHovering in
+            content
+                .overlay(alignment: .topTrailing) {
+                    refreshButton(hovering: isHovering)
                 }
-            )
-            .animation(.easeOut(duration: 0.12), value: isPressing)
-    }
-
-    private var baseContent: some View {
-        content
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(isPressing ? 0.055 : (isHovering ? 0.04 : 0.025)))
+        }
+        // 手势顺序、长按抑制点击等语义都在触发器内统一实现。
+        .blockPopoverTrigger(
+            onTap: { openDashboard() },
+            onLongPress: { frameInWindow in
+                OpenCodeUsagePopover.present(store: store, frameInWindow: frameInWindow)
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.white.opacity(isPressing ? 0.20 : 0.09), lineWidth: 1)
-            }
-            .overlay(alignment: .topTrailing) {
-                refreshButton
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .onHover { isHovering = $0 }
-            .animation(.easeOut(duration: 0.12), value: isHovering)
-            // 手势顺序同 DshPlugin：长按优先于点击；整卡（含背景区）都可长按
-            // 弹浮窗，点击（非刷新按钮区）打开 dashboard。
-            .simultaneousGesture(longPressGesture)
-            .onTapGesture {
-                if !isPressing {
-                    openDashboard()
-                }
-            }
+        )
     }
 
     @ViewBuilder
@@ -154,13 +123,13 @@ struct OpenCodeUsageBlockView: View {
 
     // MARK: 刷新按钮
 
-    private var refreshButton: some View {
+    private func refreshButton(hovering: Bool) -> some View {
         Button {
             store.forceRefresh()
         } label: {
             Image(systemName: "arrow.clockwise")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(isHovering ? 0.88 : 0.55))
+                .foregroundStyle(Color.white.opacity(hovering ? 0.88 : 0.55))
                 .padding(4)
                 .contentShape(Rectangle())
         }
@@ -170,23 +139,7 @@ struct OpenCodeUsageBlockView: View {
         .help(L("usage.refreshHelp"))
     }
 
-    // MARK: 长按手势 / 动作
-
-    /// 纯 LongPressGesture：按住满 0.5s 的瞬间即触发浮窗，**无需等鼠标
-    /// 释放**。不能用 sequenced(before: DragGesture)——onEnded 会推迟到
-    /// 第二阶段（拖拽）结束。挂在整卡上（含背景区）。
-    private var longPressGesture: some Gesture {
-        LongPressGesture(minimumDuration: 0.5)
-            .onEnded { _ in
-                showPopover()
-            }
-            .updating($isPressing) { _, state, _ in state = true }
-    }
-
-    private func showPopover() {
-        guard let frameInWindow else { return }
-        OpenCodeUsagePopover.present(store: store, frameInWindow: frameInWindow)
-    }
+    // MARK: 动作
 
     private func openDashboard() {
         guard store.isConfigured,

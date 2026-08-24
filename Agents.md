@@ -62,6 +62,7 @@ NotchCenter/
 │   ├── NotchBlock.swift          # NotchBlock / BlockKind / BlockSize / BlockInteraction
 │   ├── BlockContext.swift        # BlockContext / BlockLayoutInfo / BlockRegion / PluginSettingsContext
 │   ├── BlockPopover.swift        # 长按浮窗基础组件：单例互斥生命周期 / 叠在块上方 / 统一外观 / spring 弹出动画
+│   ├── BlockCard.swift           # 块卡片壳 BlockCard（统一底色/发丝描边/可选悬停，纯视觉零手势）+ .blockPopoverTrigger（长按 0.2s 浮窗触发器：frame 追踪 + 按压增亮 + 点击抑制）
 │   ├── HostController.swift      # expand/collapse/编辑模式/刷新紧凑区
 │   ├── StateStore.swift          # 插件隔离键值存储（PluginData/<pluginID>/，原子写）
 │   └── APIVersion.swift          # SemanticVersion / APIVersionRange / currentVersion（文档 §9.1）
@@ -124,7 +125,7 @@ open dist.noindex/NotchCenter.app
 - **编辑模式契约：不留空行 + 缩放推挤 + 面板贴合**：所有变更（移动/移除/缩放/提交）后 `compactEmptyRows` 会闭合整行空洞（下方整体上移；行内部分留白保留，加载净化的留白保护不受影响）；`resizeDrawerBlock` 扩大遇下方块不再回退而是推挤下移，预览与提交走同一算法（所见即所得）；窗口高度经 `previewBottomRow`/`refreshAfterEdit` 随内容行数按需增减。回归见 `LayoutEngineTests` 的“编辑模式契约”一节。
 - **列双向扩大、行仅向下（originColumn 可为负）**：行始终顶边锚定只向下扩大（originRow 不变、非负）；列支持左右双向——块被拖出左侧时格网向左扩大（originColumn 变负，`validColumnRange` 保证合并后跨度 ≤ 容量），单右下握把只向右下扩大（无左右双握把）。渲染横坐标 = `(originColumn − gridLeft) × 步长`、宽高按占列跨度（`occupiedColumnRange`），面板绕刘海居中所以列扩大视觉上左右对称。预览期 `applyPreviewWindowSize` 必须把 `drawerWindowSize`/`drawerContentSize`/`drawerGridLeftColumn` 放进**同一次 withAnimation（与块推挤同帧，不等松手）**；`compactEmptyColumns` 会闭合负列空洞（左侧块向 0 右移，与右移对称）。回归见 `LayoutEngineTests` 的“编辑模式契约：列双向扩大（左扩）”一节与 `DragReorderReproTests` 的列跨度不变量。
 - **Chicken-and-egg 初始化**：`NotchPanelController.init` 在 `super.init()` 之后才构建 `pluginManager` / `layoutEngine`（属性是 `private(set) var ...!`）。改动核心初始化顺序时注意。
-- **UI 风格**：抽屉强制深色（`.environment(\.colorScheme, .dark)`），背景接近纯黑半透明，顶部圆角遮罩（`TopAttachedRoundedShape`）。改动视觉时保持“贴近刘海”的观感。
+- **UI 风格**：抽屉强制深色（`.environment(\.colorScheme, .dark)`），背景接近纯黑半透明，顶部圆角遮罩（`TopAttachedRoundedShape`）。改动视觉时保持“贴近刘海”的观感。抽屉块的卡片壳一律用 Kit 的 `BlockCard`（底色/发丝描边/可选悬停），长按浮窗触发一律用 `.blockPopoverTrigger`——不要在插件里自绘背景描边或手写 frame 追踪与长按手势。
 - **命名 / 语言**：源码标识符与 UI 字符串用英文；注释可用中文。保持与现有文件一致的风格（缩进、分组、注释密度）。
 - **多语言（en / zh-Hans）**：所有面向用户的字符串一律走本地化表，不许硬编码。机制是 Apple 原生 `.lproj` + `Localizable.strings`，每个模块自带翻译：宿主用 `L()`/`LF()`（`Sources/NotchCenter/Localization.swift`，资源经 SPM 打进 `NotchCenter_NotchCenter.bundle`）；插件用各自 Sources 里的 `L()`/`LF()`（基于 Kit 的 `L10n.string` + `Bundle(for:)`）；插件的显示名/描述双语写在各 `Plugin.plist` 的 `DisplayNameLocales` / `DescriptionLocales` 字典（build.sh 生成 InfoPlist.strings）。en 是基准键集，zh-Hans 必须保持键集合一致（`LocalizationTests` 强制校验）。语言跟随系统，设置面板可覆盖（写 AppleLanguages，重启生效）。品牌名（DSH、Calibre、OpenCode、Zen）不翻译。
 - **不要引入新的 SPM 远程依赖**，除非任务要求；优先复用 AppKit / SwiftUI / vendored 引擎。

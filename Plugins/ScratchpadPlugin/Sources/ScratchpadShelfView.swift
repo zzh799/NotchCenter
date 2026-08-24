@@ -1,4 +1,5 @@
 import AppKit
+import NotchCenterKit
 import SwiftUI
 
 struct FileShelfView: View {
@@ -15,13 +16,14 @@ struct FileShelfView: View {
     private let selectionCoordinateSpace = "file-shelf-selection"
 
     var body: some View {
-        content
-            .frame(width: size.width, height: size.height)
-            .coordinateSpace(name: selectionCoordinateSpace)
-            .contentShape(Rectangle())
-            .background(panelBackground)
-            .overlay { panelStroke }
-            .shadow(
+        // 卡片壳（含拖入高亮态）统一走 Kit 的 BlockCard；阴影与高亮 spring
+        // 动画留在本文件——它们是暂存区拖放交互的一部分。
+        BlockCard(highlighted: workspaceState.isShelfDropTargeted) { _ in
+            content
+        }
+        .frame(width: size.width, height: size.height)
+        .coordinateSpace(name: selectionCoordinateSpace)
+        .shadow(
                 color: .black.opacity(workspaceState.isShelfDropTargeted ? 0.24 : 0),
                 radius: 18,
                 y: 8
@@ -133,19 +135,6 @@ struct FileShelfView: View {
                 .offset(x: selectionRect.minX, y: selectionRect.minY)
                 .allowsHitTesting(false)
         }
-    }
-
-    private var panelBackground: some View {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(.white.opacity(workspaceState.isShelfDropTargeted ? 0.055 : 0.025))
-    }
-
-    private var panelStroke: some View {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .stroke(
-                .white.opacity(workspaceState.isShelfDropTargeted ? 0.16 : 0),
-                lineWidth: 1
-            )
     }
 
     private var removeAllMenuButton: some View {
