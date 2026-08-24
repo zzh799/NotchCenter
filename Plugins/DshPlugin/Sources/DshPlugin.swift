@@ -21,8 +21,6 @@ import SwiftUI
         )
     ]
 
-    private var monitor: DshServiceMonitor?
-
     public override init() {
         super.init()
     }
@@ -31,6 +29,9 @@ import SwiftUI
         // plist 缺失时按固定模板自动创建（决策 5），不覆盖已有文件。
         let plist = LaunchdPlist(plistPath: DshServiceConfig.plistPath)
         _ = plist.createIfMissing(contents: DshServiceConfig.plistContents)
+        // 预热共享监视器：App 启动即开始轮询，首次展开抽屉前状态已就绪，
+        // 开关不会在首屏再播一次“从关到开”的动画。
+        _ = DshServiceMonitor.shared
     }
 
     public func pluginWasDisabled() {

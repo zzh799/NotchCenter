@@ -9,11 +9,10 @@ import SwiftUI
 /// - 点击开关以外区域 → 打开网页（探测端口优先，回退硬编码 URL）
 /// - 长按（0.2s）→ 弹出独立 NSPanel 浮窗（决策 6）
 struct CalibreServiceBlockView: View {
-    @StateObject private var monitor: CalibreServiceMonitor
-
-    init() {
-        _monitor = StateObject(wrappedValue: CalibreServiceMonitor())
-    }
+    /// 绑定插件级共享监视器（`CalibreServiceMonitor.shared`）：块视图每次展开都会
+    /// 被宿主重建（收起时身份销毁），监视器必须活过视图生命周期，开关才能以
+    /// 当前真实状态起渲染，而不是每次都从“关”起步重播打开动画。
+    @ObservedObject private var monitor = CalibreServiceMonitor.shared
 
     var body: some View {
         BlockCard(hoverEffect: true) { _ in
@@ -50,6 +49,9 @@ struct CalibreServiceBlockView: View {
             }
         )
         .animation(.easeOut(duration: 0.16), value: monitor.message)
+        // 共享监视器按 10s 低频轮询；展开瞬间补一次即时探测，状态新鲜度
+        // 与旧“每次新建监视器立即探测”的行为持平。
+        .task { await monitor.refreshOnce() }
     }
 
     private var statusDot: some View {

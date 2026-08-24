@@ -129,13 +129,19 @@ assemble_bundle() { # $1=目标PlugIns目录 $2=索引 $3=dylib路径 $4=SPM产�
 
   # 本地化 UI 文案：把 SPM 资源包里的 lproj 平铺复制进 Contents/Resources，
   # 插件代码用 Bundle(for:) 在这个 bundle 里查 Localizable.strings。
-  # SPM 资源包命名规则是 <包名>_<target名>.bundle。
+  # SPM 资源包命名规则是 <包名>_<target名>.bundle；Apple 平台的产物带 Contents/Resources
+  # 层级（lproj 在其下而非 bundle 根），这里兼容两种布局。
+  # 缺失必须硬失败：静默跳过会让插件 UI 整体退化成原始键名，很难被发现。
   local spm_res_bundle="$4/NotchCenter_${name}.bundle"
-  if [[ -d "$spm_res_bundle" ]]; then
-    cp -R "$spm_res_bundle/"*.lproj "$resources_dir/" 2>/dev/null || true
-  else
-    echo "警告：找不到 $name 的本地化资源包 ${spm_res_bundle}，插件 UI 将回退英文。" >&2
+  if [[ ! -d "$spm_res_bundle" ]]; then
+    die "找不到 $name 的本地化资源包 $spm_res_bundle"
   fi
+  local lproj_src="$spm_res_bundle/Contents/Resources"
+  [[ -d "$lproj_src" ]] || lproj_src="$spm_res_bundle"
+  if ! compgen -G "$lproj_src/*.lproj" > /dev/null; then
+    die "$spm_res_bundle 内没有 *.lproj 本地化资源"
+  fi
+  cp -R "$lproj_src/"*.lproj "$resources_dir/"
 
   # 本地化元数据：DisplayNameLocales / DescriptionLocales 生成 InfoPlist.strings。
   local display_zh="${PLUGIN_DISPLAY_ZH[$i]}" desc_zh="${PLUGIN_DESC_ZH[$i]}"

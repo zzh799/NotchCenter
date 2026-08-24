@@ -14,6 +14,14 @@ final class DshServiceMonitor: ObservableObject {
     /// 收起时的低频轮询间隔。
     static let idleInterval: TimeInterval = 10
 
+    /// 插件级共享单例：抽屉收起时内容分支退出视图树（SwiftUI 身份销毁），
+    /// 每次展开宿主都会经 `makeView` 重建块视图——@StateObject 跟着重建并
+    /// 从 `.stopped` 起步，首次探测返回后开关从关翻到开，表现为每次展开
+    /// 都重播一次“打开”动画。状态真源必须活过视图生命周期：新视图直接以
+    /// 当前真实状态起渲染。App 启动时由 `DshPlugin.attachServices` 预热，
+    /// 展开瞬间再由视图 `.task` 补一次即时探测保证新鲜度。
+    static let shared = DshServiceMonitor()
+
     @Published private(set) var status = LaunchdServiceStatus(
         state: .stopped, isLoaded: false, pid: nil, port: nil, launchdPID: nil
     )
