@@ -1,0 +1,295 @@
+import CoreGraphics
+import Foundation
+import NotchCenterKit
+
+// MARK: - 布局修改（公开操作 API）
+
+extension LayoutEngine {
+    func setUserMaxColumns(_ columns: Int) {
+        let clamped = min(max(columns, 2), 8)
+        guard model.maxColumns != clamped else { return }
+        model.maxColumns = clamped
+        saveToDisk()
+    }
+
+    /// 屏幕宽度约束（文档 §7.2）：实际列数 = min(用户配置, 屏幕能容纳的列数)。
+    func updateScreenConstraint(width: CGFloat) {
+        availableScreenWidth = width
+    }
+
+    func effectiveMaxColumns() -> Int {
+        let capacity = max(
+            1,
+            Int(
+                (availableScreenWidth - NotchGridMetrics.contentPadding * 2
+                    + NotchGridMetrics.spacing)
+                    / (NotchGridMetrics.cellWidth + NotchGridMetrics.spacing)
+            )
+        )
+        return min(model.maxColumns, capacity)
+    }
+
+    /// 同步启用插件列表（文档 §5.4：enabledPluginIDs 存于 layout.json）。
+    func syncEnabledPluginIDs(_ ids: Set<String>) {
+        let sorted = ids.sorted()
+        guard Set(model.enabledPluginIDs) != ids else { return }
+        model.enabledPluginIDs = sorted
+        saveToDisk()
+    }
+
+    /// 首启默认启用内置插件（文档未强制，但官方插件应在首次启动时可用）。
+    func seedEnabledBuiltIns(_ ids: Set<String>) {
+        guard !didLoadFromDisk else { return }
+        model.enabledPluginIDs = Array(ids).sorted()
+        saveToDisk()
+    }
+
+    // MARK: 紧凑槽位（文档 §5.2：数组长度即图标数，宽度随其动态伸缩）
+
+    /// 设置某索引的紧凑块引用。`nil` = 移除该图标（闭合空隙，后续图标前移）；
+    /// 非空 = 替换该索引（索引等于当前长度则追加到末尾）；越界忽略。
+    func setCompactSlot(_ index: Int, to ref: CompactSlotReference?) {
+        guard let ref else {
+            guard model.compactSlots.indices.contains(index) else { return }
+            model.compactSlots.remove(at: index)
+            saveToDisk()
+            return
+        }
+        if model.compactSlots.indices.contains(index) {
+            model.compactSlots[index] = ref
+        } else if index == model.compactSlots.count {
+            model.compactSlots.append(ref)
+        }
+        saveToDisk()
+    }
+
+    func swapCompactSlots(_ first: Int, _ second: Int) {
+        guard model.compactSlots.indices.contains(first),
+              model.compactSlots.indices.contains(second) else { return }
+        model.compactSlots.swapAt(first, second)
+        saveToDisk()
+    }
+
+    /// 添加紧凑块到末尾（紧凑带长度随之增长，带宽动态伸缩）。
+    @discardableResult
+    func addCompactBlock(pluginID: String, blockID: String) -> Bool {
+        guard let block = blockResolver(pluginID, blockID), block.kind == .compact else {
+            return false
+        }
+        model.compactSlots.append(CompactSlotReference(
+            pluginID: pluginID,
+            blockID: blockID,
+            placementID: UUID().uuidString
+        ))
+        saveToDisk()
+        return true
+    }
+
+    // MARK: 抽屉网格（文档 §5.3）
+
+    /// 自动放置到第一个可用位置；超出最大列数后自动换行。
+    /// 落位后压实空行/空列（左扩布局可能存在负列空洞）。
+    @discardableResult
+    func autoPlaceDrawerBlock(pluginID: String, blockID: String) -> PlacedBlock? {
+        guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
+            return nil
+        }
+        let span = (block.defaultSize ?? .small).gridSpan
+        let columns = effectiveMaxColumns()
+        let occupied = occupiedRects(excluding: nil)
+
+        // 在既有行内寻找首个可用位置。
+        let maxRow = occupied.map(\.maxRow).max() ?? -1
+        for row in 0...max(0, maxRow) {
+            for col in 0...max(0, columns - span.columns) {
+                let candidate = PlacedBlock(
+                    pluginID: pluginID,
+                    blockID: blockID,
+                    placementID: UUID().uuidString,
+                    originColumn: col,
+                    originRow: row,
+                    widthColumns: span.columns,
+                    heightRows: span.rows
+                )
+                if !overlaps(candidate, with: occupied) {
+                    model.drawerBlocks.append(candidate)
+                    compactEmptyRows()
+                    compactEmptyColumns()
+                    saveToDisk()
+                    return candidate
+                }
+            }
+        }
+
+        // 无可用位置：新起一行（文档 §5.3：超出后自动换行；高度随内容增长，超高则滚动）。
+        let placed = PlacedBlock(
+            pluginID: pluginID,
+            blockID: blockID,
+            placementID: UUID().uuidString,
+            originColumn: 0,
+            originRow: maxRow + 1,
+            widthColumns: span.columns,
+            heightRows: span.rows
+        )
+        model.drawerBlocks.append(placed)
+        compactEmptyRows()
+        compactEmptyColumns()
+        saveToDisk()
+        return placed
+    }
+
+    func removeDrawerBlock(placementID: String) {
+        model.drawerBlocks.removeAll { $0.placementID == placementID }
+        compactEmptyRows()
+        compactEmptyColumns()
+        saveToDisk()
+    }
+
+    /// 一键重排（编辑模式）：按“从上到下、从左到右”的阅读顺序紧密排布所有抽屉块。
+    /// 以当前布局的阅读顺序为优先级，逐块放到首个不重叠位置（行优先扫描），
+    /// 消除移动/缩放留下的空洞；块身份与跨度保持不变，仅调整原点。
+    func reorderDrawerBlocks() {
+        guard !model.drawerBlocks.isEmpty else { return }
+        let columns = effectiveMaxColumns()
+
+        // 阅读顺序即优先级：先看行再看列（元组比较）。
+        let ordered = model.drawerBlocks.sorted {
+            ($0.originRow, $0.originColumn) < ($1.originRow, $1.originColumn)
+        }
+
+        var occupied: [RectKey] = []
+        var result: [PlacedBlock] = []
+        result.reserveCapacity(ordered.count)
+
+        for block in ordered {
+            // 行优先扫描首个可用位置；扫描上界为已占最底行 + 1
+            // （新起一行时必然无冲突，无需继续向下找）。
+            var candidate = block
+            let maxRow = occupied.map(\.maxRow).max() ?? -1
+            scan: for row in 0...max(0, maxRow + 1) {
+                for col in 0...max(0, columns - block.widthColumns) {
+                    candidate.originColumn = col
+                    candidate.originRow = row
+                    if !overlaps(candidate, with: occupied) {
+                        break scan
+                    }
+                }
+            }
+            occupied.append(rectKey(candidate))
+            result.append(candidate)
+        }
+
+        model.drawerBlocks = result
+        saveToDisk()
+    }
+
+    /// 移动抽屉块到目标位置；目标被占用时移动到最近可用位置。失败（无处可放或块不存在）返回 false。
+    @discardableResult
+    func moveDrawerBlock(placementID: String, toColumn: Int, toRow: Int) -> Bool {
+        guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
+            return false
+        }
+        let block = model.drawerBlocks[index]
+        let bounds = validColumnRange(
+            others: model.drawerBlocks.filter { $0.placementID != placementID },
+            width: block.widthColumns
+        )
+        var bestTarget: PlacedBlock?
+
+        // 优先目标位置（clamp 到合法列区间，左侧可为负——左扩）。
+        let clampedColumn = min(max(toColumn, bounds.lower), bounds.upper)
+        let clampedRow = max(toRow, 0)
+        var candidate = block
+        candidate.originColumn = clampedColumn
+        candidate.originRow = clampedRow
+        if !overlaps(candidate, with: occupiedRects(excluding: placementID)) {
+            bestTarget = candidate
+        }
+
+        // 否则按行优先扫描最近可用位置。
+        if bestTarget == nil {
+            let maxRow = max(model.drawerBlocks.map(\.maxRow).max() ?? 0, clampedRow)
+            scan: for row in 0...maxRow + 1 {
+                for col in bounds.lower...bounds.upper {
+                    var probe = block
+                    probe.originColumn = col
+                    probe.originRow = row
+                    if !overlaps(probe, with: occupiedRects(excluding: placementID)) {
+                        bestTarget = probe
+                        break scan
+                    }
+                }
+            }
+        }
+
+        guard var target = bestTarget else { return false }
+        target.originColumn = min(max(target.originColumn, bounds.lower), bounds.upper)
+        target.originRow = max(target.originRow, 0)
+        model.drawerBlocks[index] = target
+        compactEmptyRows()
+        compactEmptyColumns()
+        saveToDisk()
+        return true
+    }
+
+    /// 在支持的尺寸等级间切换块尺寸（编辑模式，文档 §5.5）。
+    @discardableResult
+    func resizeDrawerBlock(placementID: String, to size: BlockSize) -> Bool {
+        resizeDrawerBlock(
+            placementID: placementID,
+            toColumns: size.gridSpan.columns,
+            toRows: size.gridSpan.rows
+        )
+    }
+
+    /// 缩放块到任意声明的跨度（编辑模式）：跨度必须在块的 supportedSpans 内。
+    /// 扩大与下方块重叠时不再回退，而是按阅读顺序推挤下移（与拖拽同一
+    /// 逐块安放语义）；缩小留下的空行随后压实。左上角原点保持不变
+    /// （仅当合并后跨度过容量时向左收紧，原点可为负——左扩）。
+    @discardableResult
+    func resizeDrawerBlock(placementID: String, toColumns: Int, toRows: Int) -> Bool {
+        guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
+            return false
+        }
+        let block = model.drawerBlocks[index]
+        guard let definition = blockResolver(block.pluginID, block.blockID),
+              definition.supportedSpans.contains(GridSpan(columns: toColumns, rows: toRows)) else {
+            return false
+        }
+
+        var resized = block
+        resized.widthColumns = toColumns
+        resized.heightRows = toRows
+
+        let bounds = validColumnRange(
+            others: model.drawerBlocks.filter { $0.placementID != placementID },
+            width: toColumns
+        )
+        resized.originColumn = min(max(resized.originColumn, bounds.lower), bounds.upper)
+        resized.originRow = max(resized.originRow, 0)
+
+        model.drawerBlocks[index] = resized
+        applyOrigins(pushDownOrigins(changed: resized))
+        compactEmptyRows()
+        compactEmptyColumns()
+        saveToDisk()
+        return true
+    }
+
+    /// 提交拖拽预览结果（与 previewArrangement 同一算法，保证所见即所得），
+    /// 随后压实空行与空列（拖走后遗留的整行/整列空洞由下方/右侧块上移/左移闭合）。
+    @discardableResult
+    func commitArrangement(_ origins: [String: GridOrigin]) -> Bool {
+        guard !origins.isEmpty else { return false }
+        let before = model.drawerBlocks.map { "\($0.placementID):\($0.originColumn),\($0.originRow)" }
+        applyOrigins(origins)
+        compactEmptyRows()
+        compactEmptyColumns()
+        let after = model.drawerBlocks.map { "\($0.placementID):\($0.originColumn),\($0.originRow)" }
+        let changed = before != after
+        if changed {
+            saveToDisk()
+        }
+        return changed
+    }
+}

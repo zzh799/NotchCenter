@@ -40,12 +40,22 @@ NotchCenter/
 │   ├── PluginManager.swift          # 插件发现/加载/启用禁用/安装卸载（双目录）
 │   ├── PluginMetadata.swift         # Info.plist 元数据（文档 §3.2）
 │   ├── LayoutModel.swift            # 布局数据模型（NotchGridMetrics/CompactSlotReference/PlacedBlock/LayoutModel）
-│   ├── LayoutEngine.swift           # 布局引擎主体：网格放置/移动/缩放/推挤（pushDownOrigins/compactEmptyRows）/紧凑槽位/持久化
+│   ├── LayoutEngine.swift           # 布局引擎核心：类声明/LayoutIssue/存储属性/init（含加载）/查询/saveToDisk/重叠几何辅助
+│   ├── LayoutEngineSanitization.swift # 布局引擎 extension：sanitized(_:) 加载净化（损坏布局自愈）
+│   ├── LayoutEngineMutation.swift   # 布局引擎 extension：布局修改公开 API（列数/屏幕约束/启用插件/紧凑槽位/抽屉增删移缩/提交）
+│   ├── LayoutEngineArrangement.swift # 布局引擎 extension：推挤与预览算法（GridOrigin/previewArrangement/pushDownOrigins/applyOrigins/validColumnRange）
+│   ├── LayoutEngineCompaction.swift # 布局引擎 extension：compactEmptyRows / compactEmptyColumns 空洞压实
 │   ├── LayoutEngineGeometry.swift   # 布局引擎只读 extension：frame/内容尺寸/窗口尺寸/previewBottomRow
 │   ├── LayoutEngineValidation.swift # 布局引擎只读 extension：validate() 全量健康检查
 │   ├── PluginManagerWindow.swift    # 插件管理窗口
 │   ├── SettingsStore.swift          # 触发模式（hover/click）
-│   ├── CorePaths.swift / FileDragDetection.swift / PanelDecoration.swift / ResizeProbe.swift
+│   ├── CorePaths.swift / FileDragDetection.swift / PanelDecoration.swift
+│   ├── ResizeProbeLog.swift         # 诊断日志开关（仅 DEBUG）：NOTCHCENTER_RESIZE_LOG 缩放管线事件
+│   ├── ResizeProbeWindow.swift      # 复刻管线对照页（仅 DEBUG）：ResizeProbeWindowController + ResizeProbeView（NOTCHCENTER_RESIZE_PROBE）
+│   ├── NotchPanelController+CollapseProbe.swift    # 控制器 extension（仅 DEBUG）：收起动画 layer 树 dump + 逐帧自拍 + 合成鼠标取屏共享辅助
+│   ├── NotchPanelController+DragScrollProbe.swift  # 控制器 extension（仅 DEBUG）：目录条拖动自动化探针（NOTCHCENTER_DRAGSCROLL_AUTO）
+│   ├── NotchPanelController+ResizeAutoProbe.swift  # 控制器 extension（仅 DEBUG）：缩放自动化复现探针（NOTCHCENTER_RESIZE_AUTO）
+│   ├── NotchPanelController+ShrinkScrollProbe.swift # 控制器 extension（仅 DEBUG）：缩小场景滚动条逐帧诊断（NOTCHCENTER_SHRINKSCROLL_PROBE）
 ├── Sources/NotchCenterKit/       # 共享 API 动态库（**独立本地包**，宿主与插件以产品方式链接同一份代码）
 │   ├── Package.swift             # 产物：NotchCenterKit 动态库
 │   ├── NotchCenterPlugin.swift   # 协议：static blocks + init()；可选 settingsView / menuItems / 服务注入
@@ -105,7 +115,7 @@ open dist.noindex/NotchCenter.app
 - **块尺寸用 GridSpan 表达**：`BlockSize` 只是预设，真实约束是块的 `supportedSpans`（由 `supportedSizes` 派生 + `supportedGridSpans` 自由跨度）。编辑模式缩放走 `LayoutEngine.resizeBlock` 的任意跨度路径；新增尺寸能力时扩展 `supportedGridSpans` 而不是堆预设。
 - **抽屉窗口单例不变量：任一时刻至多一个屏的抽屉在屏**：`collapse()` 的完成回调存在 0.43s 窗口（0.25s 延迟 + 0.18s 等收起动画），期间鼠标移到另一块屏触发跨屏展开会以“已重新展开”为由跳过旧屏的 `orderOut`，旧屏抽屉窗口永久残留——它与活动屏共享同一份 `uiState`，每次展开都渲染出一份一模一样的活抽屉（用户报告“新建笔记多出一块面板”的根因）。因此 `expand()`（含已展开分支）必须清扫 `hideOtherDrawers(keeping:)`，收起完成回调只保留“当前展开屏”而不是整体跳过，`syncScreens()` 移除 stale pair（NSScreen 身份在显示重配后更换，同一物理屏也会命中）时必须显式 orderOut 其两个窗口。不要把完成回调改回“捕获 pair + isExpanded 短路”。诊断：`NOTCHCENTER_GHOST_PROBE=1` 打印 expand/collapse/清扫决策。
 - **插件块内不得让隐藏窗口复活（共享状态 × 每屏一份视图树）**：宿主把同一份 block view 塞进每块屏的抽屉树，插件里按 placementID 共享的交互状态（如 NotesPlugin 的 `EditorInteractionState`）会被**所有屏的实例并发 bind**，谁最后落地谁占有 `textView`/`containerView` 引用——隐藏屏实例赢得竞态后，任何 `makeKeyAndOrderFront`（焦点、激活）都会把已收起的抽屉窗口重新拉上屏，表现为“新建笔记时另一块屏多出一块一模一样的面板”。约束：绑定入口必须拒绝“隐藏窗口候选覆盖可见现任”（可见候选永远放行）；任何聚焦/激活调用前必须 `window.isVisible` 防护。诊断：`NOTCHCENTER_GHOST_PROBE=1` 同时打印 `[focus]` bind/focus 决策。
-- **缩放握把的量化必须带死区、平移量必须在稳定坐标系度量**：`ResizeHysteresis.quantized` 只在连续位移越过当前档位半格边界 ± band 之外才换档；`DrawerBlockContainer.resizeGesture` 必须用 `coordinateSpace: .global`。不要改回朴素 `round()`、整数距离迟滞（无实际死区，边界抖动闪烁），也不要改回默认 `.local`——握把随预览增长平移一格时 local 平移量瞬间反跳一整格，死区吸收不了，形成逐像素自激振荡。诊断：`NOTCHCENTER_RESIZE_PROBE=1` 打开复刻管线对照页，`NOTCHCENTER_RESIZE_LOG=1` 打印真实管线事件（见 `ResizeHysteresisTests` / `ResizeProbe.swift`）。
+- **缩放握把的量化必须带死区、平移量必须在稳定坐标系度量**：`ResizeHysteresis.quantized` 只在连续位移越过当前档位半格边界 ± band 之外才换档；`DrawerBlockContainer.resizeGesture` 必须用 `coordinateSpace: .global`。不要改回朴素 `round()`、整数距离迟滞（无实际死区，边界抖动闪烁），也不要改回默认 `.local`——握把随预览增长平移一格时 local 平移量瞬间反跳一整格，死区吸收不了，形成逐像素自激振荡。诊断：`NOTCHCENTER_RESIZE_PROBE=1` 打开复刻管线对照页，`NOTCHCENTER_RESIZE_LOG=1` 打印真实管线事件（见 `ResizeHysteresisTests` / `ResizeProbeLog.swift`、`ResizeProbeWindow.swift`）。
 - **拖拽推挤算法不能改回“同步 +1 行”**：`pushDownOrigins`（`previewArrangement` 的核心，缩放推挤复用同一实现）的逐块安放语义是历史 bug 的修复——旧实现让所有重叠块同步下移，相对位置不变、永不分离，靠次数上限退出并把残留重叠写盘，导致粘连块对与失控行号。改动推挤逻辑前先读 `DragReorderReproTests`；`LayoutEngine` 加载时会自动净化含重叠的损坏 layout.json，勿删除该路径。
 - **编辑模式契约：不留空行 + 缩放推挤 + 面板贴合**：所有变更（移动/移除/缩放/提交）后 `compactEmptyRows` 会闭合整行空洞（下方整体上移；行内部分留白保留，加载净化的留白保护不受影响）；`resizeDrawerBlock` 扩大遇下方块不再回退而是推挤下移，预览与提交走同一算法（所见即所得）；窗口高度经 `previewBottomRow`/`refreshAfterEdit` 随内容行数按需增减。回归见 `LayoutEngineTests` 的“编辑模式契约”一节。
 - **列双向扩大、行仅向下（originColumn 可为负）**：行始终顶边锚定只向下扩大（originRow 不变、非负）；列支持左右双向——块被拖出左侧时格网向左扩大（originColumn 变负，`validColumnRange` 保证合并后跨度 ≤ 容量），单右下握把只向右下扩大（无左右双握把）。渲染横坐标 = `(originColumn − gridLeft) × 步长`、宽高按占列跨度（`occupiedColumnRange`），面板绕刘海居中所以列扩大视觉上左右对称。预览期 `applyPreviewWindowSize` 必须把 `drawerWindowSize`/`drawerContentSize`/`drawerGridLeftColumn` 放进**同一次 withAnimation（与块推挤同帧，不等松手）**；`compactEmptyColumns` 会闭合负列空洞（左侧块向 0 右移，与右移对称）。回归见 `LayoutEngineTests` 的“编辑模式契约：列双向扩大（左扩）”一节与 `DragReorderReproTests` 的列跨度不变量。
