@@ -52,23 +52,27 @@ struct DrawerBlockContainer: View {
             .background {
                 GlobalFrameReader { globalFrame = $0 }
             }
+            // 编辑模式压暗层：透明黑盖住块内容，弱化内容细节、衬托其上的
+            // 白色描边与编辑角标。圆角与 clipShape 对齐，避免方角黑块露出
+            // 圆角外。同时仍是手势屏蔽层：屏蔽块内容自身手势（如文本选中），
+            // 让拖动/缩放在所有块上行为一致。所有层都用 overlay——尺寸严格
+            // 等于内容本身，不会被外层的旧尺寸 proposal 撑大（此前用
+            // ZStack + 弹性子视图，缩小到 1 行时位置会上偏半行）。
             .overlay {
                 if isEditing {
-                    // 编辑模式高亮组件边缘。
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color.black.opacity(0.35))
+                        .contentShape(Rectangle())
+                }
+            }
+            .overlay {
+                if isEditing {
+                    // 编辑模式高亮组件边缘（绘制在压暗层之上，保持清晰）。
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .stroke(
                             .white.opacity(isDragging || isResizing ? 0.75 : 0.4),
                             lineWidth: isDragging || isResizing ? 1.5 : 1
                         )
-                }
-            }
-            // 编辑模式交互层：屏蔽块内容自身手势（如文本选中），
-            // 让拖动/缩放在所有块上行为一致。所有层都用 overlay——
-            // 尺寸严格等于内容本身，不会被外层的旧尺寸 proposal 撑大
-            // （此前用 ZStack + 弹性子视图，缩小到 1 行时位置会上偏半行）。
-            .overlay {
-                if isEditing {
-                    Color.clear.contentShape(Rectangle())
                 }
             }
             .overlay(alignment: .topLeading) {
