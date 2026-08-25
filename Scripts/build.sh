@@ -148,6 +148,14 @@ assemble_bundle() { # $1=目标PlugIns目录 $2=索引 $3=dylib路径 $4=SPM产�
   fi
   cp -R "$lproj_src/"*.lproj "$resources_dir/"
 
+  # 插件说明文档：源文件夹的 README.md 随包复制进 Contents/Resources，
+  # 设置面板的“插件”分区据此渲染各插件的使用说明（可选文件：第三方或
+  # 未写文档的插件缺失时面板回退占位文案）。
+  local readme_src="$PLUGINS_SRC_DIR/$name/README.md"
+  if [[ -f "$readme_src" ]]; then
+    cp "$readme_src" "$resources_dir/README.md"
+  fi
+
   # 本地化元数据：DisplayNameLocales / DescriptionLocales 生成 InfoPlist.strings。
   local display_zh="${PLUGIN_DISPLAY_ZH[$i]}" desc_zh="${PLUGIN_DESC_ZH[$i]}"
   if [[ -n "$display_zh" || -n "$desc_zh" ]]; then

@@ -19,6 +19,7 @@
 "settings.column.count" = "%d 列";
 "settings.section.plugins" = "插件";
 "settings.pluginManager" = "插件管理…";
+"settings.plugins.noReadme" = "该插件未附带说明文档。";
 "settings.quit" = "退出 NotchCenter";
 
 /* 语言覆盖（重启生效） */
@@ -46,6 +47,7 @@
 
 /* 面板交互 help 标签 */
 "panel.help.removeBlock" = "移除块";
+"panel.help.pluginSettings" = "插件设置";
 "panel.help.resize" = "拖动调整大小";
 "panel.help.settings" = "设置";
 "panel.help.tidy" = "整理布局（自上而下、自左向右）";

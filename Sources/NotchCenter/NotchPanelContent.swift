@@ -63,6 +63,8 @@ extension NotchPanelController {
     /// 高度收缩由内容 spring + 窗口逐帧跟随完成（syncDrawerFrame）。
     func stopEditMode() {
         guard isEditing else { return }
+        // 退出编辑时锚定块可能消失/移位，设置浮窗先随编辑态一起收场。
+        SettingPopover.shared.dismiss()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
             isEditing = false
         }
@@ -177,7 +179,8 @@ extension NotchPanelController {
                     reference: nil,
                     block: nil,
                     view: nil,
-                    frame: frame
+                    frame: frame,
+                    hasSettings: false
                 )
             }
             let context = BlockContext(
@@ -199,7 +202,8 @@ extension NotchPanelController {
                 reference: reference,
                 block: block,
                 view: block.makeView(context),
-                frame: frame
+                frame: frame,
+                hasSettings: entry.instance?.settingsView != nil
             )
         }
     }
@@ -239,7 +243,8 @@ extension NotchPanelController {
                 supportedSpans: block.supportedSpans.sorted { lhs, rhs in
                     lhs.columns == rhs.columns ? lhs.rows < rhs.rows : lhs.columns < rhs.columns
                 },
-                currentSpan: currentSpan
+                currentSpan: currentSpan,
+                hasSettings: entry.instance?.settingsView != nil
             )
         }
     }
@@ -273,10 +278,16 @@ extension NotchPanelController {
         CompactActions(
             onRemoveBlock: { [weak self] index in
                 guard let self else { return }
+                // 锚定图标即将消失，设置浮窗先收场。
+                SettingPopover.shared.dismiss()
                 self.layoutEngine.setCompactSlot(index, to: nil)
                 // 紧凑图标数减少：先同步条带几何/热区窗口，再重建内容。
                 self.refreshCompactGeometry()
                 self.rebuildContent()
+            },
+            onShowSettings: { [weak self] pluginID, anchorFrame in
+                // 紧凑小图标贴下方弹出（同心叠加会被钳回悬在刘海带上）。
+                self?.showPluginSettings(pluginID: pluginID, anchorFrame: anchorFrame, placement: .below)
             },
             onTapBackground: { [weak self] in
                 self?.expand(animated: true, activate: true)
@@ -313,8 +324,15 @@ extension NotchPanelController {
                 self?.collapse(animated: true)
             },
             onRemoveBlock: { [weak self] placementID in
-                self?.layoutEngine.removeDrawerBlock(placementID: placementID)
-                self?.refreshAfterEdit()
+                guard let self else { return }
+                // 锚定块即将消失，设置浮窗先收场。
+                SettingPopover.shared.dismiss()
+                self.layoutEngine.removeDrawerBlock(placementID: placementID)
+                self.refreshAfterEdit()
+            },
+            onShowBlockSettings: { [weak self] pluginID, anchorFrame in
+                // 抽屉块同心覆盖弹出（与服务卡浮窗同一摆放语义）。
+                self?.showPluginSettings(pluginID: pluginID, anchorFrame: anchorFrame, placement: .overlay)
             },
             onMoveBlock: { [weak self] placementID, column, row in
                 self?.layoutEngine.moveDrawerBlock(placementID: placementID, toColumn: column, toRow: row)
@@ -376,5 +394,34 @@ extension NotchPanelController {
                 self.refreshAfterEdit()
             }
         )
+    }
+
+    // MARK: - 插件设置浮窗（编辑模式齿轮按钮的统一入口）
+
+    /// 经 Kit 的 SettingPopover 展示插件设置：所有插件设置的浮层展示都走这里，
+    /// 由插件 `settingsView` 提供内容（文档 §4.7），本方法只负责解析上下文与锚定。
+    func showPluginSettings(
+        pluginID: String,
+        anchorFrame: CGRect,
+        placement: BlockPopoverPlacement
+    ) {
+        guard let entry = pluginManager.entry(for: pluginID),
+              let instance = entry.instance,
+              let settingsView = instance.settingsView,
+              let stateStore = entry.stateStore else {
+            return
+        }
+        let context = PluginSettingsContext(
+            pluginID: pluginID,
+            stateStore: stateStore,
+            hostController: self
+        )
+        SettingPopover.shared.present(
+            anchoredTo: anchorFrame,
+            placement: placement,
+            title: entry.metadata.displayName
+        ) {
+            settingsView(context)
+        }
     }
 }

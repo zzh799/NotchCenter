@@ -12,6 +12,8 @@ struct DrawerElement: Identifiable {
     let supportedSpans: [GridSpan]
     /// 当前已提交的跨度（与 placement 一致；布局遗留数据可能为 nil）。
     let currentSpan: GridSpan?
+    /// 插件是否提供设置界面（编辑模式左上角齿轮按钮的显隐条件）。
+    let hasSettings: Bool
 
     var id: String { placement.placementID }
 }
@@ -22,6 +24,8 @@ struct DrawerActions {
     let onToggleEdit: () -> Void
     let onCollapse: () -> Void
     let onRemoveBlock: (String) -> Void
+    /// 编辑模式块左上角设置按钮：(pluginID, 块全局 frame)，经 SettingPopover 展示插件设置。
+    let onShowBlockSettings: (String, CGRect) -> Void
     let onMoveBlock: (String, Int, Int) -> Void
     let onResizeBlock: (String, Int, Int) -> Void
     let onAddBlock: (String, String) -> Void
@@ -232,6 +236,7 @@ struct DrawerPanelView: View {
                     element: element,
                     isEditing: ui.isEditing,
                     isDragging: draggingPlacementID == element.id,
+                    hasSettings: element.hasSettings,
                     previewColumns: resizingPlacementID == element.id ? resizePreviewColumns : nil,
                     previewRows: resizingPlacementID == element.id ? resizePreviewRows : nil,
                     onResizeChanged: { translation in
@@ -239,6 +244,9 @@ struct DrawerPanelView: View {
                     },
                     onResizeCommit: { commitResize(for: element) },
                     onRemove: { actions.onRemoveBlock(element.id) },
+                    onShowSettings: { anchorFrame in
+                        actions.onShowBlockSettings(element.placement.pluginID, anchorFrame)
+                    },
                     onDragChanged: { translation in
                         draggingPlacementID = element.id
                         let target = dragTarget(for: element, translation: translation)

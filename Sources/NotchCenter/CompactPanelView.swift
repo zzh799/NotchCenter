@@ -11,12 +11,16 @@ struct CompactElement: Identifiable {
     let block: NotchBlock?
     let view: AnyView?
     let frame: CGRect
+    /// 插件是否提供设置界面（编辑模式右上角齿轮按钮的显隐条件）。
+    let hasSettings: Bool
 
     var id: Int { slotIndex }
 }
 
 struct CompactActions {
     let onRemoveBlock: (Int) -> Void
+    /// 编辑模式设置按钮：(pluginID, 图标全局 frame)，经 SettingPopover 展示插件设置。
+    let onShowSettings: (String, CGRect) -> Void
     let onTapBackground: () -> Void
     let onExpand: () -> Void
 }
@@ -90,6 +94,10 @@ struct CompactPanelView: View {
                             view: view,
                             isEditing: isEditing,
                             onRemove: { actions.onRemoveBlock(element.slotIndex) },
+                            onShowSettings: { anchorFrame in
+                                guard let pluginID = element.reference?.pluginID else { return }
+                                actions.onShowSettings(pluginID, anchorFrame)
+                            },
                             onExpand: actions.onExpand
                         )
                         .position(x: rect.midX, y: rect.midY)
@@ -103,28 +111,51 @@ struct CompactPanelView: View {
     }
 }
 
-/// 紧凑块容器：槽位内的块视图 + 默认点击展开（文档 §6.2）+ 编辑模式移除。
+/// 紧凑块容器：槽位内的块视图 + 默认点击展开（文档 §6.2）+ 编辑模式移除与设置。
 private struct CompactBlockContainer: View {
     let element: CompactElement
     let view: AnyView
     let isEditing: Bool
     let onRemove: () -> Void
+    /// 弹出插件设置浮窗（参数为图标当前全局 frame，作为 SettingPopover 锚点）。
+    let onShowSettings: (CGRect) -> Void
     let onExpand: () -> Void
+
+    /// 图标当前全局 frame（窗口坐标）：设置浮窗的锚定矩形。
+    @State private var globalFrame: CGRect = .zero
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             group
                 .frame(width: NotchGeometry.compactSlotSize.width, height: NotchGeometry.compactSlotSize.height)
+                .background {
+                    GlobalFrameReader { globalFrame = $0 }
+                }
 
             if isEditing {
-                Button(action: onRemove) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.85))
+                // 编辑模式角标簇：右上角移除 + （插件有设置界面时）设置按钮，
+                // 悬在槽位外沿；先设置后移除，保持移除按钮贴最外侧角落。
+                HStack(spacing: 3) {
+                    if element.hasSettings {
+                        Button(action: { onShowSettings(globalFrame) }) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                        .buttonStyle(.plain)
+                        .help(L("panel.help.pluginSettings"))
+                    }
+
+                    Button(action: onRemove) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("panel.help.removeBlock"))
                 }
-                .buttonStyle(.plain)
+                .shadow(color: .black.opacity(0.55), radius: 2)
                 .offset(x: 3, y: -2)
-                .help(L("panel.help.removeBlock"))
             }
         }
     }
@@ -139,6 +170,21 @@ private struct CompactBlockContainer: View {
         } else {
             // .custom 交互由插件视图自行处理；核心不拦截点击。
             view
+        }
+    }
+}
+
+/// 捕获修饰视图当前的全局 frame（SwiftUI .global = 宿主窗口坐标，左上原点），
+/// 布局变化即回调。设置浮窗锚定矩形用：紧凑图标与抽屉块容器各自挂在内容上，
+/// 点击齿轮时上报最新 frame 给 SettingPopover。
+struct GlobalFrameReader: View {
+    let onChange: (CGRect) -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear { onChange(proxy.frame(in: .global)) }
+                .onChange(of: proxy.frame(in: .global)) { _, frame in onChange(frame) }
         }
     }
 }

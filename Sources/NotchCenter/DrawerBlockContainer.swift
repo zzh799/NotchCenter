@@ -4,19 +4,28 @@ import SwiftUI
 /// 抽屉块容器：稳定身份 + 块视图 + 编辑模式（文档 §5.5）。
 /// - 拖动整块移动：拖动中实时预览（被占用块向下推挤自动重排），松手提交；
 /// - 右下角握把拖动调整尺寸，缩放过程中组件左上角保持不动；
-/// - 移除按钮跟随块一起移动。
+/// - 编辑模式角标：左上角设置按钮（插件提供设置界面时，经 SettingPopover
+///   弹出）+ 右上角移除按钮，均跟随块一起移动；设置 / 移除 / 缩放握把
+///   三者共用组件默认圆形按钮样式（`EditCircleBadge`）。
 struct DrawerBlockContainer: View {
     let element: DrawerElement
     let isEditing: Bool
     let isDragging: Bool
+    /// 插件是否提供设置界面（编辑模式左上角齿轮按钮的显隐条件）。
+    let hasSettings: Bool
     /// 缩放预览目标（由父视图持有；nil 表示未在缩放）。
     let previewColumns: Int?
     let previewRows: Int?
     let onResizeChanged: (CGSize) -> Void
     let onResizeCommit: () -> Void
     let onRemove: () -> Void
+    /// 弹出插件设置浮窗（参数为块当前全局 frame，作为 SettingPopover 锚点）。
+    let onShowSettings: (CGRect) -> Void
     let onDragChanged: (CGSize) -> Void
     let onDragEnded: (CGSize) -> Void
+
+    /// 块当前全局 frame（窗口坐标，不含拖拽位移）：设置浮窗的锚定矩形。
+    @State private var globalFrame: CGRect = .zero
 
     @State private var dragOffset: CGSize = .zero
 
@@ -38,6 +47,11 @@ struct DrawerBlockContainer: View {
             .frame(width: width, height: height)
             .background(isEditing ? Color.white.opacity(0.03) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            // 锚定矩形捕获：挂在 clip 之后、offset 之前——量的是块的逻辑
+            // 位置（不含拖拽/缩放补偿位移），齿轮点击时上报给设置浮窗。
+            .background {
+                GlobalFrameReader { globalFrame = $0 }
+            }
             .overlay {
                 if isEditing {
                     // 编辑模式高亮组件边缘。
@@ -57,16 +71,26 @@ struct DrawerBlockContainer: View {
                     Color.clear.contentShape(Rectangle())
                 }
             }
+            .overlay(alignment: .topLeading) {
+                if isEditing && hasSettings {
+                    // 左上角设置按钮：经 SettingPopover 展示插件设置。
+                    EditCircleButton(
+                        systemImage: "gearshape",
+                        helpText: L("panel.help.pluginSettings")
+                    ) {
+                        onShowSettings(globalFrame)
+                    }
+                    .padding(6)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 if isEditing {
-                    Button(action: onRemove) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .shadow(color: .black.opacity(0.6), radius: 2)
+                    EditCircleButton(
+                        systemImage: "xmark",
+                        helpText: L("panel.help.removeBlock")
+                    ) {
+                        onRemove()
                     }
-                    .buttonStyle(.plain)
-                    .help(L("panel.help.removeBlock"))
                     .padding(6)
                 }
             }
@@ -117,38 +141,20 @@ struct DrawerBlockContainer: View {
 
     @State private var isResizeHandleHovering = false
 
-    /// 右下角缩放握把：对角双箭头图标 + 圆形底衬，悬停/拖动中增亮放大。
+    /// 右下角缩放握把：对角双箭头图标（组件默认圆形按钮样式），
+    /// 悬停 / 拖动中增亮，拖动中放大。
     private var resizeHandle: some View {
-        Image(systemName: "arrow.up.left.and.arrow.down.right")
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.white.opacity(isResizing ? 0.95 : 0.7))
-            .frame(width: 22, height: 22)
-            .background {
-                Circle()
-                    .fill(.white.opacity(isResizing ? 0.28 : 0.14))
-                    .overlay {
-                        Circle()
-                            .stroke(
-                                .white.opacity(isResizing ? 0.55 : 0.25),
-                                lineWidth: 1
-                            )
-                    }
-            }
-            .scaleEffect(isResizing ? 1.12 : 1)
-            .animation(.spring(response: 0.24, dampingFraction: 0.72), value: isResizing)
-            .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
-            .padding(5)
-            .contentShape(Rectangle())
-            .onHover { isResizeHandleHovering = $0 }
-            .background {
-                if isResizeHandleHovering, !isResizing {
-                    Circle()
-                        .fill(.white.opacity(0.08))
-                        .padding(2)
-                }
-            }
-            .highPriorityGesture(resizeGesture)
-            .help(L("panel.help.resize"))
+        EditCircleBadge(
+            systemImage: "arrow.up.left.and.arrow.down.right",
+            isHighlighted: isResizing || isResizeHandleHovering
+        )
+        .scaleEffect(isResizing ? 1.12 : 1)
+        .animation(.spring(response: 0.24, dampingFraction: 0.72), value: isResizing)
+        .padding(5)
+        .contentShape(Rectangle())
+        .onHover { isResizeHandleHovering = $0 }
+        .highPriorityGesture(resizeGesture)
+        .help(L("panel.help.resize"))
     }
 
     /// 缩放手势：基于位移增量的目标格数。**平移量必须在稳定坐标系度量**

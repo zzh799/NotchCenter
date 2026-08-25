@@ -11,7 +11,7 @@ final class SettingsWindowController: NSWindowController {
         self.panelController = panelController
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 340),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 480),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -41,11 +41,14 @@ struct SettingsView: View {
     let controller: NotchPanelController
     @ObservedObject private var settingsStore: SettingsStore
     @ObservedObject private var layoutEngine: LayoutEngine
+    /// 插件清单（设置面板直接展示各插件的说明文档，随扫描结果刷新）。
+    @ObservedObject private var pluginManager: PluginManager
 
     init(controller: NotchPanelController) {
         self.controller = controller
         self.settingsStore = controller.settingsStore
         self.layoutEngine = controller.layoutEngine
+        self.pluginManager = controller.pluginManager
     }
 
     var body: some View {
@@ -82,6 +85,12 @@ struct SettingsView: View {
                 Button(L("settings.pluginManager")) {
                     controller.showPluginManager()
                 }
+
+                // 每个插件的说明文档：展开时读取插件 bundle 内的 README.md
+                // （build.sh 组装 bundle 时从插件源文件夹复制）。
+                ForEach(pluginManager.entries) { entry in
+                    PluginDocumentationDisclosure(entry: entry)
+                }
             }
 
             // 语言覆盖写入 AppleLanguages，须重启才能让已加载的 bundle 重新选 lproj。
@@ -105,7 +114,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 400)
+        .frame(width: 420, height: 480)
         .environment(\.colorScheme, .dark)
     }
 
@@ -150,5 +159,57 @@ struct SettingsView: View {
             return L("settings.launchAtLogin.devHint")
         }
         return nil
+    }
+}
+
+/// 单个插件的说明文档折叠区：标签为插件显示名 + ID；展开时懒加载并渲染
+/// 插件 bundle 内的 README.md（经 ReadmeMarkdownView 轻量渲染）。
+/// （internal 便于 ReadmeMarkdownTests 覆盖 loadReadme。）
+struct PluginDocumentationDisclosure: View {
+    @ObservedObject var entry: PluginEntry
+    @State private var isExpanded = false
+    @State private var document: String?
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            Group {
+                if let document, !document.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    ReadmeMarkdownView(markdown: document)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(L("settings.plugins.noReadme"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+            }
+            .padding(.top, 2)
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.metadata.displayName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.88))
+                Text(entry.metadata.pluginID)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.38))
+            }
+            .padding(.vertical, 1)
+        }
+        .onChange(of: isExpanded) { _, expanded in
+            // 首次展开才读文件：设置面板打开时不做整表 IO。
+            guard expanded, document == nil else { return }
+            document = Self.loadReadme(bundleURL: entry.metadata.bundleURL)
+        }
+    }
+
+    /// 读插件 bundle 内 Contents/Resources/README.md（build.sh 打包时复制；
+    /// 第三方插件可能没有附带，缺文件/编码异常一律返回 nil 走占位文案）。
+    /// 纯文件 IO 与 UI 无关：nonisolated 便于在任意上下文（含测试）调用。
+    nonisolated static func loadReadme(bundleURL: URL) -> String? {
+        guard let bundle = Bundle(url: bundleURL),
+              let url = bundle.url(forResource: "README", withExtension: "md"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return nil
+        }
+        return text
     }
 }
