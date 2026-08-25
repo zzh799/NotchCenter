@@ -77,9 +77,13 @@ final class OpenCodeUsageStore: ObservableObject {
         await performFetch()
     }
 
-    /// 手动刷新：无视冷却立即拉取。
+    /// 手动刷新：无视冷却与缓存 TTL 立即拉取最新数据。
+    /// 先清掉旧快照与错误态，让 UI 立刻进入加载反馈而不是继续展示旧数据。
     func forceRefresh() {
         nextAllowedAt = nil
+        lastSuccessAt = nil
+        snapshot = nil
+        errorMessage = nil
         Task { await performFetch() }
     }
 

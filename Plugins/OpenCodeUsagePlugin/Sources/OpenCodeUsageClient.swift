@@ -27,11 +27,14 @@ enum OpenCodeUsageError: LocalizedError {
 }
 
 enum OpenCodeUsageClient {
-    /// 独立 ephemeral 会话：手动设置 Cookie 头，避免共享 cookie jar 干扰。
+    /// 独立 ephemeral 会话：手动设置 Cookie 头，避免共享 cookie jar 干扰；
+    /// 同时禁用 URL 缓存——用量页必须每次真实回源，否则手动刷新会命中本地缓存拿到旧数据。
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: configuration)
     }()
 
@@ -64,6 +67,7 @@ enum OpenCodeUsageClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = timeout
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue(cookie, forHTTPHeaderField: "Cookie")
         request.setValue("text/html", forHTTPHeaderField: "Accept")
 

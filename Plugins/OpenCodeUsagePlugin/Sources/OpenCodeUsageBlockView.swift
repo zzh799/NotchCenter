@@ -4,7 +4,7 @@ import SwiftUI
 
 // MARK: - 抽屉块视图：同心环用量图 + Zen 余额（对应参考实现的环形按钮 + 面板）
 //
-// 外/中/内三环分别是 5h 滚动 / 每周 / 每月窗口；点击打开 dashboard，
+// 外/中/内三环分别是 5h 滚动 / 每周 / 每月窗口；长按弹出详情浮窗，
 // 右上角小按钮手动刷新。medium 跨度额外显示余额与图例，small 只留环。
 // 卡片壳与长按浮窗触发统一走 Kit 的 BlockCard / blockPopoverTrigger。
 
@@ -18,9 +18,8 @@ struct OpenCodeUsageBlockView: View {
                     refreshButton(hovering: isHovering)
                 }
         }
-        // 手势顺序、长按抑制点击等语义都在触发器内统一实现。
+        // 手势顺序、长按抑制点击等语义都在触发器内统一实现；不设 onTap，点击无动作。
         .blockPopoverTrigger(
-            onTap: { _ in openDashboard() },
             onLongPress: { frameInWindow in
                 OpenCodeUsagePopover.present(store: store, frameInWindow: frameInWindow)
             }
@@ -49,46 +48,59 @@ struct OpenCodeUsageBlockView: View {
 
     // MARK: 正常数据
 
-    /// 重置信息只在长按浮窗里展示，主 UI 保持紧凑（环 + 余额 + 图例）。
+    /// 重置信息只在长按浮窗里展示，主 UI 保持紧凑（环 + 余额 + 峰谷剩余）。
     private func usageContent(_ snapshot: UsageSnapshot) -> some View {
-        HStack(spacing: 12) {
+        VStack(spacing: 8) {
             UsageRingsView(windows: snapshot.windows, outerDiameter: 56)
                 .frame(width: 60)
 
-            VStack(alignment: .leading, spacing: 3) {
-                if let balance = snapshot.zen?.balance {
+            if let balance = snapshot.zen?.balance {
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(L("usage.zenBalance"))
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.58))
                     Text(balance, format: .currency(code: "USD"))
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.white.opacity(0.92))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                    Text(L("usage.zenBalance"))
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.58))
                 }
-                legend(for: snapshot)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            phaseRemainingView
         }
+        .frame(maxWidth: .infinity)
         .padding(10)
     }
 
-    /// 图例："5h 42% · Week 13% · Month 3%"。
-    private func legend(for snapshot: UsageSnapshot) -> some View {
-        let parts = [UsageWindowKind.rolling, .weekly, .monthly].compactMap { kind -> String? in
-            guard let window = snapshot.windows[kind] else { return nil }
-            return "\(kind.shortLabel) \(window.percent)%"
-        }
-        return Group {
-            if !parts.isEmpty {
-                Text(parts.joined(separator: " · "))
+    /// 当前峰/谷阶段的剩余倒计时（每秒走字，语义同浮窗里的 PeakClock）。
+    private var phaseRemainingView: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let peak = PeakClockLogic.isPeak(context.date)
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(peak ? Self.peakDotColor : Self.offPeakDotColor)
+                    .frame(width: 5, height: 5)
+                Text(peak ? L("clock.peakRemaining") : L("clock.offPeakRemaining"))
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.58))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                Text(PeakClockLogic.formatCountdown(PeakClockLogic.phaseRemainingSeconds(context.date)))
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.85))
             }
         }
     }
+
+    private static let peakDotColor = Color(
+        red: PeakClockLogic.peakColor.red,
+        green: PeakClockLogic.peakColor.green,
+        blue: PeakClockLogic.peakColor.blue
+    )
+    private static let offPeakDotColor = Color(
+        red: PeakClockLogic.offPeakColor.red,
+        green: PeakClockLogic.offPeakColor.green,
+        blue: PeakClockLogic.offPeakColor.blue
+    )
 
     // MARK: 未配置 / 出错
 
@@ -140,15 +152,6 @@ struct OpenCodeUsageBlockView: View {
     }
 
     // MARK: 动作
-
-    private func openDashboard() {
-        guard store.isConfigured,
-              let baseURL = OpenCodeUsageConfigLogic.effectiveBaseURL(store.config),
-              let workspaceID = store.config.workspaceID,
-              let url = URL(string: baseURL.absoluteString + "/workspace/\(workspaceID)")
-        else { return }
-        NSWorkspace.shared.open(url)
-    }
 
     /// 秒数 → 紧凑时长文案（"1h 23m" / "45m" / "2d"）。
     static func formatReset(seconds: Int) -> String {
