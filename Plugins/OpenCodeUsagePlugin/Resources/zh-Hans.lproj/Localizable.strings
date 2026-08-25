@@ -15,6 +15,14 @@
 "settings.saved" = "已保存，正在刷新用量…";
 "settings.explanation" = "用量数据抓取自 opencode.ai 控制台页面（无公开 API）。结果缓存 5 分钟；抓取失败后冷却 60 秒再重试。Cookie 绝不会写入日志。";
 
+/* 放置实例外观（块设置浮窗，每个实例单独设置） */
+"settings.section.appearance" = "组件外观";
+"settings.displayStyle" = "显示样式";
+"style.rings" = "余量环";
+"style.meters" = "余量表";
+"style.clock" = "峰谷时钟";
+"settings.phaseCountdown" = "显示峰谷倒计时";
+
 /* 用量块视图 */
 "block.displayName" = "OpenCode 用量";
 "usage.loading" = "正在获取用量…";

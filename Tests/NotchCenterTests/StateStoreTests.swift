@@ -90,4 +90,33 @@ final class StateStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: images.path))
         XCTAssertThrowsError(try store.resourceDirectory(named: "bad/name"))
     }
+
+    // MARK: 放置实例作用域（每块单独状态的基本能力）
+
+    func testPlacementScopeIsolatesInstances() throws {
+        let (store, directory) = try makeStore()
+        defer { cleanUp(directory) }
+
+        guard let scopeA = store.placementScope(placementID: "AAAA1111-2222-3333-4444-555566667777"),
+              let scopeB = store.placementScope(placementID: "BBBB1111-2222-3333-4444-555566667777") else {
+            return XCTFail("UUID 形态的 placementID 必须可派生作用域")
+        }
+
+        try scopeA.setObject("style-A", forKey: "appearance")
+        XCTAssertEqual(scopeA.object(String.self, forKey: "appearance"), "style-A")
+        XCTAssertNil(scopeB.object(String.self, forKey: "appearance"), "两个实例的作用域必须互不可见")
+
+        // 持久化在插件数据根的 placements/ 子目录下，跨 store 实例可恢复。
+        let restored = StateStore(rootDirectory: directory)
+            .placementScope(placementID: "AAAA1111-2222-3333-4444-555566667777")
+        XCTAssertEqual(restored?.object(String.self, forKey: "appearance"), "style-A")
+    }
+
+    func testPlacementScopeRejectsInvalidIDs() throws {
+        let (store, _) = try makeStore()
+
+        XCTAssertNil(store.placementScope(placementID: ""))
+        XCTAssertNil(store.placementScope(placementID: "../escape"))
+        XCTAssertNil(store.placementScope(placementID: "has space"))
+    }
 }

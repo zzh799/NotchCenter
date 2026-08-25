@@ -137,6 +137,64 @@ private struct WindowDetailRow: View {
 
 // MARK: 峰谷时钟（24 小时表盘）
 
+/// 24 小时表盘（可复用组件）：轨道圆环 + 红/绿弧段 + 24 根刻度 + 单针 +
+/// 中心点。几何按直径等比缩放——浮窗与抽屉卡内的峰谷时钟共用同一实现。
+struct PeakClockDial: View {
+    let now: Date
+    var diameter: CGFloat = 84
+
+    private static let peakColor = Color(red: PeakClockLogic.peakColor.red, green: PeakClockLogic.peakColor.green, blue: PeakClockLogic.peakColor.blue)
+    private static let offPeakColor = Color(red: PeakClockLogic.offPeakColor.red, green: PeakClockLogic.offPeakColor.green, blue: PeakClockLogic.offPeakColor.blue)
+
+    var body: some View {
+        let liveColor = PeakClockLogic.isPeak(now) ? Self.peakColor : Self.offPeakColor
+        let arcs = arcSegments
+        return ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.12), lineWidth: diameter * 0.065)
+            ForEach(Array(arcs.enumerated()), id: \.offset) { _, item in
+                arc(item.0, color: item.1)
+            }
+            // 24 根小时刻度，0/6/12/18 点加长。
+            ForEach(0..<24, id: \.self) { hour in
+                Capsule()
+                    .fill(Color.white.opacity(hour % 6 == 0 ? 0.38 : 0.18))
+                    .frame(width: 1, height: hour % 6 == 0 ? diameter * 0.083 : diameter * 0.048)
+                    .offset(y: -diameter * 0.482)
+                    .rotationEffect(.degrees(Double(hour) * 15))
+            }
+            Rectangle()
+                .fill(liveColor)
+                .frame(width: diameter * 0.024, height: diameter * 0.31)
+                .offset(y: -diameter * 0.155)
+                .rotationEffect(.degrees(PeakClockLogic.handAngle(now)))
+            Circle()
+                .fill(liveColor)
+                .frame(width: diameter * 0.071, height: diameter * 0.071)
+        }
+        .frame(width: diameter, height: diameter)
+    }
+
+    /// 峰（红）/谷（绿）弧段集合。
+    private var arcSegments: [(PeakClockLogic.ClockArc, Color)] {
+        let peaks = PeakClockLogic.peakArcs(now)
+        return peaks.map { ($0, Self.peakColor) }
+            + PeakClockLogic.offPeakArcs(of: peaks).map { ($0, Self.offPeakColor) }
+    }
+
+    /// 表盘角度弧段 → trim 圆弧（trim 起点 3 点钟方向，需转回 12 点钟起点）。
+    private func arc(_ clockArc: PeakClockLogic.ClockArc, color: Color) -> some View {
+        Circle()
+            .trim(
+                from: clockArc.startDegree / 360,
+                to: max(clockArc.startDegree / 360 + 0.005, clockArc.endDegree / 360)
+            )
+            .stroke(color, style: StrokeStyle(lineWidth: diameter * 0.065, lineCap: .butt))
+            .rotationEffect(.degrees(-90))
+    }
+}
+
+/// 峰谷时钟完整视图（浮窗用）：表盘 + 数字时钟 + 阶段倒计时 + 图例。
 struct PeakClockView: View {
     let now: Date
 
@@ -146,11 +204,9 @@ struct PeakClockView: View {
     var body: some View {
         let peak = PeakClockLogic.isPeak(now)
         let liveColor = peak ? Self.peakColor : Self.offPeakColor
-        let peaks = PeakClockLogic.peakArcs(now)
 
         return HStack(spacing: 12) {
-            dial(peaks: peaks, handColor: liveColor)
-                .frame(width: 84, height: 84)
+            PeakClockDial(now: now, diameter: 84)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(clockTime)
@@ -186,47 +242,6 @@ struct PeakClockView: View {
             Circle().fill(Self.offPeakColor).frame(width: 6, height: 6)
             Text(L("clock.offPeak")).font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.58))
         }
-    }
-
-    // MARK: 表盘
-
-    /// 24 小时表盘：轨道圆环 + 红/绿弧段 + 24 根刻度 + 单针 + 中心点。
-    private func dial(peaks: [PeakClockLogic.ClockArc], handColor: Color) -> some View {
-        let offPeaks = PeakClockLogic.offPeakArcs(of: peaks)
-        return ZStack {
-            Circle()
-                .stroke(Color.white.opacity(0.12), lineWidth: 5.5)
-            ForEach(Array((peaks.map { ($0, Self.peakColor) } + offPeaks.map { ($0, Self.offPeakColor) }).enumerated()), id: \.offset) { _, item in
-                arc(item.0, color: item.1)
-            }
-            // 24 根小时刻度，0/6/12/18 点加长。
-            ForEach(0..<24, id: \.self) { hour in
-                Capsule()
-                    .fill(Color.white.opacity(hour % 6 == 0 ? 0.38 : 0.18))
-                    .frame(width: 1, height: hour % 6 == 0 ? 7 : 4)
-                    .offset(y: -40.5)
-                    .rotationEffect(.degrees(Double(hour) * 15))
-            }
-            Rectangle()
-                .fill(handColor)
-                .frame(width: 2, height: 26)
-                .offset(y: -13)
-                .rotationEffect(.degrees(PeakClockLogic.handAngle(now)))
-            Circle()
-                .fill(handColor)
-                .frame(width: 6, height: 6)
-        }
-    }
-
-    /// 表盘角度弧段 → trim 圆弧（trim 起点 3 点钟方向，需转回 12 点钟起点）。
-    private func arc(_ clockArc: PeakClockLogic.ClockArc, color: Color) -> some View {
-        Circle()
-            .trim(
-                from: clockArc.startDegree / 360,
-                to: max(clockArc.startDegree / 360 + 0.005, clockArc.endDegree / 360)
-            )
-            .stroke(color, style: StrokeStyle(lineWidth: 5.5, lineCap: .butt))
-            .rotationEffect(.degrees(-90))
     }
 }
 

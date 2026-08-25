@@ -203,7 +203,8 @@ extension NotchPanelController {
                 block: block,
                 view: block.makeView(context),
                 frame: frame,
-                hasSettings: entry.instance?.settingsView != nil
+                hasSettings: block.instanceSettingsView != nil
+                    || entry.instance?.settingsView != nil
             )
         }
     }
@@ -244,7 +245,8 @@ extension NotchPanelController {
                     lhs.columns == rhs.columns ? lhs.rows < rhs.rows : lhs.columns < rhs.columns
                 },
                 currentSpan: currentSpan,
-                hasSettings: entry.instance?.settingsView != nil
+                hasSettings: block.instanceSettingsView != nil
+                    || entry.instance?.settingsView != nil
             )
         }
     }
@@ -280,14 +282,22 @@ extension NotchPanelController {
                 guard let self else { return }
                 // 锚定图标即将消失，设置浮窗先收场。
                 SettingPopover.shared.dismiss()
+                if let reference = self.layoutEngine.compactSlot(at: index) {
+                    self.notifyPlacementRemoved(reference)
+                }
                 self.layoutEngine.setCompactSlot(index, to: nil)
                 // 紧凑图标数减少：先同步条带几何/热区窗口，再重建内容。
                 self.refreshCompactGeometry()
                 self.rebuildContent()
             },
-            onShowSettings: { [weak self] pluginID, anchorFrame in
+            onShowSettings: { [weak self] pluginID, placementID, anchorFrame in
                 // 紧凑小图标贴下方弹出（同心叠加会被钳回悬在刘海带上）。
-                self?.showPluginSettings(pluginID: pluginID, anchorFrame: anchorFrame, placement: .below)
+                self?.showPluginSettings(
+                    pluginID: pluginID,
+                    placementID: placementID,
+                    anchorFrame: anchorFrame,
+                    placement: .below
+                )
             },
             onTapBackground: { [weak self] in
                 self?.expand(animated: true, activate: true)
@@ -327,12 +337,24 @@ extension NotchPanelController {
                 guard let self else { return }
                 // 锚定块即将消失，设置浮窗先收场。
                 SettingPopover.shared.dismiss()
+                if let removed = self.layoutEngine.drawerBlocks.first(where: { $0.placementID == placementID }) {
+                    self.notifyPlacementRemoved(
+                        pluginID: removed.pluginID,
+                        blockID: removed.blockID,
+                        placementID: removed.placementID
+                    )
+                }
                 self.layoutEngine.removeDrawerBlock(placementID: placementID)
                 self.refreshAfterEdit()
             },
-            onShowBlockSettings: { [weak self] pluginID, anchorFrame in
+            onShowBlockSettings: { [weak self] pluginID, placementID, anchorFrame in
                 // 抽屉块同心覆盖弹出（与服务卡浮窗同一摆放语义）。
-                self?.showPluginSettings(pluginID: pluginID, anchorFrame: anchorFrame, placement: .overlay)
+                self?.showPluginSettings(
+                    pluginID: pluginID,
+                    placementID: placementID,
+                    anchorFrame: anchorFrame,
+                    placement: .overlay
+                )
             },
             onMoveBlock: { [weak self] placementID, column, row in
                 self?.layoutEngine.moveDrawerBlock(placementID: placementID, toColumn: column, toRow: row)
@@ -396,32 +418,80 @@ extension NotchPanelController {
         )
     }
 
+    // MARK: - 放置实例生命周期（每实例状态基本能力的清理侧）
+
+    /// 通知插件某放置实例已被移除（NotchCenterPluginServices.placementWasRemoved，
+    /// 默认空实现）：插件借此清理该实例 placementStore 里的持久化数据。
+    private func notifyPlacementRemoved(_ reference: CompactSlotReference) {
+        notifyPlacementRemoved(
+            pluginID: reference.pluginID,
+            blockID: reference.blockID,
+            placementID: reference.placementID
+        )
+    }
+
+    private func notifyPlacementRemoved(pluginID: String, blockID: String, placementID: String) {
+        (pluginManager.entry(for: pluginID)?.instance as? any NotchCenterPluginServices)?
+            .placementWasRemoved(blockID: blockID, placementID: placementID)
+    }
+
     // MARK: - 插件设置浮窗（编辑模式齿轮按钮的统一入口）
 
-    /// 经 Kit 的 SettingPopover 展示插件设置：所有插件设置的浮层展示都走这里，
-    /// 由插件 `settingsView` 提供内容（文档 §4.7），本方法只负责解析上下文与锚定。
+    /// 经 Kit 的 SettingPopover 展示设置：优先块的实例级 `instanceSettingsView`
+    /// （携带完整 BlockContext，含 placementID / placementStore，多个放置实例
+    /// 可各自单独设置），块未声明时回退插件级 `settingsView`（文档 §4.7）。
+    /// 本方法只负责解析上下文与锚定。
     func showPluginSettings(
         pluginID: String,
+        placementID: String,
         anchorFrame: CGRect,
         placement: BlockPopoverPlacement
     ) {
         guard let entry = pluginManager.entry(for: pluginID),
               let instance = entry.instance,
-              let settingsView = instance.settingsView,
               let stateStore = entry.stateStore else {
             return
         }
-        let context = PluginSettingsContext(
+
+        // 解析锚定块的引用信息（blockID 与所在区域），构建完整 BlockContext。
+        let drawerPlacement = layoutEngine.drawerBlocks.first { $0.placementID == placementID }
+        let compactSlot = layoutEngine.compactSlot(withPlacementID: placementID)
+        let blockID = drawerPlacement?.blockID ?? compactSlot?.blockID
+        guard let blockID,
+              let block = pluginManager.block(pluginID: pluginID, blockID: blockID) else {
+            return
+        }
+        let region: BlockRegion = drawerPlacement != nil ? .drawer : .compact
+        let context = BlockContext(
             pluginID: pluginID,
+            blockID: blockID,
+            placementID: placementID,
             stateStore: stateStore,
-            hostController: self
+            hostController: self,
+            layoutInfo: BlockLayoutInfo(
+                region: region,
+                placementID: placementID,
+                frame: anchorFrame,
+                isEditing: isEditing
+            )
         )
-        SettingPopover.shared.present(
-            anchoredTo: anchorFrame,
-            placement: placement,
-            title: entry.metadata.displayName
-        ) {
-            settingsView(context)
+
+        if let instanceSettingsView = block.instanceSettingsView {
+            SettingPopover.shared.present(
+                anchoredTo: anchorFrame,
+                placement: placement,
+                title: entry.metadata.displayName
+            ) {
+                instanceSettingsView(context)
+            }
+        } else if let settingsView = instance.settingsView {
+            SettingPopover.shared.present(
+                anchoredTo: anchorFrame,
+                placement: placement,
+                title: entry.metadata.displayName
+            ) {
+                settingsView(context.settingsContext)
+            }
         }
     }
 }

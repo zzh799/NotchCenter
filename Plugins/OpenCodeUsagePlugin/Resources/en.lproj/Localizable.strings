@@ -15,6 +15,14 @@
 "settings.saved" = "Saved. Refreshing usage…";
 "settings.explanation" = "Usage is scraped from the opencode.ai dashboard pages (no public API). Cached for 5 minutes; failed fetches cool down for 60 seconds. The cookie is never logged.";
 
+/* 放置实例外观（块设置浮窗，每个实例单独设置） */
+"settings.section.appearance" = "Component appearance";
+"settings.displayStyle" = "Display style";
+"style.rings" = "Rings";
+"style.meters" = "Meters";
+"style.clock" = "Peak clock";
+"settings.phaseCountdown" = "Show peak/off-peak countdown";
+
 /* 用量块视图 */
 "block.displayName" = "OpenCode Usage";
 "usage.loading" = "Loading usage…";

@@ -4,6 +4,11 @@ import Foundation
 // MARK: - 几何
 
 extension LayoutEngine {
+    /// 按 placementID 查紧凑槽位引用（设置浮窗解析锚定块身份用）；不存在返回 nil。
+    func compactSlot(withPlacementID placementID: String) -> CompactSlotReference? {
+        model.compactSlots.first { $0?.placementID == placementID } ?? nil
+    }
+
     /// 抽屉块在网格内容坐标系（grid 左上角为原点）中的 frame。
     func frame(for placement: PlacedBlock) -> CGRect {
         CGRect(

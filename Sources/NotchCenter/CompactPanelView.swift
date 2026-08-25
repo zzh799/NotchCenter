@@ -19,8 +19,9 @@ struct CompactElement: Identifiable {
 
 struct CompactActions {
     let onRemoveBlock: (Int) -> Void
-    /// 编辑模式设置按钮：(pluginID, 图标全局 frame)，经 SettingPopover 展示插件设置。
-    let onShowSettings: (String, CGRect) -> Void
+    /// 编辑模式设置按钮：(pluginID, placementID, 图标全局 frame)，经 SettingPopover
+    /// 展示设置——优先块实例级视图，回退插件级（见 NotchPanelContent.showPluginSettings）。
+    let onShowSettings: (String, String, CGRect) -> Void
     let onTapBackground: () -> Void
     let onExpand: () -> Void
 }
@@ -95,8 +96,8 @@ struct CompactPanelView: View {
                             isEditing: isEditing,
                             onRemove: { actions.onRemoveBlock(element.slotIndex) },
                             onShowSettings: { anchorFrame in
-                                guard let pluginID = element.reference?.pluginID else { return }
-                                actions.onShowSettings(pluginID, anchorFrame)
+                                guard let reference = element.reference else { return }
+                                actions.onShowSettings(reference.pluginID, reference.placementID, anchorFrame)
                             },
                             onExpand: actions.onExpand
                         )

@@ -33,11 +33,26 @@ extension NotchCenterPlugin {
 public protocol NotchCenterPluginServices: AnyObject {
     /// 插件实例获得作用域存储与宿主控制器（菜单项等非视图入口需要它）。
     func attachServices(stateStore: StateStore, hostController: any HostController)
+    /// 插件被禁用时宿主调用。默认空实现。
+    ///
+    /// 注意：本方法与 placementWasRemoved 都必须保持为协议**要求**（extension
+    /// 只提供默认实现）——宿主经存在类型 `any NotchCenterPluginServices` 调用，
+    /// 纯 extension 成员走静态分发，遵守类里的同名重写永远不会被执行
+    /// （pluginWasDisabled 曾因此失效：Dsh/Calibre/Caffeinate/OpenCode 的
+    /// 停止逻辑从未被触发，与 settingsView 是同族历史坑）。
+    func pluginWasDisabled()
+    /// 一个放置实例被用户移除时宿主调用（抽屉块与紧凑图标两条删除路径都会
+    /// 触发）。默认空实现；插件重写以清理该实例在 placementStore 里的持久化
+    /// 数据，避免孤儿文件堆积；插件级共享数据不受影响。
+    func placementWasRemoved(blockID: String, placementID: String)
 }
 
 extension NotchCenterPluginServices {
     /// 插件被禁用时宿主调用（默认空实现）。禁止在此卸载 bundle（文档 §3.4）。
     public func pluginWasDisabled() {}
+
+    /// 放置实例被移除时的默认空实现。
+    public func placementWasRemoved(blockID: String, placementID: String) {}
 }
 
 // MARK: - 菜单项（文档 §4.8）

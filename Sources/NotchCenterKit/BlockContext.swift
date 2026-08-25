@@ -91,6 +91,13 @@ public struct BlockContext {
             hostController: hostController
         )
     }
+
+    /// 该放置实例的私有存储（`<pluginData>/placements/<placementID>/`）：
+    /// 每块单独设置/状态持久化在这里，与插件级共享 `stateStore` 互不干扰。
+    /// placementID 非法（损坏布局数据）时为 nil，视图应回退只读默认值。
+    public var placementStore: StateStore? {
+        stateStore.placementScope(placementID: placementID)
+    }
 }
 
 // MARK: - 插件设置上下文（文档 §4.7）

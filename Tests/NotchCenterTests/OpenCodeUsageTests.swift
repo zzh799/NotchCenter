@@ -1,4 +1,5 @@
 import XCTest
+import NotchCenterKit
 
 @testable import OpenCodeUsagePlugin
 
@@ -315,6 +316,80 @@ final class OpenCodeUsageTests: XCTestCase {
         XCTAssertEqual(OpenCodeUsageParser.formatReset(seconds: 0), "soon")
         XCTAssertEqual(OpenCodeUsageParser.formatReset(seconds: 8940), "2h 29m")
         XCTAssertEqual(OpenCodeUsageParser.formatReset(seconds: 432000), "5d")
+    }
+}
+
+/// 放置实例外观（每块单独设置）的纯逻辑测试：默认值、容错解码、
+/// placementStore 持久化往返与实例隔离。不发网络请求。
+@MainActor
+final class OpenCodeUsageAppearanceTests: XCTestCase {
+    private func makePluginStore() throws -> (StateStore, URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenCodeAppearanceTests-\(UUID().uuidString)", isDirectory: true)
+        return (StateStore(rootDirectory: directory), directory)
+    }
+
+    func testDefaultAppearanceMatchesLegacyLook() {
+        // 缺省 = 余量环 + 显示倒计时：老布局零迁移，视觉与单实例时代一致。
+        XCTAssertEqual(OpenCodeUsageAppearance.default, .init(style: .rings, showsPhaseCountdown: true))
+    }
+
+    func testDecodingToleratesMissingFieldsAndGarbage() throws {
+        let appearance = try JSONDecoder().decode(OpenCodeUsageAppearance.self, from: Data("{}".utf8))
+        XCTAssertEqual(appearance, .default)
+
+        let partial = try JSONDecoder().decode(
+            OpenCodeUsageAppearance.self,
+            from: Data(#"{"style":"peakClock"}"#.utf8)
+        )
+        XCTAssertEqual(partial.style, .peakClock)
+        XCTAssertTrue(partial.showsPhaseCountdown)
+
+        // 未知样式 / 损坏文件 → load 回退默认值（自愈，不崩溃）。
+        XCTAssertThrowsError(try JSONDecoder().decode(OpenCodeUsageAppearance.self, from: Data(#"{"style":"hologram"}"#.utf8)))
+        XCTAssertEqual(OpenCodeUsageAppearanceLogic.load(from: nil), .default)
+    }
+
+    func testSaveLoadRoundTripThroughPlacementScope() throws {
+        let (pluginStore, directory) = try makePluginStore()
+        defer { cleanUpIfPossible(directory) }
+
+        let placementID = "PLCT0001-2222-3333-4444-555566667777"
+        let otherID = "PLCT0002-2222-3333-4444-555566667777"
+        // 注册表是进程级单例：先清掉可能残留的缓存，确保模型绑定本次的 store。
+        OpenCodeUsageInstanceRegistry.shared.discard(placementID: placementID)
+        OpenCodeUsageInstanceRegistry.shared.discard(placementID: otherID)
+
+        guard let scope = pluginStore.placementScope(placementID: placementID) else {
+            return XCTFail("合法 placementID 必须可派生作用域")
+        }
+
+        var appearance = OpenCodeUsageAppearance()
+        appearance.style = .meters
+        appearance.showsPhaseCountdown = false
+        OpenCodeUsageAppearanceLogic.save(appearance, to: scope)
+        XCTAssertEqual(OpenCodeUsageAppearanceLogic.load(from: scope), appearance)
+
+        // 注册表经插件级 store 取同一实例时读到相同配置；另一实例互不影响。
+        let model = OpenCodeUsageInstanceRegistry.shared.model(placementID: placementID, stateStore: pluginStore)
+        XCTAssertEqual(model.appearance, appearance)
+
+        let otherModel = OpenCodeUsageInstanceRegistry.shared.model(placementID: otherID, stateStore: pluginStore)
+        XCTAssertEqual(otherModel.appearance, .default)
+
+        // 更新走模型入口：内存 @Published 与持久化文件同步变化。
+        model.update(.default)
+        XCTAssertEqual(model.appearance, .default)
+        let reloadedScope = StateStore(rootDirectory: directory).placementScope(placementID: placementID)
+        XCTAssertEqual(OpenCodeUsageAppearanceLogic.load(from: reloadedScope), .default)
+
+        OpenCodeUsageInstanceRegistry.shared.discard(placementID: placementID)
+        OpenCodeUsageInstanceRegistry.shared.discard(placementID: otherID)
+    }
+
+    /// 测试目录可能因断言失败未被 defer 清理；尽力兜底。
+    private func cleanUpIfPossible(_ directory: URL) {
+        try? FileManager.default.removeItem(at: directory)
     }
 }
 

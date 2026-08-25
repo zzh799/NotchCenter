@@ -24,8 +24,9 @@ struct DrawerActions {
     let onToggleEdit: () -> Void
     let onCollapse: () -> Void
     let onRemoveBlock: (String) -> Void
-    /// 编辑模式块左上角设置按钮：(pluginID, 块全局 frame)，经 SettingPopover 展示插件设置。
-    let onShowBlockSettings: (String, CGRect) -> Void
+    /// 编辑模式块左上角设置按钮：(pluginID, placementID, 块全局 frame)，经
+    /// SettingPopover 展示设置——优先块实例级视图，回退插件级。
+    let onShowBlockSettings: (String, String, CGRect) -> Void
     let onMoveBlock: (String, Int, Int) -> Void
     let onResizeBlock: (String, Int, Int) -> Void
     let onAddBlock: (String, String) -> Void
@@ -231,50 +232,7 @@ struct DrawerPanelView: View {
     private var grid: some View {
         ZStack(alignment: .topLeading) {
             ForEach(ui.drawerElements) { element in
-                let origin = resolveOrigin(for: element)
-                DrawerBlockContainer(
-                    element: element,
-                    isEditing: ui.isEditing,
-                    isDragging: draggingPlacementID == element.id,
-                    hasSettings: element.hasSettings,
-                    previewColumns: resizingPlacementID == element.id ? resizePreviewColumns : nil,
-                    previewRows: resizingPlacementID == element.id ? resizePreviewRows : nil,
-                    onResizeChanged: { translation in
-                        handleResizeTranslate(translation, for: element)
-                    },
-                    onResizeCommit: { commitResize(for: element) },
-                    onRemove: { actions.onRemoveBlock(element.id) },
-                    onShowSettings: { anchorFrame in
-                        actions.onShowBlockSettings(element.placement.pluginID, anchorFrame)
-                    },
-                    onDragChanged: { translation in
-                        draggingPlacementID = element.id
-                        let target = dragTarget(for: element, translation: translation)
-                        previewPositions = actions.onPreviewMove(element.id, target.0, target.1)
-                    },
-                    onDragEnded: { translation in
-                        let target = dragTarget(for: element, translation: translation)
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-                            previewPositions = [:]
-                        }
-                        draggingPlacementID = nil
-                        actions.onCommitDrag(element.id, target.0, target.1)
-                    }
-                )
-                .frame(
-                    width: element.placement.widthColumns > 0
-                        ? gridWidth(columns: element.placement.widthColumns)
-                        : 0,
-                    height: element.placement.heightRows > 0
-                        ? gridHeight(rows: element.placement.heightRows)
-                        : 0
-                )
-                .position(
-                    x: gridX(column: origin.column - ui.drawerGridLeftColumn)
-                        + gridWidth(columns: element.placement.widthColumns) / 2,
-                    y: gridY(row: origin.row)
-                        + gridHeight(rows: element.placement.heightRows) / 2
-                )
+                blockContainer(for: element)
             }
         }
         .frame(
@@ -286,6 +244,59 @@ struct DrawerPanelView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.86), value: ui.drawerElements.map(\.placement))
         .animation(.spring(response: 0.3, dampingFraction: 0.86), value: previewPositions)
 
+    }
+
+    /// 单个抽屉块容器（含定位修饰）：独立成方法拆开类型检查表达式——
+    /// 全部内联在 grid 里会超出编译器合理检查时间。
+    private func blockContainer(for element: DrawerElement) -> some View {
+        let origin = resolveOrigin(for: element)
+        return DrawerBlockContainer(
+            element: element,
+            isEditing: ui.isEditing,
+            isDragging: draggingPlacementID == element.id,
+            hasSettings: element.hasSettings,
+            previewColumns: resizingPlacementID == element.id ? resizePreviewColumns : nil,
+            previewRows: resizingPlacementID == element.id ? resizePreviewRows : nil,
+            onResizeChanged: { translation in
+                handleResizeTranslate(translation, for: element)
+            },
+            onResizeCommit: { commitResize(for: element) },
+            onRemove: { actions.onRemoveBlock(element.id) },
+            onShowSettings: { anchorFrame in
+                actions.onShowBlockSettings(
+                    element.placement.pluginID,
+                    element.id,
+                    anchorFrame
+                )
+            },
+            onDragChanged: { translation in
+                draggingPlacementID = element.id
+                let target = dragTarget(for: element, translation: translation)
+                previewPositions = actions.onPreviewMove(element.id, target.0, target.1)
+            },
+            onDragEnded: { translation in
+                let target = dragTarget(for: element, translation: translation)
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                    previewPositions = [:]
+                }
+                draggingPlacementID = nil
+                actions.onCommitDrag(element.id, target.0, target.1)
+            }
+        )
+        .frame(
+            width: element.placement.widthColumns > 0
+                ? gridWidth(columns: element.placement.widthColumns)
+                : 0,
+            height: element.placement.heightRows > 0
+                ? gridHeight(rows: element.placement.heightRows)
+                : 0
+        )
+        .position(
+            x: gridX(column: origin.column - ui.drawerGridLeftColumn)
+                + gridWidth(columns: element.placement.widthColumns) / 2,
+            y: gridY(row: origin.row)
+                + gridHeight(rows: element.placement.heightRows) / 2
+        )
     }
 
     /// 网格高度 = 块实占行数（预览/非预览一律按块包围盒计）：预览可能把

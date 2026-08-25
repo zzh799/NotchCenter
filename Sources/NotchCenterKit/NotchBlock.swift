@@ -76,6 +76,11 @@ public struct NotchBlock: Identifiable {
     public let symbolName: String?
     /// 视图工厂：携带 `BlockContext` 构建块视图。
     public let makeView: @MainActor (BlockContext) -> AnyView
+    /// 放置实例级设置界面（可选）。编辑模式块齿轮触发时，宿主优先用它并以
+    /// 完整 `BlockContext` 调用（含 placementID / placementStore / 插件级
+    /// settingsContext）——同一块类型的多个放置实例可各自单独设置；nil 时
+    /// 回退插件级 `NotchCenterPlugin.settingsView`（所有实例共享一份内容）。
+    public let instanceSettingsView: (@MainActor (BlockContext) -> AnyView)?
 
     public init(
         id: String,
@@ -96,6 +101,7 @@ public struct NotchBlock: Identifiable {
             supportedGridSpans: [],
             interaction: interaction,
             symbolName: symbolName,
+            instanceSettingsView: nil,
             makeView: makeView
         )
     }
@@ -109,6 +115,7 @@ public struct NotchBlock: Identifiable {
         supportedGridSpans: Set<GridSpan>,
         interaction: BlockInteraction = .expandDrawer,
         symbolName: String? = nil,
+        instanceSettingsView: (@MainActor (BlockContext) -> AnyView)? = nil,
         makeView: @escaping @MainActor (BlockContext) -> AnyView
     ) {
         self.id = id
@@ -123,6 +130,7 @@ public struct NotchBlock: Identifiable {
         self.defaultSize = defaultSize
         self.interaction = interaction
         self.symbolName = symbolName
+        self.instanceSettingsView = instanceSettingsView
         self.makeView = makeView
     }
 

@@ -2,14 +2,24 @@ import AppKit
 import NotchCenterKit
 import SwiftUI
 
-// MARK: - 抽屉块视图：同心环用量图 + Zen 余额（对应参考实现的环形按钮 + 面板）
+// MARK: - 抽屉块视图（放置实例级外观）
 //
-// 外/中/内三环分别是 5h 滚动 / 每周 / 每月窗口；长按弹出详情浮窗，
-// 右上角小按钮手动刷新。medium 跨度额外显示余额与图例，small 只留环。
+// 同一块类型可在抽屉放多个实例：数据一律来自共享的 OpenCodeUsageStore
+// （单份抓取/缓存，所有实例同源），而**显示样式与峰谷倒计时开关是每个
+// 实例私有的**——持久化在该实例的 placementStore 里，经注册表的共享
+// ObservableObject 驱动多屏所有副本同步刷新。
+//
+// 样式：余量环（三环同心）· 余量表（三窗口横条量表）· 峰谷时钟（表盘）。
 // 卡片壳与长按浮窗触发统一走 Kit 的 BlockCard / blockPopoverTrigger。
 
 struct OpenCodeUsageBlockView: View {
+    /// 本放置实例的外观模型（同一实例跨屏共享同一个对象）。
+    @ObservedObject var instance: OpenCodeUsageInstanceModel
     @ObservedObject private var store = OpenCodeUsageStore.shared
+
+    init(instance: OpenCodeUsageInstanceModel) {
+        self.instance = instance
+    }
 
     var body: some View {
         BlockCard(hoverEffect: true) { isHovering in
@@ -46,34 +56,72 @@ struct OpenCodeUsageBlockView: View {
         }
     }
 
-    // MARK: 正常数据
+    // MARK: 正常数据（按实例样式分发）
 
-    /// 重置信息只在长按浮窗里展示，主 UI 保持紧凑（环 + 余额 + 峰谷剩余）。
     private func usageContent(_ snapshot: UsageSnapshot) -> some View {
         VStack(spacing: 8) {
-            UsageRingsView(windows: snapshot.windows, outerDiameter: 56)
-                .frame(width: 60)
-
-            if let balance = snapshot.zen?.balance {
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text(L("usage.zenBalance"))
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.58))
-                    Text(balance, format: .currency(code: "USD"))
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.92))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
+            switch instance.appearance.style {
+            case .rings:
+                ringsContent(snapshot)
+            case .meters:
+                metersContent(snapshot)
+            case .peakClock:
+                peakClockContent
             }
-
-            phaseRemainingView
+            if instance.appearance.showsPhaseCountdown {
+                phaseRemainingView
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(10)
     }
 
-    /// 当前峰/谷阶段的剩余倒计时（每秒走字，语义同浮窗里的 PeakClock）。
+    /// 余量环：三环同心用量图（medium 跨度额外带 Zen 余额）。
+    private func ringsContent(_ snapshot: UsageSnapshot) -> some View {
+        VStack(spacing: 8) {
+            UsageRingsView(windows: snapshot.windows, outerDiameter: 56)
+                .frame(width: 60)
+
+            if let balance = snapshot.zen?.balance {
+                balanceRow(balance)
+            }
+        }
+    }
+
+    /// 余量表：每个用量窗口一条横向量表（标签 + 胶囊进度条 + 百分比）。
+    private func metersContent(_ snapshot: UsageSnapshot) -> some View {
+        VStack(spacing: 7) {
+            ForEach([UsageWindowKind.rolling, .weekly, .monthly], id: \.self) { kind in
+                if let window = snapshot.windows[kind] {
+                    UsageMeterRow(kind: kind, window: window)
+                }
+            }
+        }
+    }
+
+    /// 峰谷时钟：24 小时表盘实时走动（阶段倒计时由统一的 countdown 行承担）。
+    private var peakClockContent: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            PeakClockDial(now: context.date, diameter: 64)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func balanceRow(_ balance: Double) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
+            Text(L("usage.zenBalance"))
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.58))
+            Text(balance, format: .currency(code: "USD"))
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.92))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+    }
+
+    /// 当前峰/谷阶段的剩余倒计时（每秒走字，语义同浮窗里的 PeakClock；
+    /// 由实例的 showsPhaseCountdown 控制显隐）。
     private var phaseRemainingView: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let peak = PeakClockLogic.isPeak(context.date)
@@ -161,6 +209,38 @@ struct OpenCodeUsageBlockView: View {
         formatter.unitsStyle = .abbreviated
         formatter.maximumUnitCount = 2
         return formatter.string(from: TimeInterval(seconds)) ?? "\(seconds)s"
+    }
+}
+
+// MARK: - 余量表行（标签 + 胶囊进度条 + 百分比）
+
+struct UsageMeterRow: View {
+    let kind: UsageWindowKind
+    let window: UsageWindow
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(kind.shortLabel)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.66))
+                .frame(width: 22, alignment: .leading)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule()
+                        .fill(UsageRingsView.ringColor(percent: window.percent))
+                        .frame(width: geo.size.width * CGFloat(window.percent / 100))
+                }
+            }
+            .frame(height: 4)
+
+            Text("\(window.percentText)%")
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(UsageRingsView.ringColor(percent: window.percent))
+                .frame(width: 30, alignment: .trailing)
+                .minimumScaleFactor(0.75)
+        }
     }
 }
 

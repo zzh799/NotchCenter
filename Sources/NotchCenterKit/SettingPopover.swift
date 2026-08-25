@@ -76,9 +76,13 @@ private struct SettingPopoverCard: View {
                 .fill(.white.opacity(0.08))
                 .frame(height: 1)
 
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(14)
+            // 内容区可滚动：设置内容超过默认卡片高度（如“实例外观 + 账户”
+            // 多节表单）时不出卡片边界，各节仍按自然高度排布。
+            ScrollView(.vertical, showsIndicators: false) {
+                content
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(14)
+            }
         }
     }
 }

@@ -28,6 +28,10 @@ final class OpenCodeUsageStore: ObservableObject {
     private var lastSuccessAt: Date?
     private var nextAllowedAt: Date?
 
+    /// 插件级共享存储（attachServices 注入）：供放置实例清理等非视图路径
+    /// 派生 placementScope 用。视图内一律走 BlockContext.placementStore。
+    var sharedStateStore: StateStore? { stateStore }
+
     var isConfigured: Bool { OpenCodeUsageConfigLogic.isConfigured(config) }
 
     // MARK: 生命周期

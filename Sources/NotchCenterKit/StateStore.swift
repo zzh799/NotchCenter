@@ -88,6 +88,26 @@ public final class StateStore {
         return url
     }
 
+    // MARK: 放置实例作用域（每块单独设置/状态的基本能力，文档 §4.6 扩展）
+
+    /// 派生一个「放置实例作用域」的子存储：根目录为
+    /// `<pluginData>/placements/<placementID>/`，键值语义与本 store 完全一致。
+    ///
+    /// 用途：同一块类型的多个放置实例（各自 placementID 不同）需要互不干扰的
+    /// 每实例设置/状态时，经此获得隔离存储；插件级共享数据仍用本 store 本身。
+    ///
+    /// placementID 未通过 `isValidKey` 校验（如损坏 layout.json 带入非法字符）
+    /// 时返回 nil——调用方应回退为不持久化，而不是崩溃或写穿目录。
+    public func placementScope(placementID: String) -> StateStore? {
+        guard Self.isValidKey(placementID) else { return nil }
+        return StateStore(
+            rootDirectory: rootDirectory
+                .appendingPathComponent("placements", isDirectory: true)
+                .appendingPathComponent(placementID, isDirectory: true),
+            fileManager: fileManager
+        )
+    }
+
     /// 键是否合法（文档约定：不含路径分隔符等特殊字符）。
     public static func isValidKey(_ key: String) -> Bool {
         guard !key.isEmpty, !key.hasPrefix("."), !key.hasSuffix(".") else { return false }
