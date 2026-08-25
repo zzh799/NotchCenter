@@ -235,7 +235,7 @@ public protocol NotchCenterPlugin {
 }
 ```
 
-`PluginSettingsContext` 包含作用域 `StateStore` 和 `HostController`。如果插件未提供 `settingsView`，插件管理窗口只显示其元数据。
+`PluginSettingsContext` 包含作用域 `StateStore` 和 `HostController`。`settingsView` 统一经 Kit 的 SettingPopover 浮窗展示（布局编辑模式的齿轮按钮触发）；插件管理窗口详情区展示各插件 bundle 内的 README.md，不再内嵌设置视图。
 
 ### 4.8 状态栏菜单贡献
 

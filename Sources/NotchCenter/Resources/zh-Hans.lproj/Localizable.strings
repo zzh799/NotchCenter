@@ -19,7 +19,6 @@
 "settings.column.count" = "%d 列";
 "settings.section.plugins" = "插件";
 "settings.pluginManager" = "插件管理…";
-"settings.plugins.noReadme" = "该插件未附带说明文档。";
 "settings.quit" = "退出 NotchCenter";
 
 /* 语言覆盖（重启生效） */
@@ -37,7 +36,7 @@
 "manager.uninstall" = "卸载";
 "manager.version.api" = "版本 %@ · API %@";
 "manager.loadFailed" = "该插件加载失败：%@";
-"manager.noSettings" = "此插件没有可用的设置项。";
+"manager.noReadme" = "该插件未附带说明文档。";
 "manager.selectHint" = "选择一个插件查看详情";
 "manager.alert.title" = "插件错误";
 "manager.uninstall.confirmTitle" = "卸载“%@”？";

@@ -19,7 +19,6 @@
 "settings.column.count" = "%d Columns";
 "settings.section.plugins" = "Plugins";
 "settings.pluginManager" = "Plugin Manager…";
-"settings.plugins.noReadme" = "This plugin does not include documentation.";
 "settings.quit" = "Quit NotchCenter";
 
 /* 语言覆盖（重启生效） */
@@ -37,7 +36,7 @@
 "manager.uninstall" = "Uninstall";
 "manager.version.api" = "Version %@ · API %@";
 "manager.loadFailed" = "This plugin failed to load: %@";
-"manager.noSettings" = "This plugin provides no settings.";
+"manager.noReadme" = "This plugin does not include documentation.";
 "manager.selectHint" = "Select a plugin to view details";
 "manager.alert.title" = "Plugin Error";
 "manager.uninstall.confirmTitle" = "Uninstall “%@”?";

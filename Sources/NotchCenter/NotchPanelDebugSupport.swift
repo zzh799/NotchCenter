@@ -33,10 +33,7 @@ extension NotchPanelController {
 
     func showPluginManager() {
         let controller = pluginManagerWindowController ?? {
-            let controller = PluginManagerWindowController(
-                pluginManager: pluginManager,
-                hostController: self
-            )
+            let controller = PluginManagerWindowController(pluginManager: pluginManager)
             pluginManagerWindowController = controller
             return controller
         }()

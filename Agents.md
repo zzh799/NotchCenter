@@ -48,8 +48,8 @@ NotchCenter/
 │   ├── LayoutEngineCompaction.swift # 布局引擎 extension：compactEmptyRows / compactEmptyColumns 空洞压实
 │   ├── LayoutEngineGeometry.swift   # 布局引擎只读 extension：frame/内容尺寸/窗口尺寸/previewBottomRow
 │   ├── LayoutEngineValidation.swift # 布局引擎只读 extension：validate() 全量健康检查
-│   ├── PluginManagerWindow.swift    # 插件管理窗口
-│   ├── SettingsWindow.swift / ReadmeMarkdownView.swift  # 设置面板（插件分区展示各插件 bundle 内 README.md）+ 轻量 Markdown 块解析渲染（ReadmeMarkdownTests）
+│   ├── PluginManagerWindow.swift    # 插件管理窗口（详情区展示各插件 bundle 内 README.md）
+│   ├── SettingsWindow.swift / ReadmeMarkdownView.swift  # 设置面板 + 轻量 Markdown 块解析渲染（ReadmeMarkdownTests）
 │   ├── SettingsStore.swift          # 触发模式（hover/click）
 │   ├── CorePaths.swift / FileDragDetection.swift / PanelDecoration.swift
 │   ├── ResizeProbeLog.swift         # 诊断日志开关（仅 DEBUG）：NOTCHCENTER_RESIZE_LOG 缩放管线事件
@@ -138,7 +138,7 @@ open dist.noindex/NotchCenter.app
 ## 测试
 
 - 运行：`swift test`；单文件调试可 `swift test --filter <Name>`。
-- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`OpenCodeUsageTests`（cookie 归一化 / SSR HTML 解析 / 时长短语，不发真实网络请求）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）、`EditMenuInstallerTests`（隐藏主菜单接线：标准编辑快捷键的 nil-target 条目与键等价物）、`ReadmeMarkdownTests`（设置面板插件文档：Markdown 块级解析 / bundle 内 README 读取与缺失兜底）。
+- 覆盖：`APIVersionTests`、`StateStoreTests`、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`OpenCodeUsageTests`（cookie 归一化 / SSR HTML 解析 / 时长短语，不发真实网络请求）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）、`EditMenuInstallerTests`（隐藏主菜单接线：标准编辑快捷键的 nil-target 条目与键等价物）、`ReadmeMarkdownTests`（插件管理窗口插件文档：Markdown 块级解析 / bundle 内 README 读取与缺失兜底）。
 - 涉及 `pmset` / 休眠的逻辑测试应确保**不真正改变系统睡眠状态**。
 - 涉及 AppKit 窗口/事件的逻辑依赖 App 运行环境，注意保持 `@MainActor` 测试隔离（`setUp`/`tearDown` 是非隔离上下文，不要在里面改 @MainActor 属性）。
 

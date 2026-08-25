@@ -2,11 +2,11 @@ import Foundation
 import Testing
 @testable import NotchCenter
 
-// MARK: - 设置面板插件说明文档回归测试
+// MARK: - 插件管理窗口插件说明文档回归测试
 //
 // 覆盖两块纯逻辑（不依赖 AppKit 运行环境）：
 // 1. ReadmeMarkdown 块级解析：标题 / 无序列表 / 代码围栏 / 段落与空行；
-// 2. PluginDocumentationDisclosure.loadReadme 的 bundle 内 README 读取与缺失兜底。
+// 2. PluginReadmeSection.loadReadme 的 bundle 内 README 读取与缺失兜底。
 
 struct ReadmeMarkdownTests {
     @Test func parsesHeadingsBulletsAndParagraphs() {
@@ -97,12 +97,12 @@ struct PluginReadmeLoaderTests {
             encoding: .utf8
         )
 
-        let text = try #require(PluginDocumentationDisclosure.loadReadme(bundleURL: bundleURL))
+        let text = try #require(PluginReadmeSection.loadReadme(bundleURL: bundleURL))
         #expect(text.contains("说明"))
     }
 
     @Test func missingBundleYieldsNil() {
         let url = URL(fileURLWithPath: "/nonexistent/\(UUID().uuidString).bundle")
-        #expect(PluginDocumentationDisclosure.loadReadme(bundleURL: url) == nil)
+        #expect(PluginReadmeSection.loadReadme(bundleURL: url) == nil)
     }
 }

@@ -8,11 +8,9 @@ import UniformTypeIdentifiers
 @MainActor
 final class PluginManagerWindowController: NSWindowController {
     private let pluginManager: PluginManager
-    private let hostController: any HostController
 
-    init(pluginManager: PluginManager, hostController: any HostController) {
+    init(pluginManager: PluginManager) {
         self.pluginManager = pluginManager
-        self.hostController = hostController
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
@@ -25,10 +23,7 @@ final class PluginManagerWindowController: NSWindowController {
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.contentView = NSHostingView(
-            rootView: PluginManagerView(
-                pluginManager: pluginManager,
-                hostController: hostController
-            )
+            rootView: PluginManagerView(pluginManager: pluginManager)
         )
         window.center()
     }
@@ -39,10 +34,10 @@ final class PluginManagerWindowController: NSWindowController {
     }
 }
 
-/// 插件管理视图：发现列表 + 启用开关 + 安装/卸载 + 设置嵌入（文档 §8.1 / §8.2 / 附录 A-29）。
+/// 插件管理视图：发现列表 + 启用开关 + 安装/卸载 + 说明文档展示（文档 §8.1 / §8.2 / 附录 A-29）。
+/// 插件设置不在这里内嵌：统一走编辑模式齿轮触发的 SettingPopover 浮窗。
 struct PluginManagerView: View {
     @ObservedObject var pluginManager: PluginManager
-    let hostController: any HostController
 
     @State private var selectedPluginID: String?
     @State private var errorMessage: String?
@@ -194,19 +189,13 @@ struct PluginManagerView: View {
 
                 Divider().overlay(.white.opacity(0.1))
 
-                if let settingsView = pluginEntrySettings(entry) {
-                    ScrollView {
-                        settingsView
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                } else if entry.loadError != nil {
+                if entry.loadError != nil {
                     Text(LF("manager.loadFailed", entry.loadError ?? ""))
                         .font(.system(size: 11))
                         .foregroundStyle(.red.opacity(0.9))
                 } else {
-                    Text(L("manager.noSettings"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.4))
+                    // 原插件设置嵌入的位置改为展示说明文档（插件 bundle 内 README.md）。
+                    PluginReadmeSection(entry: entry)
                 }
 
                 Spacer()
@@ -228,20 +217,6 @@ struct PluginManagerView: View {
     private var selectedEntry: PluginEntry? {
         guard let selectedPluginID else { return nil }
         return pluginManager.entry(for: selectedPluginID)
-    }
-
-    private func pluginEntrySettings(_ entry: PluginEntry) -> AnyView? {
-        guard let instance = entry.instance,
-              let settingsView = instance.settingsView,
-              let stateStore = entry.stateStore else {
-            return nil
-        }
-        let context = PluginSettingsContext(
-            pluginID: entry.id,
-            stateStore: stateStore,
-            hostController: hostController
-        )
-        return settingsView(context)
     }
 
     // MARK: 操作
@@ -285,5 +260,46 @@ struct PluginManagerView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+/// 详情区插件说明文档：读取并渲染插件 bundle 内的 README.md
+/// （原设置面板分区展示移入此处，占据原插件设置嵌入的位置；
+/// 设置入口统一走编辑模式齿轮触发的 SettingPopover 浮窗）。
+struct PluginReadmeSection: View {
+    @ObservedObject var entry: PluginEntry
+    @State private var document: String?
+
+    var body: some View {
+        ScrollView {
+            Group {
+                if let document, !document.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    ReadmeMarkdownView(markdown: document)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(L("manager.noReadme"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .task(id: entry.id) {
+            // 选中即读；先清空再赋值在同一主线程回合内完成，不渲染中间态。
+            document = nil
+            document = Self.loadReadme(bundleURL: entry.metadata.bundleURL)
+        }
+    }
+
+    /// 读插件 bundle 内 Contents/Resources/README.md（build.sh 打包时复制；
+    /// 第三方插件可能没有附带，缺文件/编码异常一律返回 nil 走占位文案）。
+    /// 纯文件 IO 与 UI 无关：nonisolated 便于在任意上下文（含测试）调用。
+    nonisolated static func loadReadme(bundleURL: URL) -> String? {
+        guard let bundle = Bundle(url: bundleURL),
+              let url = bundle.url(forResource: "README", withExtension: "md"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return nil
+        }
+        return text
     }
 }
