@@ -95,15 +95,16 @@ private struct WindowDetailRow: View {
                     Capsule().fill(Color.white.opacity(0.08))
                     Capsule()
                         .fill(Self.barColor(percent: window.percent))
-                        .frame(width: geo.size.width * Double(window.percent) / 100)
+                        .frame(width: geo.size.width * CGFloat(window.percent / 100))
                 }
             }
             .frame(height: 5)
 
-            Text("\(window.percent)%")
+            Text("\(window.percentText)%")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(Self.barColor(percent: window.percent))
                 .frame(width: 30, alignment: .trailing)
+                .minimumScaleFactor(0.75)
         }
         HStack {
             Text(resetAbsoluteTime)
@@ -125,7 +126,7 @@ private struct WindowDetailRow: View {
         return LF("popover.resetsAt", formatter.string(from: Date().addingTimeInterval(TimeInterval(window.resetInSec))))
     }
 
-    private static func barColor(percent: Int) -> Color {
+    private static func barColor(percent: Double) -> Color {
         switch percent {
         case ..<70: return Color.green.opacity(0.85)
         case ..<100: return Color.yellow.opacity(0.9)

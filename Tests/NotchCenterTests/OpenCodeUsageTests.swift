@@ -154,6 +154,123 @@ final class OpenCodeUsageTests: XCTestCase {
         XCTAssertEqual(OpenCodeUsageParser.inlineResetInSec(goFixture, key: "rollingUsage"), 8900)
     }
 
+    // MARK: Go 用量页解析（2025-08 改版后的真实 SSR 形态）
+
+    /// 实测改版页：标签改为 "<N> Usage"、百分比带小数、内联 $R 状态对象齐全
+    /// （5-hour 0%、Weekly 3.7%、Monthly 65.8%，status 均为 ok）。
+    private let modernGoFixture = """
+    <html><body>
+    <div data-slot="usage-item">
+      <span data-slot="usage-label">5-hour Usage</span>
+      <div data-slot="usage-value"><!--$-->0%<!--/-->
+        <div role="progressbar" aria-valuenow="0"></div>
+        <span data-slot="reset-time">Resets in<!--/--> 5 hours<!--/--></span>
+      </div>
+    </div>
+    <div data-slot="usage-item">
+      <span data-slot="usage-label">Weekly Usage</span>
+      <div data-slot="usage-value"><!--$-->3.7%<!--/-->
+        <div role="progressbar" aria-valuenow="3.7"></div>
+        <span data-slot="reset-time">Resets in<!--/--> 4 days 12 hours<!--/--></span>
+      </div>
+    </div>
+    <div data-slot="usage-item">
+      <span data-slot="usage-label">Monthly Usage</span>
+      <div data-slot="usage-value"><!--$-->65.8%<!--/-->
+        <div role="progressbar" aria-valuenow="65.8"></div>
+        <span data-slot="reset-time">Resets in<!--/--> 24 days 2 hours<!--/--></span>
+      </div>
+    </div>
+    <div>© 2026 OpenCode</div>
+    <script>rollingUsage:$R[36]={status:"ok",resetInSec:18000,usagePercent:0},weeklyUsage:$R[37]={status:"ok",resetInSec:388800,usagePercent:3.7},monthlyUsage:$R[38]={status:"ok",resetInSec:2086526,usagePercent:65.8}</script>
+    </body></html>
+    """
+
+    func testParseGoPageModernLayoutAllThreeWindows() throws {
+        let result = OpenCodeUsageParser.parseGoPage(modernGoFixture)
+        XCTAssertEqual(result.windows.count, 3)
+
+        let rolling = try XCTUnwrap(result.windows[.rolling])
+        XCTAssertEqual(rolling.percent, 0)
+        XCTAssertEqual(rolling.resetInSec, 18000)
+        XCTAssertFalse(rolling.isRateLimited)
+
+        let weekly = try XCTUnwrap(result.windows[.weekly])
+        XCTAssertEqual(weekly.percent, 3.7, accuracy: 0.001)
+        XCTAssertEqual(weekly.resetInSec, 388800)
+
+        let monthly = try XCTUnwrap(result.windows[.monthly])
+        // 小数不再失配错抓（旧正则会跳过 65.8 抓到年份 2026 → 钳位成 100%）。
+        XCTAssertEqual(monthly.percent, 65.8, accuracy: 0.001)
+        XCTAssertFalse(monthly.isRateLimited)
+        XCTAssertEqual(monthly.resetInSec, 2086526)
+    }
+
+    func testParseGoPageInlineStateWinsOverDisplayLayer() {
+        // 展示层是过期的整数文本，内联状态的小数与精确秒数必须胜出。
+        let html = """
+        <div data-slot="usage-item">
+          <span data-slot="usage-label">5-hour Usage</span>
+          <div data-slot="usage-value"><!--$-->1%<!--/-->
+            <span data-slot="reset-time">Resets in<!--/--> 45 minutes<!--/--></span>
+          </div>
+        </div>
+        <script>rollingUsage:$R[4]={status:"ok",resetInSec:7200,usagePercent:12.5}</script>
+        """
+        let result = OpenCodeUsageParser.parseGoPage(html)
+        let rolling = try! XCTUnwrap(result.windows[.rolling])
+        XCTAssertEqual(rolling.percent, 12.5, accuracy: 0.001)
+        XCTAssertEqual(rolling.resetInSec, 7200)
+    }
+
+    func testParseGoPageRecoversWindowFromInlineStateWhenLabelUnknown() {
+        // 标签再次改名也不丢窗口：内联状态对象不受展示层影响。
+        let html = #"<script>rollingUsage:$R[9]={status:"ok",resetInSec:7200,usagePercent:12.5}</script>"#
+        let result = OpenCodeUsageParser.parseGoPage(html)
+        XCTAssertEqual(result.windows[.rolling]?.percent ?? -1, 12.5, accuracy: 0.001)
+        XCTAssertEqual(result.windows[.rolling]?.resetInSec, 7200)
+    }
+
+    func testParseGoPageDisplayLayerFallbacks() {
+        // 无内联状态时：aria-valuenow 优先，注释包裹小数文本次之，短语兜底 reset。
+        let ariaOnly = """
+        <div data-slot="usage-item">
+          <span data-slot="usage-label">Monthly Usage</span>
+          <div role="progressbar" aria-valuenow="65.8"></div>
+          <span data-slot="reset-time">Resets in<!--/--> 25 days<!--/--></span>
+        </div>
+        """
+        let fromAria = OpenCodeUsageParser.parseGoPage(ariaOnly)
+        XCTAssertEqual(fromAria.windows[.monthly]?.percent ?? -1, 65.8, accuracy: 0.001)
+        XCTAssertEqual(fromAria.windows[.monthly]?.resetInSec, 2160000)
+
+        let commentOnly = """
+        <div data-slot="usage-item">
+          <span data-slot="usage-label">Weekly usage</span>
+          <div data-slot="usage-value"><!--$-->3.7%<!--/-->
+            <span data-slot="reset-time">Resets in<!--/--> 90 minutes<!--/--></span>
+          </div>
+        </div>
+        """
+        let fromComment = OpenCodeUsageParser.parseGoPage(commentOnly)
+        XCTAssertEqual(fromComment.windows[.weekly]?.percent ?? -1, 3.7, accuracy: 0.001)
+        XCTAssertEqual(fromComment.windows[.weekly]?.resetInSec, 5400)
+    }
+
+    func testInlineUsageStateParsesAllFields() {
+        let state = try! XCTUnwrap(OpenCodeUsageParser.inlineUsageState(modernGoFixture, key: "monthlyUsage"))
+        XCTAssertEqual(state.status, "ok")
+        XCTAssertEqual(state.resetInSec, 2086526)
+        XCTAssertEqual(state.usagePercent ?? -1, 65.8, accuracy: 0.001)
+        XCTAssertNil(OpenCodeUsageParser.inlineUsageState(modernGoFixture, key: "dailyUsage"))
+    }
+
+    func testPercentTextDropsTrailingZero() {
+        XCTAssertEqual(UsageWindow(percent: 65.8, resetInSec: 10).percentText, "65.8")
+        XCTAssertEqual(UsageWindow(percent: 42, resetInSec: 10).percentText, "42")
+        XCTAssertEqual(UsageWindow(percent: 100, resetInSec: 10).percentText, "100")
+    }
+
     // MARK: Zen workspace 页解析
 
     private let zenFixture = """

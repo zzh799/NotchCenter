@@ -29,12 +29,14 @@ enum UsageWindowKind: String, Codable, Sendable, CaseIterable {
 
 /// 一个用量窗口：已用百分比 + 距重置秒数。
 struct UsageWindow: Codable, Equatable, Sendable {
-    /// 0–100 整数百分比。
-    let percent: Int
+    /// 0–100 百分比（页面已出现小数，如 65.8）。
+    let percent: Double
     /// 距窗口重置的秒数。
     let resetInSec: Int
     /// 窗口耗尽即被限流。
     var isRateLimited: Bool { percent >= 100 }
+    /// 展示文本：整数不带 ".0"，小数原样保留（42 → "42"、65.8 → "65.8"）。
+    var percentText: String { String(format: "%g", percent) }
 }
 
 /// 从 workspace 页面解析出的 Zen 账户状态。字段缺失时为 nil（新账户 / 无订阅）。

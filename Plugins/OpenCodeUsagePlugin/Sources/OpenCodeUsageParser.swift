@@ -4,8 +4,8 @@ import Foundation
 //
 // opencode.ai 没有公开的 Zen/Go 余额 API，唯一的 cookie 鉴权读取方式是抓取
 // dashboard 的 SolidStart SSR HTML：用量与余额都在 `data-slot` 块里，带
-// `<!--$-->` 注释标记。优先解析稳定的 HTML 展示层，再从内联的
-// `$R[<n>]={...}` 流式状态对象里取精确的 resetInSec。
+// `<!--$-->` 注释标记。主数据源是内联 `$R[<n>]={status,resetInSec,usagePercent}`
+// 流式状态对象（字段名稳定，不受前端标签改名影响）；HTML 展示层只作回退。
 enum OpenCodeUsageParser {
     // MARK: Go 用量页（/workspace/<id>/go）
 
@@ -13,15 +13,30 @@ enum OpenCodeUsageParser {
         var windows: [UsageWindowKind: UsageWindow] = [:]
     }
 
-    /// 解析 Go 用量页：三个窗口的 label / percent / reset 文本，
-    /// resetInSec 优先用内联状态对象里的精确值。
+    /// 内联 `$R[<n>]={status,resetInSec,usagePercent}` 状态对象的解析结果。
+    struct InlineUsageState: Equatable, Sendable {
+        var status: String?
+        var resetInSec: Int?
+        var usagePercent: Double?
+    }
+
+    /// 解析 Go 用量页：主数据源是内联 `$R[<n>]={status,resetInSec,usagePercent}`
+    /// 流式状态对象——它的字段名稳定，不受前端标签改名影响；HTML 展示层
+    /// （aria-valuenow / 注释包裹文本）只在状态对象缺失时兜底。
     static func parseGoPage(_ html: String) -> GoPageResult {
         var result = GoPageResult()
-        let starts = allMatchLocations("<div[^>]*data-slot=\"usage-item\"", in: html)
-        let inlineReset = Dictionary(uniqueKeysWithValues: UsageWindowKind.allCases.map { kind in
-            (kind, inlineResetInSec(html, key: kind.inlineStateKey))
-        })
 
+        var inline: [UsageWindowKind: InlineUsageState] = [:]
+        for kind in UsageWindowKind.allCases {
+            if let state = inlineUsageState(html, key: kind.inlineStateKey),
+               state.usagePercent != nil || state.resetInSec != nil {
+                inline[kind] = state
+            }
+        }
+
+        // HTML 展示层回退：label → 窗口身份、百分比、reset 短语。
+        var display: [UsageWindowKind: (percent: Double?, resetPhraseSec: Int)] = [:]
+        let starts = allMatchLocations("<div[^>]*data-slot=\"usage-item\"", in: html)
         for (index, start) in starts.enumerated() {
             let end = index + 1 < starts.count ? starts[index + 1] : (html as NSString).length
             guard let blockRange = Range(NSRange(location: start, length: end - start), in: html) else {
@@ -29,16 +44,18 @@ enum OpenCodeUsageParser {
             }
             let block = String(html[blockRange])
 
-            // label：<span data-slot="usage-label" ...>Rolling usage</span>
+            // label：<span data-slot="usage-label" ...>5-hour Usage</span>
             guard let label = groups("data-slot=\"usage-label\"[^>]*>([^<]+)<", in: block)?.last,
-                  let kind = labelToKind(label),
-                  // value：<!--$-->42<!--/-->
-                  let percentText = groups(
-                      "data-slot=\"usage-value\"[\\s\\S]*?<!--\\$-->\\s*(\\d+)\\s*<!--/-->",
-                      in: block
-                  )?.last,
-                  let percent = Int(percentText)
+                  let kind = labelToKind(label)
             else { continue }
+
+            // 百分比：aria-valuenow 稳定且天然支持小数；注释包裹文本作回退。
+            // （旧正则 (\d+) 遇 65.8 会失配，再懒匹配错抓页面上其他整数如年份。）
+            let percent = groups("aria-valuenow=\"([0-9.]+)\"", in: block)?.last.flatMap(Double.init)
+                ?? groups(
+                    "data-slot=\"usage-value\"[\\s\\S]*?<!--\\$-->\\s*([0-9]+(?:\\.[0-9]+)?)\\s*%?\\s*<!--/-->",
+                    in: block
+                )?.last.flatMap(Double.init)
 
             // reset 文本：Resets in<!--/--> 2 hours 29 minutes<!--/-->
             let resetsIn = groups(
@@ -46,30 +63,55 @@ enum OpenCodeUsageParser {
                 in: block
             ).map { stripHTMLComments($0.last ?? "") } ?? ""
 
+            display[kind] = (percent, parseDurationToSec(resetsIn))
+        }
+
+        // 合并：内联状态优先，展示层补缺；标签认不出的窗口也能被内联状态单独救回。
+        for kind in UsageWindowKind.allCases {
+            let state = inline[kind]
+            let fallback = display[kind]
+            guard let percent = state?.usagePercent ?? fallback?.percent else { continue }
             result.windows[kind] = UsageWindow(
                 percent: clampPercent(percent),
                 // 内联状态的精确秒数优先，人类可读短语兜底。
-                resetInSec: (inlineReset[kind] ?? nil) ?? parseDurationToSec(resetsIn)
+                resetInSec: state?.resetInSec ?? fallback?.resetPhraseSec ?? 0
             )
         }
         return result
     }
 
-    /// 把 usage-item 的 label 映射回窗口身份；无法识别返回 nil。
+    /// 把 usage-item 的 label 映射回窗口身份。兼容旧前缀（Rolling usage）
+    /// 与改版后标签（"5-hour Usage"，带 ` Usage` 后缀）；无法识别返回 nil。
     private static func labelToKind(_ label: String) -> UsageWindowKind? {
-        let lower = label.lowercased()
-        if lower.hasPrefix("rolling") { return .rolling }
-        if lower.hasPrefix("weekly") { return .weekly }
-        if lower.hasPrefix("monthly") { return .monthly }
+        let normalized = label
+            .lowercased()
+            .replacingOccurrences(of: "usage", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.hasPrefix("rolling") || normalized.contains("5-hour") || normalized.contains("5 hour") {
+            return .rolling
+        }
+        if normalized.hasPrefix("weekly") { return .weekly }
+        if normalized.hasPrefix("monthly") { return .monthly }
         return nil
     }
 
-    /// 从内联 `<key>:$R[<n>]={...}` 状态对象里读精确的 resetInSec。
+    /// 从内联 `<key>:$R[<n>]={...}` 状态对象里读精确的 status / resetInSec / usagePercent
+    /// （容忍一层嵌套对象）。
+    static func inlineUsageState(_ html: String, key: String) -> InlineUsageState? {
+        guard let state = groups(
+            key + ":\\$R\\[\\d+\\]=(\\{(?:[^{}]|\\{[^{}]*\\})*\\})",
+            in: html
+        )?.last else { return nil }
+        return InlineUsageState(
+            status: stringMatch(state, key: "status"),
+            resetInSec: groups("resetInSec:(\\d+)", in: state)?.last.flatMap(Int.init),
+            usagePercent: numMatch(state, key: "usagePercent")
+        )
+    }
+
+    /// 兼容入口：仅取内联状态里的精确 resetInSec。
     static func inlineResetInSec(_ html: String, key: String) -> Int? {
-        guard let state = groups(key + ":\\$R\\[\\d+\\]=\\{([^{}]*)\\}", in: html)?.last,
-              let seconds = groups("resetInSec:(\\d+)", in: state)?.last
-        else { return nil }
-        return Int(seconds)
+        inlineUsageState(html, key: key)?.resetInSec
     }
 
     // MARK: Zen workspace 页（/workspace/<id>）
@@ -134,7 +176,7 @@ enum OpenCodeUsageParser {
         return total
     }
 
-    static func clampPercent(_ value: Int) -> Int {
+    static func clampPercent(_ value: Double) -> Double {
         max(0, min(100, value))
     }
 

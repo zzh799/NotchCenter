@@ -205,7 +205,7 @@ struct UsageRingsView: View {
                 .stroke(Color.white.opacity(0.10), lineWidth: lineWidth)
             if let window {
                 Circle()
-                    .trim(from: 0, to: max(0.02, Double(window.percent) / 100))
+                    .trim(from: 0, to: max(0.02, window.percent / 100))
                     .stroke(Self.ringColor(percent: window.percent), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
@@ -214,7 +214,7 @@ struct UsageRingsView: View {
     }
 
     /// 语义色只用于用量状态：< 70 绿、< 100 黄、耗尽红。
-    static func ringColor(percent: Int) -> Color {
+    static func ringColor(percent: Double) -> Color {
         switch percent {
         case ..<70: return Color.green.opacity(0.85)
         case ..<100: return Color.yellow.opacity(0.9)
