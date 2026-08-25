@@ -6,6 +6,10 @@
 
 /* 设置窗口 */
 "settings.window.title" = "NotchCenter Settings";
+"settings.section.general" = "General";
+"settings.launchAtLogin" = "Launch at Login";
+"settings.launchAtLogin.error" = "Failed to update login item: %@";
+"settings.launchAtLogin.devHint" = "Launch at Login requires the packaged app.";
 "settings.section.interaction" = "Interaction";
 "settings.triggerMode" = "Trigger Mode";
 "trigger.hover" = "Hover to Expand";

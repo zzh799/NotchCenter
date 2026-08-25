@@ -6,6 +6,10 @@
 
 /* 设置窗口 */
 "settings.window.title" = "NotchCenter 设置";
+"settings.section.general" = "通用";
+"settings.launchAtLogin" = "登录时启动";
+"settings.launchAtLogin.error" = "更新登录项失败：%@";
+"settings.launchAtLogin.devHint" = "开机自启需要打包后的 App。";
 "settings.section.interaction" = "交互";
 "settings.triggerMode" = "触发方式";
 "trigger.hover" = "悬停展开";

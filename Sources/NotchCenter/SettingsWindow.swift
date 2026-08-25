@@ -67,6 +67,17 @@ struct SettingsView: View {
                 }
             }
 
+            Section(L("settings.section.general")) {
+                Toggle(isOn: launchAtLoginBinding) {
+                    Text(L("settings.launchAtLogin"))
+                }
+                if let hint = launchAtLoginHint {
+                    Text(hint)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section(L("settings.section.plugins")) {
                 Button(L("settings.pluginManager")) {
                     controller.showPluginManager()
@@ -94,7 +105,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 340)
+        .frame(width: 420, height: 400)
         .environment(\.colorScheme, .dark)
     }
 
@@ -106,5 +117,38 @@ struct SettingsView: View {
                 controller.refreshAfterLayoutChange()
             }
         )
+    }
+
+    // MARK: 开机自启（SMAppService）
+
+    @State private var launchAtLoginEnabled = LaunchAtLogin.isEnabled
+    @State private var launchAtLoginError: String?
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { launchAtLoginEnabled },
+            set: { newValue in
+                do {
+                    try LaunchAtLogin.setEnabled(newValue)
+                    launchAtLoginEnabled = LaunchAtLogin.isEnabled
+                    launchAtLoginError = nil
+                } catch {
+                    // 注册失败后回读真实状态，避免开关与系统不一致。
+                    launchAtLoginEnabled = LaunchAtLogin.isEnabled
+                    launchAtLoginError = error.localizedDescription
+                }
+            }
+        )
+    }
+
+    /// 开发态裸二进制无法注册登录项；或注册出错时给出提示。
+    private var launchAtLoginHint: String? {
+        if let launchAtLoginError {
+            return LF("settings.launchAtLogin.error", launchAtLoginError)
+        }
+        if Bundle.main.bundleURL.pathExtension != "app" {
+            return L("settings.launchAtLogin.devHint")
+        }
+        return nil
     }
 }
