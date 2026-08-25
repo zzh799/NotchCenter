@@ -5,6 +5,7 @@
 # 用法:
 #   build.sh dev [debug|release]   全量构建，把插件 dylib 组装成 .bundle 放到
 #                                  .build/<config>/PlugIns/（swift run 直接发现加载）
+#   build.sh run [debug|release]   等价于 dev 后立即 swift run NotchCenter 启动应用
 #   build.sh package [-i|--install] [-g|--github]
 #                                  发布打包：通用架构 .app + 内置插件 bundle + 共享框架
 #                                  + zip + sha256（可选公证），产物在 dist.noindex/；
@@ -37,7 +38,7 @@ API_RANGE_XML="${API_RANGE//</&lt;}"   # XML 转义（解析后仍是 1.0..<2.0�
 die() { echo "错误：$*" >&2; exit 1; }
 
 usage() {
-  sed -n '4,13p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '4,14p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # ---- 插件自动发现 ------------------------------------------------------------
@@ -223,6 +224,13 @@ cmd_dev() {
     echo "Prepared $plugins_out/${PLUGIN_NAMES[$i]}.bundle"
   done
   echo "Dev plugin bundles ready at $plugins_out"
+}
+
+cmd_run() {
+  # 先走完整的 dev 流程（构建 + 组装插件 bundle），再启动宿主；
+  # 插件 bundle 必须先就位，否则 swift run 起来的应用加载不到任何插件。
+  cmd_dev "$@"
+  exec swift run NotchCenter
 }
 
 cmd_package() {
@@ -457,6 +465,7 @@ main() {
   shift
   case "$cmd" in
     dev)     cmd_dev "$@" ;;
+    run)     cmd_run "$@" ;;
     package) cmd_package "$@" ;;
     clean)   cmd_clean ;;
     help|-h|--help) usage ;;
