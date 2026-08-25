@@ -133,7 +133,7 @@ let packageDependencies: [Package.Dependency] = [
     // 仅 NotesPlugin 使用（Markdown 编辑器）。核心不再依赖任何业务组件。
     .package(path: "Vendor/swift-markdown-engine"),
     // launchd 服务管理基础库：仅 DshPlugin / CalibrePlugin 使用（纯 shell 封装，不依赖 Kit）。
-    .package(path: "LaunchdControlKit")
+    .package(path: "Sources/LaunchdControlKit")
 ]
 
 // 宿主主 App：刘海交互、窗口管理、插件生命周期、布局引擎、插件管理窗口

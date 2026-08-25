@@ -68,7 +68,8 @@ NotchCenter/
 │   ├── BlockCard.swift           # 块卡片壳 BlockCard（统一底色/发丝描边/可选悬停，纯视觉零手势）+ .blockPopoverTrigger（浮窗触发器：点击/长按均回调锚点 frame，长按 0.2s、按压增亮、长按抑制点击）
 │   ├── HostController.swift      # expand/collapse/编辑模式/刷新紧凑区
 │   ├── StateStore.swift          # 插件隔离键值存储（PluginData/<pluginID>/，原子写）
-│   └── APIVersion.swift          # SemanticVersion / APIVersionRange / currentVersion（文档 §9.1）
+│   ├── APIVersion.swift          # SemanticVersion / APIVersionRange / currentVersion（文档 §9.1）
+│   └── LaunchdControlKit/        # launchd 管理基础库（独立本地包，仅服务控制类插件使用）
 ├── Plugins/                      # 官方插件源码（独立 bundle target，动态库）
 │   ├── NotesPlugin/              # 笔记（MarkdownEngine 编辑器，StateStore 持久化）
 │   ├── ScratchpadPlugin/         # 文件暂存（只保存路径引用）
@@ -76,7 +77,6 @@ NotchCenter/
 │   ├── DshPlugin/                # dsh-web 服务控制卡（launchd 服务控制插件，见 docs/服务控制类插件开发指南.md）
 │   ├── CalibrePlugin/            # calibre-server 服务控制卡（同上）
 │   └── OpenCodeUsagePlugin/      # OpenCode 用量卡（抓取 opencode.ai SSR 页，同心环用量图 + Zen 余额）
-├── LaunchdControlKit/            # launchd 管理基础库（独立本地包，仅服务控制类插件使用）
 ├── Vendor/swift-markdown-engine/ # vendored 依赖，仅 NotesPlugin 使用
 ├── Scripts/build.sh              # 统一构建脚本：dev（组装插件 bundle）/ package（发布 .app）/ clean
 ├── Resources/                    # AppIcon.png、Info.plist（打包态）、Info.dev.plist（开发态嵌入二进制的最小声明，见 Package.swift linkerSettings）
