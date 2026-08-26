@@ -11,7 +11,9 @@
 "dsh.conflict.popover" = "%d instances conflict";
 "dsh.conflict.block" = "⚠️ %d instances listening";
 "dsh.state.stopped" = "Stopped";
+"dsh.state.running" = "Running";
 "dsh.state.runningPort" = "Running · port %@";
+"dsh.subtitle.port" = "Port %@";
 
 /* 动作进行中的提示文案（busy 期间显示，成功后也会短暂驻留） */
 "dsh.action.starting" = "Starting…";

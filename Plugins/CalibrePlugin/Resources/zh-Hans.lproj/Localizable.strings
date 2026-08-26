@@ -3,8 +3,10 @@
 /* 块显示名（添加目录；单组件目录下独立成立，不再叠加插件名） */
 "calibre.block.name" = "Calibre 服务";
 
-/* 抽屉块副标题 */
+/* 抽屉块副标题（状态与端口分两行显示） */
 "calibre.subtitle.running" = "运行中 · 端口 %@";
+"calibre.subtitle.runningShort" = "运行中";
+"calibre.subtitle.port" = "端口 %@";
 "calibre.subtitle.unmanaged" = "⚠️ 有未受管的进程";
 "calibre.subtitle.portConflict" = "⚠️ %d 个实例在监听";
 

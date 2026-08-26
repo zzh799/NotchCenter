@@ -24,10 +24,16 @@ struct DshServiceBlockView: View {
                         .foregroundStyle(Color.white.opacity(0.92))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                    Text(subtitle)
+                    Text(statusText)
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.58))
                         .lineLimit(1)
+                    if let portText {
+                        Text(portText)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.58))
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 0)
                 Toggle("", isOn: Binding(
@@ -75,16 +81,23 @@ struct DshServiceBlockView: View {
         }
     }
 
-    private var subtitle: String {
+    private var statusText: String {
         // busy 时直接把 Starting… / Stopping… 显示在状态位上，不单独占一行。
         if monitor.isBusy { return busyText }
         switch monitor.status.state {
-        case .managed: return LF("dsh.state.runningPort", monitor.status.port.map(String.init) ?? "—")
+        case .managed: return L("dsh.state.running")
         case .loadedNotRunning: return L("dsh.state.loadedNotRunning")
         case .unmanagedExternal: return L("dsh.state.unmanagedShort")
         case .portConflict(let n): return LF("dsh.conflict.block", n)
         case .stopped: return L("dsh.state.stopped")
         }
+    }
+
+    /// 端口仅在「运行中（managed）」且探测到端口时展示，单独成行，与状态位分离。
+    private var portText: String? {
+        guard case .managed = monitor.status.state,
+              let port = monitor.status.port else { return nil }
+        return LF("dsh.subtitle.port", String(port))
     }
 
     private var busyText: String {
