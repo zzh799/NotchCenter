@@ -42,11 +42,17 @@ public struct LaunchdControl: Sendable {
         return result.status == 0
     }
 
-    /// 重启：先 bootout 再 bootstrap。返回 bootstrap 是否成功。
+    /// 重启：优先 `launchctl kickstart -k`（launchd 内部 kill + respawn，
+    /// 单命令无 bootout→bootstrap 的异步竞态）。kickstart 要求任务已加载，
+    /// 未加载时回退到 bootstrap 直接启动。返回是否成功。
     @discardableResult
     public func restart() -> Bool {
-        stop()
-        return start()
+        guard probe.launchdInfo().isLoaded else { return start() }
+        let result = Shell.run(
+            ExecutablePath.launchctl,
+            ["kickstart", "-k", "\(launchdGUIDomain())/\(target.label)"]
+        )
+        return result.status == 0
     }
 
     /// 读取开机自启状态；plist 不存在或字段缺失返回 nil。

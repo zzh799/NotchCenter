@@ -24,6 +24,7 @@
 /* 动作失败提示 */
 "dsh.error.createPlist" = "Failed to create plist at %@";
 "dsh.error.bootstrap" = "launchctl bootstrap failed.";
+"dsh.error.restart" = "launchctl restart failed.";
 
 /* 浮窗行标签与控件（PID / Port 为通用缩写，保留英文） */
 "dsh.label.status" = "Status";

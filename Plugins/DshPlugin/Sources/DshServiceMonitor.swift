@@ -103,8 +103,7 @@ final class DshServiceMonitor: ObservableObject {
     func restart() {
         guard !isBusy else { return }
         runAction(L("dsh.action.restarting")) { control in
-            _ = control.restart()
-            return nil
+            return control.restart() ? nil : L("dsh.error.restart")
         }
     }
 
