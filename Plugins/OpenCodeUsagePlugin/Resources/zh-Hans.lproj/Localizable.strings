@@ -22,6 +22,10 @@
 "style.meters" = "余量表";
 "style.clock" = "峰谷时钟";
 "settings.phaseCountdown" = "显示峰谷倒计时";
+"settings.footerItem" = "底部信息";
+"footer.none" = "无";
+"footer.zenBalance" = "Zen 余额";
+"footer.phaseCountdown" = "峰谷倒计时";
 
 /* 用量块视图 */
 "block.displayName" = "OpenCode 用量";
@@ -34,6 +38,10 @@
 /* 用量窗口标签（块内图例与浮窗行共用；5h 为技术缩写不译） */
 "windows.weekly" = "周";
 "windows.monthly" = "月";
+
+/* 抽屉块量表行的超短标签（浮窗用上面的完整词） */
+"windows.block.weekly" = "周";
+"windows.block.monthly" = "月";
 
 /* 长按浮窗 */
 "popover.title" = "OpenCode 用量";

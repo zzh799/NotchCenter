@@ -25,29 +25,63 @@ enum OpenCodeUsageDisplayStyle: String, Codable, Sendable, CaseIterable {
     }
 }
 
+/// 块底部的附加信息行（每个实例选一项）。
+enum OpenCodeUsageFooterItem: String, Codable, Sendable, CaseIterable {
+    /// 不显示任何附加行。
+    case none
+    /// Zen 余额（需要快照里有数据，缺失时不占位）。
+    case zenBalance
+    /// 当前峰/谷阶段的剩余倒计时。
+    case phaseCountdown
+
+    var localizationKey: String {
+        switch self {
+        case .none: return "footer.none"
+        case .zenBalance: return "footer.zenBalance"
+        case .phaseCountdown: return "footer.phaseCountdown"
+        }
+    }
+}
+
 /// 单个放置实例的持久化外观配置。解码逐字段容错：旧文件缺字段、未来
 /// 新增字段都不至于整体失效（缺失处回退默认值）。
 struct OpenCodeUsageAppearance: Codable, Equatable, Sendable {
     var style: OpenCodeUsageDisplayStyle = .rings
-    /// 是否显示峰/谷阶段剩余倒计时。
-    var showsPhaseCountdown: Bool = true
+    /// 块底部附加信息：无 / Zen 余额 / 峰谷倒计时。
+    var footer: OpenCodeUsageFooterItem = .phaseCountdown
 
     static let `default` = OpenCodeUsageAppearance()
 
     enum CodingKeys: String, CodingKey {
         case style
-        case showsPhaseCountdown
+        case footer
+        /// 旧版布尔开关（showsPhaseCountdown），仅用于读取迁移。
+        case legacyShowsPhaseCountdown = "showsPhaseCountdown"
     }
 
-    init(style: OpenCodeUsageDisplayStyle = .rings, showsPhaseCountdown: Bool = true) {
+    init(style: OpenCodeUsageDisplayStyle = .rings, footer: OpenCodeUsageFooterItem = .phaseCountdown) {
         self.style = style
-        self.showsPhaseCountdown = showsPhaseCountdown
+        self.footer = footer
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         style = try container.decodeIfPresent(OpenCodeUsageDisplayStyle.self, forKey: .style) ?? .rings
-        showsPhaseCountdown = try container.decodeIfPresent(Bool.self, forKey: .showsPhaseCountdown) ?? true
+        if let footer = try container.decodeIfPresent(OpenCodeUsageFooterItem.self, forKey: .footer) {
+            self.footer = footer
+        } else if let legacy = try container.decodeIfPresent(Bool.self, forKey: .legacyShowsPhaseCountdown) {
+            // 旧配置迁移：true → 峰谷倒计时，false → 无。
+            self.footer = legacy ? .phaseCountdown : .none
+        } else {
+            self.footer = .phaseCountdown
+        }
+    }
+
+    /// 只写新字段；legacyShowsPhaseCountdown 键仅用于读取迁移，不再落盘。
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(style, forKey: .style)
+        try container.encode(footer, forKey: .footer)
     }
 }
 

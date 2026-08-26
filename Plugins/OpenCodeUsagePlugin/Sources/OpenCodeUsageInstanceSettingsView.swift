@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - 放置实例设置（块齿轮 → SettingPopover，每实例单独设置）
 //
-// 上半部分是该实例私有的外观设置（显示样式 / 峰谷倒计时开关），写入该
+// 上半部分是该实例私有的外观设置（显示样式 / 底部信息行），写入该
 // 实例的 placementStore；下半部分是插件级共享账户配置（cookie / workspace /
 // baseURL），与插件管理窗口里的 OpenCodeUsageSettingsView 完全同源。
 
@@ -35,13 +35,13 @@ struct OpenCodeUsageInstanceSettingsView: View {
             .pickerStyle(.segmented)
             .controlSize(.small)
 
-            Toggle(isOn: countdownBinding) {
-                Text(L("settings.phaseCountdown"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.white.opacity(0.66))
+            Picker(L("settings.footerItem"), selection: footerBinding) {
+                ForEach(OpenCodeUsageFooterItem.allCases, id: \.self) { item in
+                    Text(L(item.localizationKey)).tag(item)
+                }
             }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
+            .pickerStyle(.segmented)
+            .controlSize(.small)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -57,12 +57,12 @@ struct OpenCodeUsageInstanceSettingsView: View {
         )
     }
 
-    private var countdownBinding: Binding<Bool> {
+    private var footerBinding: Binding<OpenCodeUsageFooterItem> {
         Binding(
-            get: { instance.appearance.showsPhaseCountdown },
+            get: { instance.appearance.footer },
             set: { newValue in
                 var appearance = instance.appearance
-                appearance.showsPhaseCountdown = newValue
+                appearance.footer = newValue
                 instance.update(appearance)
             }
         )

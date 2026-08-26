@@ -17,6 +17,16 @@ enum UsageWindowKind: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    /// 抽屉块量表行的超短标签：单字符级，把宽度让给进度条；
+    /// 长按浮窗空间充裕，继续用 shortLabel。
+    var blockLabel: String {
+        switch self {
+        case .rolling: return "5h"
+        case .weekly: return L("windows.block.weekly")
+        case .monthly: return L("windows.block.monthly")
+        }
+    }
+
     /// 内联 `$R[<n>]` 状态对象里对应的字段名（SSR 解析用）。
     var inlineStateKey: String {
         switch self {

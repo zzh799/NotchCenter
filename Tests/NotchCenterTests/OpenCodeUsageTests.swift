@@ -330,8 +330,8 @@ final class OpenCodeUsageAppearanceTests: XCTestCase {
     }
 
     func testDefaultAppearanceMatchesLegacyLook() {
-        // 缺省 = 余量环 + 显示倒计时：老布局零迁移，视觉与单实例时代一致。
-        XCTAssertEqual(OpenCodeUsageAppearance.default, .init(style: .rings, showsPhaseCountdown: true))
+        // 缺省 = 余量环 + 峰谷倒计时：老布局零迁移，视觉与单实例时代一致。
+        XCTAssertEqual(OpenCodeUsageAppearance.default, .init(style: .rings, footer: .phaseCountdown))
     }
 
     func testDecodingToleratesMissingFieldsAndGarbage() throws {
@@ -343,11 +343,36 @@ final class OpenCodeUsageAppearanceTests: XCTestCase {
             from: Data(#"{"style":"peakClock"}"#.utf8)
         )
         XCTAssertEqual(partial.style, .peakClock)
-        XCTAssertTrue(partial.showsPhaseCountdown)
+        XCTAssertEqual(partial.footer, .phaseCountdown)
 
         // 未知样式 / 损坏文件 → load 回退默认值（自愈，不崩溃）。
         XCTAssertThrowsError(try JSONDecoder().decode(OpenCodeUsageAppearance.self, from: Data(#"{"style":"hologram"}"#.utf8)))
         XCTAssertEqual(OpenCodeUsageAppearanceLogic.load(from: nil), .default)
+    }
+
+    func testLegacyBooleanCountdownMigratesToFooter() throws {
+        // 旧版 showsPhaseCountdown 布尔开关 → 新 footer 枚举的读取迁移。
+        let legacyOn = try JSONDecoder().decode(
+            OpenCodeUsageAppearance.self,
+            from: Data(#"{"showsPhaseCountdown":true}"#.utf8)
+        )
+        XCTAssertEqual(legacyOn.footer, .phaseCountdown)
+
+        let legacyOff = try JSONDecoder().decode(
+            OpenCodeUsageAppearance.self,
+            from: Data(#"{"showsPhaseCountdown":false}"#.utf8)
+        )
+        XCTAssertEqual(legacyOff.footer, .none)
+
+        // 新字段优先于旧字段。
+        let both = try JSONDecoder().decode(
+            OpenCodeUsageAppearance.self,
+            from: Data(#"{"footer":"zenBalance","showsPhaseCountdown":false}"#.utf8)
+        )
+        XCTAssertEqual(both.footer, .zenBalance)
+
+        // 未知枚举值同样自愈回默认。
+        XCTAssertThrowsError(try JSONDecoder().decode(OpenCodeUsageAppearance.self, from: Data(#"{"footer":"stockTicker"}"#.utf8)))
     }
 
     func testSaveLoadRoundTripThroughPlacementScope() throws {
@@ -366,7 +391,7 @@ final class OpenCodeUsageAppearanceTests: XCTestCase {
 
         var appearance = OpenCodeUsageAppearance()
         appearance.style = .meters
-        appearance.showsPhaseCountdown = false
+        appearance.footer = .zenBalance
         OpenCodeUsageAppearanceLogic.save(appearance, to: scope)
         XCTAssertEqual(OpenCodeUsageAppearanceLogic.load(from: scope), appearance)
 

@@ -22,6 +22,10 @@
 "style.meters" = "Meters";
 "style.clock" = "Peak clock";
 "settings.phaseCountdown" = "Show peak/off-peak countdown";
+"settings.footerItem" = "Bottom info";
+"footer.none" = "None";
+"footer.zenBalance" = "Zen balance";
+"footer.phaseCountdown" = "Countdown";
 
 /* 用量块视图 */
 "block.displayName" = "OpenCode Usage";
@@ -34,6 +38,10 @@
 /* 用量窗口标签（块内图例与浮窗行共用；5h 为技术缩写不译） */
 "windows.weekly" = "Week";
 "windows.monthly" = "Month";
+
+/* 抽屉块量表行的超短标签（浮窗用上面的完整词） */
+"windows.block.weekly" = "W";
+"windows.block.monthly" = "M";
 
 /* 长按浮窗 */
 "popover.title" = "OpenCode Usage";

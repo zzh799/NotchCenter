@@ -68,7 +68,14 @@ struct OpenCodeUsageBlockView: View {
             case .peakClock:
                 peakClockContent
             }
-            if instance.appearance.showsPhaseCountdown {
+            switch instance.appearance.footer {
+            case .none:
+                EmptyView()
+            case .zenBalance:
+                if let balance = snapshot.zen?.balance {
+                    balanceRow(balance)
+                }
+            case .phaseCountdown:
                 phaseRemainingView
             }
         }
@@ -76,16 +83,10 @@ struct OpenCodeUsageBlockView: View {
         .padding(10)
     }
 
-    /// 余量环：三环同心用量图（medium 跨度额外带 Zen 余额）。
+    /// 余量环：三环同心用量图。
     private func ringsContent(_ snapshot: UsageSnapshot) -> some View {
-        VStack(spacing: 8) {
-            UsageRingsView(windows: snapshot.windows, outerDiameter: 56)
-                .frame(width: 60)
-
-            if let balance = snapshot.zen?.balance {
-                balanceRow(balance)
-            }
-        }
+        UsageRingsView(windows: snapshot.windows, outerDiameter: 56)
+            .frame(width: 60)
     }
 
     /// 余量表：每个用量窗口一条横向量表（标签 + 胶囊进度条 + 百分比）。
@@ -107,44 +108,46 @@ struct OpenCodeUsageBlockView: View {
         }
     }
 
+    /// 底部信息行统一是“图标 + 数字”的紧凑样式，不带文字说明；
+    /// 鼠标悬停时经 .help 提示语义。
+
     private func balanceRow(_ balance: Double) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 3) {
-            Text(L("usage.zenBalance"))
-                .font(.system(size: 9, weight: .medium))
+        HStack(spacing: 3) {
+            Image(systemName: "circle.dollar")
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.58))
             Text(balance, format: .currency(code: "USD"))
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.white.opacity(0.92))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
+        .help(L("usage.zenBalance"))
     }
 
     /// 当前峰/谷阶段的剩余倒计时（每秒走字，语义同浮窗里的 PeakClock；
-    /// 由实例的 showsPhaseCountdown 控制显隐）。
+    /// 由实例的 footer == .phaseCountdown 控制显隐）。
     private var phaseRemainingView: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let peak = PeakClockLogic.isPeak(context.date)
             HStack(spacing: 4) {
-                Circle()
-                    .fill(peak ? Self.peakDotColor : Self.offPeakDotColor)
-                    .frame(width: 5, height: 5)
-                Text(peak ? L("clock.peakRemaining") : L("clock.offPeakRemaining"))
+                Image(systemName: peak ? "sun.max.fill" : "moon.fill")
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.58))
+                    .foregroundStyle(peak ? Self.peakIconColor : Self.offPeakIconColor)
                 Text(PeakClockLogic.formatCountdown(PeakClockLogic.phaseRemainingSeconds(context.date)))
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Color.white.opacity(0.85))
             }
+            .help(peak ? L("clock.peakRemaining") : L("clock.offPeakRemaining"))
         }
     }
 
-    private static let peakDotColor = Color(
+    private static let peakIconColor = Color(
         red: PeakClockLogic.peakColor.red,
         green: PeakClockLogic.peakColor.green,
         blue: PeakClockLogic.peakColor.blue
     )
-    private static let offPeakDotColor = Color(
+    private static let offPeakIconColor = Color(
         red: PeakClockLogic.offPeakColor.red,
         green: PeakClockLogic.offPeakColor.green,
         blue: PeakClockLogic.offPeakColor.blue
@@ -220,10 +223,10 @@ struct UsageMeterRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(kind.shortLabel)
+            Text(kind.blockLabel)
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.66))
-                .frame(width: 22, alignment: .leading)
+                .frame(width: 14, alignment: .leading)
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
