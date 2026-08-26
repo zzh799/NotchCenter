@@ -50,7 +50,9 @@ NotchCenter/
 │   ├── LayoutEngineValidation.swift # 布局引擎只读 extension：validate() 全量健康检查
 │   ├── PluginManagerWindow.swift    # 插件管理窗口（详情区展示各插件 bundle 内 README.md）
 │   ├── SettingsWindow.swift / ReadmeMarkdownView.swift  # 设置面板 + 轻量 Markdown 块解析渲染（ReadmeMarkdownTests）
-│   ├── SettingsStore.swift          # 触发模式（hover/click）
+│   ├── SettingsStore.swift          # 触发模式（hover/click）+ 开机自启 + 语言覆盖
+│   ├── LaunchAtLogin.swift          # 开机自启（SMAppService，幂等设置 + 状态同步）
+│   ├── Localization.swift           # 宿主 L()/LF() 本地化辅助（资源打进 NotchCenter_NotchCenter.bundle）
 │   ├── CorePaths.swift / FileDragDetection.swift / PanelDecoration.swift
 │   ├── ResizeProbeLog.swift         # 诊断日志开关（仅 DEBUG）：NOTCHCENTER_RESIZE_LOG 缩放管线事件
 │   ├── ResizeProbeWindow.swift      # 复刻管线对照页（仅 DEBUG）：ResizeProbeWindowController + ResizeProbeView（NOTCHCENTER_RESIZE_PROBE）
@@ -67,9 +69,12 @@ NotchCenter/
 │   ├── SettingPopover.swift      # 设置浮窗 SettingPopover：所有插件设置的统一浮层展示（标题行+分隔线+插件设置视图），窗口管线复用 BlockPopover
 │   ├── BlockCard.swift           # 块卡片壳 BlockCard（统一底色/发丝描边/可选悬停，纯视觉零手势）+ .blockPopoverTrigger（浮窗触发器：点击/长按均回调锚点 frame，长按 0.2s、按压增亮、长按抑制点击）
 │   ├── HostController.swift      # expand/collapse/编辑模式/刷新紧凑区
-│   ├── StateStore.swift          # 插件隔离键值存储（PluginData/<pluginID>/，原子写）
-│   ├── APIVersion.swift          # SemanticVersion / APIVersionRange / currentVersion（文档 §9.1）
-│   └── LaunchdControlKit/        # launchd 管理基础库（独立本地包，仅服务控制类插件使用）
+│   ├── StateStore.swift          # 插件隔离键值存储（PluginData/<pluginID>/ + placements/<placementID>/ 实例作用域，原子写）
+│   ├── L10n.swift                # 跨模块本地化基座 L10n.string（故意不提供 CVarArg 变参重载，见文件头注释）
+│   └── APIVersion.swift          # SemanticVersion / APIVersionRange / currentVersion（文档 §9.1）
+├── Sources/LaunchdControlKit/    # launchd 管理基础库（**独立本地包**，仅服务控制类插件使用；不在 NotchCenterKit 内）
+│   ├── Package.swift             # 产物：LaunchdControlKit 动态库
+│   └── LaunchdProbe.swift / LaunchdControl.swift / LaunchdPlist.swift / Shell.swift
 ├── Plugins/                      # 官方插件源码（独立 bundle target，动态库）
 │   ├── NotesPlugin/              # 笔记（MarkdownEngine 编辑器，StateStore 持久化）
 │   ├── ScratchpadPlugin/         # 文件暂存（只保存路径引用）
@@ -78,7 +83,7 @@ NotchCenter/
 │   ├── CalibrePlugin/            # calibre-server 服务控制卡（同上）
 │   └── OpenCodeUsagePlugin/      # OpenCode 用量卡（抓取 opencode.ai SSR 页，同心环用量图 + Zen 余额）
 ├── Vendor/swift-markdown-engine/ # vendored 依赖，仅 NotesPlugin 使用
-├── Scripts/build.sh              # 统一构建脚本：dev（组装插件 bundle）/ package（发布 .app）/ clean
+├── Scripts/build.sh              # 统一构建脚本：dev / run / package（发布 .app，可选 -i 安装、-g 发 GitHub Release）/ clean
 ├── Resources/                    # AppIcon.png、Info.plist（打包态）、Info.dev.plist（开发态嵌入二进制的最小声明，见 Package.swift linkerSettings）
 ├── docs/                         # 官网（GitHub Pages 读取 main 分支）
 └── .github/workflows/release.yml # CI：测试 → 构建 → 更新 GitHub Release
@@ -88,10 +93,8 @@ NotchCenter/
 
 ```bash
 # 本地运行（先准备插件 bundle）
-./Scripts/build.sh dev                  # 组装 .build/.../debug/PlugIns/*.bundle
-swift run NotchCenter
-
-
+./Scripts/build.sh dev [debug|release]  # 组装 .build/<config>/PlugIns/*.bundle
+./Scripts/build.sh run [debug|release]  # 等价于 dev 后立即启动 NotchCenter
 
 # 仅编译 / 跑测试
 swift build
@@ -100,6 +103,7 @@ swift test          # 或 swift test --filter <Name>
 # 构建发布版通用 .app，并生成 zip + sha256
 ./Scripts/build.sh package
 open dist.noindex/NotchCenter.app
+# package 可选：-i/--install 打包后覆盖安装到 /Applications；-g/--github 把 zip 发布到 GitHub Release（latest 标签覆盖式更新，需已登录 gh CLI）
 
 # 清理构建产物（.build 与 dist.noindex）
 ./Scripts/build.sh clean
@@ -132,14 +136,14 @@ open dist.noindex/NotchCenter.app
 - **标准编辑快捷键依赖隐藏主菜单**：accessory 应用没有可见菜单栏，程序化启动也没有带 Edit 菜单的默认主菜单，⌘C / ⌘V / ⌘X / ⌘A / ⌘Z 属于菜单键等价物——分发路径是 `keyWindow.performKeyEquivalent` → `NSApp.mainMenu` → nil-target 动作沿响应链落到 NSTextView。`EditMenuInstaller.install()` 在启动时安装这份不可见菜单（应用菜单保留 ⌘Q/⌘H），不要删除或改成给某个具体视图固定 target；否则笔记编辑器等文本输入的复制/粘贴快捷键整体失效（普通输入不受影响，回归见 `EditMenuInstallerTests`）。
 - **触发器手势不要改回 TapGesture + simultaneous 长按**：`blockPopoverTrigger` 内部由单个 `DragGesture(minimumDistance: 0, .global)` + `.task(id: pressStartDate)` 定时器驱动（分类阈值见 `BlockTapClassifier`）。旧实现是 `.onTapGesture { guard !isPressing … }` 配 simultaneous `LongPressGesture`——真机上点击回调不触发，「点击开网页」（DSH/Calibre）整体失效；HID 合成点击对照实验确认裸 `TapGesture` 与该组合均不回调，而 DragGesture 管线可靠。长按后的松手必须被抑制（`longPressFired`），否则松手瞬间误触 onTap。
 - **命名 / 语言**：源码标识符与 UI 字符串用英文；注释可用中文。保持与现有文件一致的风格（缩进、分组、注释密度）。
-- **多语言（en / zh-Hans）**：所有面向用户的字符串一律走本地化表，不许硬编码。机制是 Apple 原生 `.lproj` + `Localizable.strings`，每个模块自带翻译：宿主用 `L()`/`LF()`（`Sources/NotchCenter/Localization.swift`，资源经 SPM 打进 `NotchCenter_NotchCenter.bundle`）；插件用各自 Sources 里的 `L()`/`LF()`（基于 Kit 的 `L10n.string` + `Bundle(for:)`）；插件的显示名/描述双语写在各 `Plugin.plist` 的 `DisplayNameLocales` / `DescriptionLocales` 字典（build.sh 生成 InfoPlist.strings）。en 是基准键集，zh-Hans 必须保持键集合一致（`LocalizationTests` 强制校验）。语言跟随系统，设置面板可覆盖（写 AppleLanguages，重启生效）。品牌名（DSH、Calibre、OpenCode、Zen）不翻译。
+- **多语言（en / zh-Hans）**：所有面向用户的字符串一律走本地化表，不许硬编码。机制是 Apple 原生 `.lproj` + `Localizable.strings`，每个模块自带翻译：宿主用 `L()`/`LF()`（`Sources/NotchCenter/Localization.swift`，资源经 SPM 打进 `NotchCenter_NotchCenter.bundle`）；插件用各自 Sources 里的 `L()`/`LF()`（基于 Kit 的 `L10n.string` + `Bundle(for:)`）；插件的显示名/描述双语写在各 `Plugin.plist` 的 `DisplayNameLocales` / `DescriptionLocales` 字典（build.sh 生成 InfoPlist.strings）。en 是基准键集，zh-Hans 必须保持键集合一致（`LocalizationTests` 强制校验）。语言跟随系统，设置面板可覆盖（写 AppleLanguages，重启生效）。品牌名（DSH、Calibre、OpenCode、Zen）不翻译。注意 `L10n.string` 故意没有 CVarArg 变参重载：带参数的格式化必须在调用方自己模块内完成（`String(format:arguments:)`），变参跨动态库镜像转发会偶发段错误。
 - **每实例状态是 Kit 基本能力，不要在插件里自造**：同一块类型的多个放置实例需要单独设置/状态时，一律走三件套——`BlockContext.placementStore`（派生自 `StateStore.placementScope(placementID:)`，落在 `<pluginData>/placements/<placementID>/`，非法 placementID 返回 nil）；`NotchBlock.instanceSettingsView`（编辑模式块齿轮触发，宿主优先于插件级 `settingsView`，context 携带 placementID / placementStore / 插件级 settingsContext）；`NotchCenterPluginServices.placementWasRemoved(blockID:placementID:)`（抽屉/紧凑两条删除路径回调，插件借此清理该实例持久化数据）。共享数据（如 OpenCodeUsage 的抓取缓存）仍放插件级 store，不要按实例复制轮询；多屏同实例的视图副本必须观察同一个 ObservableObject（按 placementID 注册表缓存）。参考实现：OpenCodeUsagePlugin（显示样式 + 峰谷倒计时开关按实例设置）。注意：这两个服务钩子必须保持为协议**要求**（extension 只提供默认实现），否则宿主经存在类型调用时遵守类的重写会被静态分发遮蔽、永不执行（pluginWasDisabled 曾因此整体失效，回归见 `PluginServicesHookTests`）。
 - **不要引入新的 SPM 远程依赖**，除非任务要求；优先复用 AppKit / SwiftUI / vendored 引擎。
 
 ## 测试
 
 - 运行：`swift test`；单文件调试可 `swift test --filter <Name>`。
-- 覆盖：`APIVersionTests`、`StateStoreTests`（含 placementScope 实例作用域隔离）、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`OpenCodeUsageTests`（cookie 归一化 / SSR HTML 解析 / 时长短语；另有 `OpenCodeUsageAppearanceTests`：每实例外观默认值 / 容错解码 / placementStore 持久化与实例隔离，均不发真实网络请求）、`PluginServicesHookTests`（服务钩子经存在类型分发到遵守类重写的回归）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）、`EditMenuInstallerTests`（隐藏主菜单接线：标准编辑快捷键的 nil-target 条目与键等价物）、`ReadmeMarkdownTests`（插件管理窗口插件文档：Markdown 块级解析 / bundle 内 README 读取与缺失兜底）。
+- 覆盖：`APIVersionTests`、`StateStoreTests`（含 placementScope 实例作用域隔离）、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`OpenCodeUsageTests`（cookie 归一化 / SSR HTML 解析 / 时长短语；另有 `OpenCodeUsageAppearanceTests`：每实例外观默认值 / 容错解码 / placementStore 持久化与实例隔离，均不发真实网络请求）、`PluginServicesHookTests`（服务钩子经存在类型分发到遵守类重写的回归）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）、`EditMenuInstallerTests`（隐藏主菜单接线：标准编辑快捷键的 nil-target 条目与键等价物）、`ReadmeMarkdownTests`（插件管理窗口插件文档：Markdown 块级解析 / bundle 内 README 读取与缺失兜底）、`BlockCardTriggerTests`（浮窗触发器手势分类阈值）、`BlockPopoverTests`（浮窗几何：同心叠加窗口定位 + 屏幕可见区钳制）、`DrawerHitTestingTests`（抽屉窗口穿透 hitTest）、`HorizontalDragScrollTests`（横向拖动滚动钳制）、`PeakClockLogicTests`（OpenCodeUsage 峰谷倒计时逻辑）。
 - 涉及 `pmset` / 休眠的逻辑测试应确保**不真正改变系统睡眠状态**。
 - 涉及 AppKit 窗口/事件的逻辑依赖 App 运行环境，注意保持 `@MainActor` 测试隔离（`setUp`/`tearDown` 是非隔离上下文，不要在里面改 @MainActor 属性）。
 
