@@ -83,10 +83,14 @@ struct OpenCodeUsageBlockView: View {
         .padding(10)
     }
 
+    /// 峰谷时钟与余量环共用同一个直径：两者是同一块的可切换样式，
+    /// 尺寸不一致会让切换瞬间卡片主体跳变（环 56↔钟 64），统一取 60。
+    private static let visualDiameter: CGFloat = 60
+
     /// 余量环：三环同心用量图。
     private func ringsContent(_ snapshot: UsageSnapshot) -> some View {
-        UsageRingsView(windows: snapshot.windows, outerDiameter: 56)
-            .frame(width: 60)
+        UsageRingsView(windows: snapshot.windows, outerDiameter: Self.visualDiameter)
+            .frame(width: Self.visualDiameter)
     }
 
     /// 余量表：每个用量窗口一条横向量表（标签 + 胶囊进度条 + 百分比）。
@@ -103,7 +107,7 @@ struct OpenCodeUsageBlockView: View {
     /// 峰谷时钟：24 小时表盘实时走动（阶段倒计时由统一的 countdown 行承担）。
     private var peakClockContent: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            PeakClockDial(now: context.date, diameter: 64)
+            PeakClockDial(now: context.date, diameter: Self.visualDiameter)
                 .frame(maxWidth: .infinity)
         }
     }
