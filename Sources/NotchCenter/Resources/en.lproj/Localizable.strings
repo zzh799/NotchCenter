@@ -29,7 +29,7 @@
 
 /* Settings → Components */
 "settings.components.groups" = "Plugins";
-"settings.components.hint" = "Click to add a component; press and hold, then drag it onto the drawer or the quick strip.";
+"settings.components.hint" = "Click to add a component; press and drag it onto the drawer or the quick strip.";
 "settings.components.compact" = "Quick actions";
 "settings.components.empty" = "No components available. Enable a plugin first.";
 

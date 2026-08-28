@@ -397,7 +397,7 @@ struct ComponentsSettingsPage: View {
 }
 
 /// 组件卡片：极简展示——真实块预览 + 名称 + 尺寸，无边框与底色。
-/// 单击添加；长按（0.3s）后拖动到抽屉/快速区。
+/// 单击添加；按住拖动（位移 > 4px）到抽屉/快速区。
 private struct ComponentCard: View {
     let item: ComponentCatalogItem
     let onAdd: () -> Void
@@ -429,13 +429,16 @@ private struct ComponentCard: View {
         .onHover { isHovering = $0 }
         // 单击添加（短按不会满足长按序列，两者互不干扰）。
         .onTapGesture(perform: onAdd)
-        // 长按起手拖拽：长按 0.3s 后位移即进入拖拽会话（幂等），
+        // 按住拖动起手：位移超过 4px 即进入拖拽会话（幂等），
         // 会话跟踪与提交由 BlockDragCoordinator 的事件监听器兜底。
-        .gesture(
-            LongPressGesture(minimumDuration: 0.3)
-                .sequenced(before: DragGesture(minimumDistance: 0))
-                .onChanged { value in
-                    guard case .second = value else { return }
+        // 不用"长按序列"起手：长按要求按住静止 0.3s，按下即拖（自然习惯）
+        // 会被判定长按失败而整条手势不启动；位移阈值起手没有这个死区，
+        // highPriorityGesture 同时压过 ScrollView 对鼠标拖动的竞争。
+        // 位移 < 4px 的短按不触发本手势，仍走 onTapGesture 的"单击添加"，
+        // 两者天然互斥。
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 4)
+                .onChanged { _ in
                     BlockDragCoordinator.shared.beginIfNeeded(item.payload)
                 }
                 .onEnded { _ in

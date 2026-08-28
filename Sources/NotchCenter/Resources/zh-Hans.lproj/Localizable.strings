@@ -29,7 +29,7 @@
 
 /* 设置 → 组件 */
 "settings.components.groups" = "插件";
-"settings.components.hint" = "单击添加组件；长按后可拖到抽屉或快速区。";
+"settings.components.hint" = "单击添加组件；按住拖到抽屉或快速区。";
 "settings.components.compact" = "快捷按钮";
 "settings.components.empty" = "没有可用组件：请先在「插件」页启用插件。";
 
