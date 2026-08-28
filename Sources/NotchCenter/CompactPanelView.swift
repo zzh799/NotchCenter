@@ -97,7 +97,8 @@ struct CompactPanelView: View {
                 ForEach(ui.compactElements) { element in
                     if let view = element.view {
                         // 显示槽位：内部重排预览期间按“插入后的屏幕顺序”取位，
-                        // 其余图标随拖动平滑让位；无预览时用真实数组下标。
+                        // 其余图标随拖动平滑让位（被拖项钉在原始槽位，落点由
+                        // 插入指示线表达）；无预览时用真实数组下标。
                         // 回调用的是真实 slotIndex（数组下标），不受预览影响。
                         let displayIndex = displaySlotIndex(
                             for: element,
@@ -120,6 +121,8 @@ struct CompactPanelView: View {
                             onReorderCommit: actions.onReorderCommit
                         )
                         .position(x: rect.midX, y: rect.midY)
+                        // 被拖项浮到最上层，防止让位滑动的邻居图标盖住它。
+                        .zIndex(ui.dropPreview?.draggingSlotIndex == element.slotIndex ? 1 : 0)
                     }
                 }
 
@@ -150,9 +153,11 @@ struct CompactPanelView: View {
 
     /// 内部重排预览中，某图标应显示在的槽位（数组下标）。
     ///
-    /// 复用引擎同一套 `CompactSlotOrder` 算法：把当前屏幕顺序序列里的被拖项
-    /// 移到目标屏幕位置，再按映射换算每个图标的新数组下标——预览与松手
-    /// 提交必然一致（所见即所得）。
+    /// 被拖项始终钉在原始槽位：松手前不把它预览移到目标位置（目标落点
+    /// 由跟随光标的插入指示线表达），它只通过 `dragOffset` 跟手移动。
+    /// 其余图标复用引擎同一套 `CompactSlotOrder` 算法：把当前屏幕顺序
+    /// 序列里的被拖项移到目标屏幕位置，再按映射换算各自的新数组下标——
+    /// 预览与松手提交必然一致（所见即所得）。
     private func displaySlotIndex(
         for element: CompactElement,
         strip: CompactStripLayout
@@ -160,12 +165,18 @@ struct CompactPanelView: View {
         guard let preview = ui.dropPreview,
               preview.isCompact,
               let from = preview.draggingSlotIndex,
-              case let .compact(screenPosition) = preview.zone,
-              let reordered = CompactSlotOrder.reordered(
-                  ui.compactElements.map(\.reference),
-                  from: from,
-                  to: screenPosition
-              ) else {
+              case let .compact(screenPosition) = preview.zone
+        else {
+            return element.slotIndex
+        }
+        // 被拖项基座不动：避免基座跳槽与 dragOffset 叠加造成漂移，
+        // 也避免让位预览把被拖图标“摆”到目标槽上。
+        if element.slotIndex == from { return element.slotIndex }
+        guard let reordered = CompactSlotOrder.reordered(
+            ui.compactElements.map(\.reference),
+            from: from,
+            to: screenPosition
+        ) else {
             return element.slotIndex
         }
         // 找到该图标在重排后数组中的新下标（以 placementID 匹配，跳过空位）。
@@ -225,6 +236,8 @@ private struct CompactBlockContainer: View {
     /// 图标当前全局 frame（窗口坐标）：设置浮窗的锚定矩形。
     @State private var globalFrame: CGRect = .zero
     /// 拖动位移（横向）：拖动中图标跟手，松手回零。
+    /// 基座被 `displaySlotIndex` 钉在原始槽位、不随预览跳变，因此该全量
+    /// 位移可直接叠加在基座上，渲染位置恒等于指针落点，不会漂移。
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging = false
 
@@ -301,6 +314,8 @@ private struct CompactBlockContainer: View {
 
     /// 手势位置 → 紧凑带内容坐标：按下点在槽位内的位置 + 累计位移。
     /// 用 `startLocation` 而非 `location`：后者随视图位移漂移。
+    /// 基座被钉在原始槽位（不随预览跳变），`slotRect.minX` 即稳定基准，
+    /// 插入位置判定不会随之抖动。
     private func contentX(for value: DragGesture.Value) -> CGFloat {
         slotRect.minX + value.startLocation.x + value.translation.width
     }
