@@ -56,6 +56,7 @@ NotchCenter/
 │   ├── CorePaths.swift / FileDragDetection.swift / PanelDecoration.swift
 │   ├── ResizeProbeLog.swift         # 诊断日志开关（仅 DEBUG）：NOTCHCENTER_RESIZE_LOG 缩放管线事件
 │   ├── ResizeProbeWindow.swift      # 复刻管线对照页（仅 DEBUG）：ResizeProbeWindowController + ResizeProbeView（NOTCHCENTER_RESIZE_PROBE）
+│   ├── SizeLabWindow.swift         # 块尺寸对照实验室（仅 DEBUG）：同一块组件在全部跨度档（1×1…上限可调）下的批量并排对比 + 可调最小单元格；插件管理窗口网格按钮或 NOTCHCENTER_SIZE_LAB 打开（NOTCHCENTER_SIZE_LAB_CAPTURE 自动截图）
 │   ├── NotchPanelController+CollapseProbe.swift    # 控制器 extension（仅 DEBUG）：收起动画 layer 树 dump + 逐帧自拍 + 合成鼠标取屏共享辅助
 │   ├── NotchPanelController+DragScrollProbe.swift  # 控制器 extension（仅 DEBUG）：目录条拖动自动化探针（NOTCHCENTER_DRAGSCROLL_AUTO）
 │   ├── NotchPanelController+ResizeAutoProbe.swift  # 控制器 extension（仅 DEBUG）：缩放自动化复现探针（NOTCHCENTER_RESIZE_AUTO）

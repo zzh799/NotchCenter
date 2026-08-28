@@ -15,6 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.environment["NOTCHCENTER_RESIZE_PROBE"] == "1" {
             ResizeProbeWindowController.shared.show()
         }
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_SIZE_LAB"] == "1" {
+            panelController?.showSizeLab()
+        }
         #endif
         maybeRunSmokeTest()
     }

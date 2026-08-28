@@ -33,7 +33,15 @@ extension NotchPanelController {
 
     func showPluginManager() {
         let controller = pluginManagerWindowController ?? {
-            let controller = PluginManagerWindowController(pluginManager: pluginManager)
+            #if DEBUG
+            let sizeLabAction: (() -> Void)? = { [weak self] in self?.showSizeLab() }
+            #else
+            let sizeLabAction: (() -> Void)? = nil
+            #endif
+            let controller = PluginManagerWindowController(
+                pluginManager: pluginManager,
+                onOpenSizeLab: sizeLabAction
+            )
             pluginManagerWindowController = controller
             return controller
         }()
@@ -41,6 +49,13 @@ extension NotchPanelController {
         NSApp.activate(ignoringOtherApps: true)
         controller.window?.makeKeyAndOrderFront(nil)
     }
+
+    #if DEBUG
+    /// 开发期调试：块尺寸对照实验室（同一组件在全部跨度档下的批量并排对比）。
+    func showSizeLab() {
+        SizeLabWindowController.shared.show(pluginManager: pluginManager, hostController: self)
+    }
+    #endif
 
     /// 设置面板（accessory 应用无菜单栏，抽屉顶栏齿轮是常驻入口）。
     /// 打开面板后收起抽屉（设置窗口接管交互，抽屉不再需要停留）。
