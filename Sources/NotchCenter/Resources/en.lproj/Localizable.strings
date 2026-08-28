@@ -82,12 +82,6 @@
 "panel.help.doneEditing" = "Done editing layout";
 "panel.help.closeDrawer" = "Close drawer";
 
-/* 编辑模式添加块目录条 */
-"addblock.compact" = "Compact";
-"addblock.drawer" = "Drawer";
-"addblock.help.compact" = "Add to the compact strip";
-"addblock.help.drawer" = "Add to the drawer grid";
-
 /* 隐藏主菜单（accessory 应用不可见，仅承载标准快捷键的 nil-target 动作） */
 "menu.app.hide" = "Hide NotchCenter";
 "menu.app.quit" = "Quit NotchCenter";

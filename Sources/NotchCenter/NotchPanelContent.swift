@@ -95,7 +95,7 @@ extension NotchPanelController {
     /// 刷新面板内容：把布局与元素写入 `uiState`（@Published 驱动 SwiftUI 刷新），
     /// 所有屏幕的宿主视图共享同一份状态。宿主视图只创建一次，之后不再重新赋值
     /// rootView——在透明无边框 NSPanel 上 rootView 重赋值不能保证立即重绘。
-    /// `animated: true` 时状态变化套 spring（编辑模式目录条/窗口高度过渡）。
+    /// `animated: true` 时状态变化套 spring（编辑模式窗口高度过渡）。
     ///
     /// 纯内容重建：紧凑区几何（缩放到当前图标数）由调用方先行
     /// `refreshCompactGeometry()` 同步——只有增删紧凑图标/换屏的路径需要，
@@ -104,7 +104,6 @@ extension NotchPanelController {
         // 紧凑元素的上下文 frame 以主屏几何近似（槽位尺寸跨屏一致，
         // 视觉几何由各面板的 layout 参数精确持有）。
         let contextLayout = primaryLayout()
-        let catalogPlugins = buildCatalogPlugins()
 
         let apply = {
             self.uiState.showsClickModeHint = self.settingsStore.triggerMode == .click
@@ -112,8 +111,6 @@ extension NotchPanelController {
 
             self.uiState.drawerContentSize = self.layoutEngine.drawerContentSize()
             self.uiState.drawerGridLeftColumn = self.layoutEngine.gridLeftColumn()
-            // 目录先就位，窗口尺寸才能计入 AddBlock 区域高度。
-            self.uiState.catalogPlugins = catalogPlugins
             self.uiState.drawerWindowSize = self.drawerWindowSize(for: self.activePair ?? self.pairs.first)
             self.uiState.drawerElements = self.buildDrawerElements()
         }
@@ -273,24 +270,6 @@ extension NotchPanelController {
         }
     }
 
-    private func buildCatalogPlugins() -> [CatalogPluginGroup] {
-        pluginManager.entries
-            .filter { $0.isEnabled && $0.instance != nil }
-            .compactMap { entry -> CatalogPluginGroup? in
-                // AddBlock 目录同时列紧凑块（上栏）与抽屉块（下栏）；
-                // 两者皆无的插件不出现，避免空分组。
-                let compactBlocks = entry.blocks.filter { $0.kind == .compact }
-                let drawerBlocks = entry.blocks.filter { $0.kind == .drawer }
-                guard !compactBlocks.isEmpty || !drawerBlocks.isEmpty else { return nil }
-                return CatalogPluginGroup(
-                    pluginID: entry.id,
-                    displayName: entry.metadata.displayName,
-                    compactBlocks: compactBlocks,
-                    drawerBlocks: drawerBlocks
-                )
-            }
-    }
-
     /// 槽位矩形（窗口内容坐标，左上原点）；与视图共享同一 strip 布局。
     /// 宽度随当前紧凑图标数动态伸缩。
     func compactSlotFrame(index: Int, layout: NotchLayout, slotCount: Int) -> CGRect {
@@ -405,18 +384,6 @@ extension NotchPanelController {
             onResizeBlock: { [weak self] placementID, columns, rows in
                 self?.layoutEngine.resizeDrawerBlock(placementID: placementID, toColumns: columns, toRows: rows)
                 self?.refreshAfterEdit()
-            },
-            onAddBlock: { [weak self] pluginID, blockID in
-                guard let self else { return }
-                if let block = self.pluginManager.block(pluginID: pluginID, blockID: blockID),
-                   block.kind == .compact {
-                    self.layoutEngine.addCompactBlock(pluginID: pluginID, blockID: blockID)
-                    // 紧凑图标数增加：先同步条带几何/热区窗口，再重建内容。
-                    self.refreshCompactGeometry()
-                } else {
-                    self.layoutEngine.autoPlaceDrawerBlock(pluginID: pluginID, blockID: blockID)
-                }
-                self.refreshAfterEdit()
             },
             onReorderBlocks: { [weak self] in
                 self?.layoutEngine.reorderDrawerBlocks()

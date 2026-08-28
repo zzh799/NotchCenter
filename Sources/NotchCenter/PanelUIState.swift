@@ -30,14 +30,13 @@ final class PanelUIState: ObservableObject {
     @Published var compactCount = 0
     @Published var showsClickModeHint = false
 
-    /// 抽屉网格内容与 AddBlock 目录条（编辑模式）。
+    /// 抽屉网格内容。
     /// 可见面板尺寸见上方 `drawerWindowSize`（唯一动画真源）。
     @Published var drawerContentSize: CGSize = .zero
     /// 格网内容最左列（列双向扩大：左侧拖出时可为负）：块渲染横坐标 =
     /// (originColumn − 该值) × 步长，使左扩时内容整体右移、面板绕刘海对称增宽。
     @Published var drawerGridLeftColumn = 0
     @Published var drawerElements: [DrawerElement] = []
-    @Published var catalogPlugins: [CatalogPluginGroup] = []
 
     /// 从设置面板拖拽组件时的落点预览（抽屉网格虚线占位 / 快速区插入指示）。
     /// 仅在拖拽会话期间非空，由 `BlockDragCoordinator` 经控制器写入。

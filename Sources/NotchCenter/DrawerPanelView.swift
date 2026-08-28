@@ -29,7 +29,6 @@ struct DrawerActions {
     let onShowBlockSettings: (String, String, CGRect) -> Void
     let onMoveBlock: (String, Int, Int) -> Void
     let onResizeBlock: (String, Int, Int) -> Void
-    let onAddBlock: (String, String) -> Void
     /// 编辑模式一键重排：按阅读顺序紧密排布所有抽屉块。
     let onReorderBlocks: () -> Void
     /// 拖拽实时预览：返回全体块的新位置（不落盘）。
@@ -125,10 +124,6 @@ struct DrawerPanelView: View {
             topBar
                 .frame(height: NotchGridMetrics.drawerTopBarHeight)
 
-            // 编辑模式：紧凑带与网格之间插入全宽 AddBlock 目录条，
-            // 主面板内容真实下移（不再覆盖网格的浮动侧栏）。
-            addBlockStrip
-
             // 滚动指示条必须隐藏：网格内容高度与可视区高度是两个独立动画值
             // （gridFrameHeight 与窗口高度各自的 spring 表现层，逐帧量化差
             // ±0.1~0.3pt），多行缩少行时 doc/clip 反复跨越相等点，NSScrollView
@@ -142,21 +137,6 @@ struct DrawerPanelView: View {
         }
         .padding(.horizontal, NotchGridMetrics.contentPadding)
         .padding(.bottom, NotchGridMetrics.contentPadding)
-    }
-
-    /// 高度 0 ↔ 目标值的弹性过渡：目录条淡入淡出，网格同步下移
-    /// （spring 参数与块拖拽/缩放一致，文档 §5.5）。
-    private var addBlockStrip: some View {
-        Group {
-            if ui.isEditing {
-                AddBlockArea(
-                    plugins: ui.catalogPlugins,
-                    onAddBlock: actions.onAddBlock
-                )
-                .transition(.opacity)
-            }
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: ui.isEditing)
     }
 
     private var topBar: some View {

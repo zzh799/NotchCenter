@@ -34,7 +34,6 @@ NotchCenter/
 │   ├── CompactPanelView.swift       # 刘海两侧紧凑带视图（含槽位容器）
 │   ├── DrawerPanelView.swift        # 抽屉面板主体（drawerWindowSize 绑定 + 顶缘钉死 + 拖拽/缩放手势状态机）
 │   ├── DrawerBlockContainer.swift   # 抽屉块容器（预览尺寸补偿 + 编辑 overlay + 缩放握把 .global 手势）
-│   ├── AddBlockArea.swift            # 添加块目录条（编辑模式，上栏紧凑块/下栏抽屉块）
 │   ├── HorizontalDragScroll.swift    # 横向拖动滚动容器（ScrollView 内嵌 NSScrollView 探针，滚轮之外支持按住拖动）
 │   ├── ResizeHysteresis.swift        # 缩放跨度死区量化（纯函数，ResizeHysteresisTests 覆盖）
 │   ├── NotchGeometry.swift          # 刘海/回退几何与紧凑带布局（左右面板绕刘海对称，图标按添加顺序左右均衡交替排布，带宽随图标数动态伸缩，28×28）
@@ -62,7 +61,6 @@ NotchCenter/
 │   ├── ResizeProbeWindow.swift      # 复刻管线对照页（仅 DEBUG）：ResizeProbeWindowController + ResizeProbeView（NOTCHCENTER_RESIZE_PROBE）
 │   ├── SizeLabWindow.swift         # 块尺寸对照实验室（仅 DEBUG）：同一块组件在全部跨度档（1×1…上限可调）下的批量并排对比 + 可调最小单元格；插件管理窗口网格按钮或 NOTCHCENTER_SIZE_LAB 打开（NOTCHCENTER_SIZE_LAB_CAPTURE 自动截图）
 │   ├── NotchPanelController+CollapseProbe.swift    # 控制器 extension（仅 DEBUG）：收起动画 layer 树 dump + 逐帧自拍 + 合成鼠标取屏共享辅助
-│   ├── NotchPanelController+DragScrollProbe.swift  # 控制器 extension（仅 DEBUG）：目录条拖动自动化探针（NOTCHCENTER_DRAGSCROLL_AUTO）
 │   ├── NotchPanelController+ResizeAutoProbe.swift  # 控制器 extension（仅 DEBUG）：缩放自动化复现探针（NOTCHCENTER_RESIZE_AUTO）
 │   ├── NotchPanelController+ShrinkScrollProbe.swift # 控制器 extension（仅 DEBUG）：缩小场景滚动条逐帧诊断（NOTCHCENTER_SHRINKSCROLL_PROBE）
 ├── Sources/NotchCenterKit/       # 共享 API 动态库（**独立本地包**，宿主与插件以产品方式链接同一份代码）
@@ -126,7 +124,7 @@ open dist.noindex/NotchCenter.app
 - **文件暂存区只持有路径引用**：不复制、不移动、不删除用户原文件（`ScratchpadPlugin`）。新增文件操作时保持这一契约。
 - **保持唤醒需要管理员权限**：`SystemSleepGuard` 通过 `osascript with administrator privileges` 调用 `pmset disablesleep`。**不要在单元测试里触发真实休眠抑制**；测试只验证命令字符串与 shell 语法（见 `SystemSleepGuardTests`）。
 - **面板内容刷新走 `PanelUIState`**：透明无边框 `NSPanel` 上重新赋值 `NSHostingView.rootView` 不能保证立即重绘；宿主视图只在创建时设置一次 root，之后一律通过 `PanelUIState` 的 `@Published` 属性驱动 SwiftUI 刷新。新增面板状态时加到 `PanelUIState`，不要绕过它直接操作视图。
-- **紧凑区宽度动态、不固定槽位（文档 §5.2）**：`compactSlots` 数组长度即当前紧凑图标数（元素无 `null` 占位；移除即删元素闭合空隙，旧版固定 3 槽文件加载时经 `normalizedCompactSlots` 剥除空槽）。带宽 = `CompactStripLayout(slotCount:)`：图标按添加顺序**左右均衡交替**排布（偶数索引在左、奇数在右，均从靠刘海一侧排起），两面板等宽（按较大一侧实际槽数）保证黑色带绕刘海左右对称、刘海中心恒为带宽中心。视图侧必须从 `PanelUIState.compactCount` 取数量（`layout.compactStrip(slotCount: ui.compactCount)`），不得硬编码槽位数——宿主视图只在创建时设置一次 root，`layout` 是被捕获的旧值。**几何状态同步集中在 `refreshCompactGeometry()`**：把引擎计数推到各 pair 镜像（`pair.compactCount`/`pair.compactStrip`）与 `uiState.compactCount`，并按新带宽重摆热区窗口；任何增删紧凑图标（`onAddBlock`/`onRemoveBlock`）与换屏（`syncScreens` 后）的路径必须先调它、再调 `rebuildContent`（后者保持纯内容重建、无窗口副作用）。引擎计数只能经 `compactIconCount` / `compactStrip(for:)` 访问，不要在各消费点直接读 `layoutEngine.compactSlots.count`。增删紧凑块没有“槽满”概念（`AddBlockArea` 紧凑目录不再置灰、不设数量上限）。
+- **紧凑区宽度动态、不固定槽位（文档 §5.2）**：`compactSlots` 数组长度即当前紧凑图标数（元素无 `null` 占位；移除即删元素闭合空隙，旧版固定 3 槽文件加载时经 `normalizedCompactSlots` 剥除空槽）。带宽 = `CompactStripLayout(slotCount:)`：图标按添加顺序**左右均衡交替**排布（偶数索引在左、奇数在右，均从靠刘海一侧排起），两面板等宽（按较大一侧实际槽数）保证黑色带绕刘海左右对称、刘海中心恒为带宽中心。视图侧必须从 `PanelUIState.compactCount` 取数量（`layout.compactStrip(slotCount: ui.compactCount)`），不得硬编码槽位数——宿主视图只在创建时设置一次 root，`layout` 是被捕获的旧值。**几何状态同步集中在 `refreshCompactGeometry()`**：把引擎计数推到各 pair 镜像（`pair.compactCount`/`pair.compactStrip`）与 `uiState.compactCount`，并按新带宽重摆热区窗口；任何增删紧凑图标（`onAddBlock`/`onRemoveBlock`）与换屏（`syncScreens` 后）的路径必须先调它、再调 `rebuildContent`（后者保持纯内容重建、无窗口副作用）。引擎计数只能经 `compactIconCount` / `compactStrip(for:)` 访问，不要在各消费点直接读 `layoutEngine.compactSlots.count`。增删紧凑块没有“槽满”概念（紧凑块从设置组件页拖入，不设数量上限）。
 - **抽屉动画是单一尺寸真源（参考 codex-island 的 model.size 模式）**：`PanelUIState.drawerWindowSize` 是可见面板尺寸的唯一 @Published 真源（收起 = 紧凑带尺寸），一切尺寸变化（展开/收起/编辑增高/增删块/缩放预览）必须在 `withAnimation` 里改变它；容器视图 frame 直接绑定它做 spring 变形。抽屉窗口固定满高、永不参与动画；穿透命中 = hitTest 限定可见矩形 + `window.ignoresMouseEvents` 光标跟踪双机制（缺一不可，仅 hitTest 窗口仍会抢焦点）。不要恢复 revealProgress 遮罩插值或任何“窗口跟随内容”的桥（NSAnimationContext/preference/解析 spring 均已试错，均有时钟偏差）。
 - **动画容器必须顶缘钉死、收起不得无动画贴起点**：`DrawerPanelView` 绑定 `drawerWindowSize` 的容器 frame 必须 `alignment: .top`——收起过渡中抽屉内容退出布局（快照仍挂在树里淡出），VStack 与仍在收缩的容器高度不一致，默认 `.center` 会把只剩紧凑带的 VStack 顶出容器，图标随之下坠（展开方向靠 ScrollView 伸缩掩盖了同一问题）。`setDrawerRevealed` 里“无动画贴起点”只属于展开分支（贴紧凑带再 spring 长出）；收起的起点就是当前尺寸，若也无动画写成目标，收起会瞬跳且 easeOut(0.16) 动画丢失。诊断：`NOTCHCENTER_COLLAPSE_PROBE=1`（配 `NOTCHCENTER_SMOKE_TEST=1`）展开/收起各逐帧自拍抽屉窗口——注意 `cacheDisplay` 只能渲染布局终态，动画中帧必须用 `CGWindowListCreateImage` 自拍本进程窗口（免屏幕录制权限）；`NOTCHCENTER_COLLAPSE_LAYERS=1` 追加 layer 树 model/presentation 对照 dump。
 - **块尺寸用 GridSpan 表达**：`BlockSize` 只是预设，真实约束是块的 `supportedSpans`（由 `supportedSizes` 派生 + `supportedGridSpans` 自由跨度）。编辑模式缩放走 `LayoutEngine.resizeBlock` 的任意跨度路径；新增尺寸能力时扩展 `supportedGridSpans` 而不是堆预设。
@@ -157,4 +155,4 @@ open dist.noindex/NotchCenter.app
 1. 先读 `docs/NotchCenter 架构设计文档.md`，再读 `NotchCenterKit`（协议与类型）→ `Sources/NotchCenter/PluginManager.swift` → `LayoutEngine.swift` → `NotchPanelController.swift` 理解插件生命周期与面板协调。
 2. 插件开发：先读 [`docs/插件开发指南.md`](docs/插件开发指南.md)（入口协议、Plugin.plist 登记、构建验证），再参照 `Plugins/NotesPlugin/Sources/NotesPlugin.swift` 的入口模式（`static var blocks` + `attachServices`）。
 3. launchd 服务控制类插件（DshPlugin / CalibrePlugin 模式）：按 [`docs/服务控制类插件开发指南.md`](docs/服务控制类插件开发指南.md) 的分层、五件套与 workerPattern 选取规则复制扩展——launchd 探测/控制/plist 逻辑一律复用 `LaunchdControlKit`，不要在插件里另写 launchd 或 plist 处理代码。
-4. UI 改动从 `CompactPanelView.swift` / `DrawerPanelView.swift` / `AddBlockArea.swift`（紧凑区/抽屉/编辑模式）入手。
+4. UI 改动从 `CompactPanelView.swift` / `DrawerPanelView.swift`（紧凑区/抽屉/编辑模式）入手。

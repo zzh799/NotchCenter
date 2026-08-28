@@ -87,14 +87,12 @@ extension NotchPanelController {
             return
         }
         let p = element.placement
-        let addBlockHeight = AddBlockArea.height(for: uiState.catalogPlugins)
         // 握把中心：块右下角向内 (5 padding + 11 半径) ≈ 16pt。
         let vx = NotchGridMetrics.contentPadding
             + CGFloat(p.originColumn) * (NotchGridMetrics.cellWidth + NotchGridMetrics.spacing)
             + NotchGridMetrics.contentWidth(columns: p.widthColumns) - 16
         let vy = pair.layout.compactHeight
             + NotchGridMetrics.drawerTopBarHeight
-            + addBlockHeight
             + CGFloat(p.originRow) * (NotchGridMetrics.cellHeight + NotchGridMetrics.spacing)
             + NotchGridMetrics.contentHeight(rows: p.heightRows) - 16
         let frame = pair.drawerPanel.frame

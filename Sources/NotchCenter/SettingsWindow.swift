@@ -77,7 +77,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func showSettings() {
+    /// 打开设置窗口。`page` 非 nil 时先把侧边栏切到指定页
+    /// （编辑态直入组件页用）；nil 则沿用上次停留页。
+    func showSettings(page: SettingsPage? = nil) {
+        if let page { selection.page = page }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -251,7 +254,11 @@ struct SettingsRootView: View {
 extension NotchPanelController {
     /// 打开设置面板：抽屉常驻展开（不自动收起），面板贴挂到抽屉下方并置顶。
     /// 面板已可见时再触发一次即关闭（抽屉顶栏齿轮 = 开关）。
-    func showSettings() {
+    ///
+    /// 编辑态打开 → 直入「组件」页且抽屉保持编辑态（组件页拖块落位依赖
+    /// 编辑态）；非编辑态保持现状（沿用上次停留页）。显式传 `page` 可指定
+    /// 目标页（调用点不传时默认 nil = 不改页）。
+    func showSettings(page: SettingsPage? = nil) {
         let controller = settingsWindowController ?? {
             let controller = SettingsWindowController(panelController: self)
             settingsWindowController = controller
@@ -263,17 +270,25 @@ extension NotchPanelController {
             return
         }
 
+        // 编辑态默认进组件页；非编辑态沿用上次页（nil = 不动 selection）。
+        let targetPage: SettingsPage? = page ?? (isEditing ? .components : nil)
+
         isSettingsPresented = true
         cancelCollapse()
-        // 编辑模式与设置面板互斥：两处都能改布局，同时开着会互相打架
-        // （目录条高度也算进抽屉几何）。
-        if isEditing {
+        // 编辑模式仅允许与「组件」页共存（组件页拖块落位依赖编辑态）；
+        // 其余页维持旧互斥——两处都能改布局，同时开着会互相打架。
+        if isEditing, targetPage != .components {
             stopEditMode()
         }
         if !isExpanded {
             expand(animated: true, activate: false)
         }
-        controller.showSettings()
+        controller.showSettings(page: targetPage)
+        // 显式驱动组件页联动：onChange(of: selection.page) 只在视图挂载并
+        // 求值后才触发，首次打开（rootView 未求值）或页值未变时不可靠；
+        // setComponentsPageActive 自带幂等 guard，与 onChange 双触发也只
+        // 生效一次。
+        setComponentsPageActive(targetPage == .components)
         positionSettingsWindow()
     }
 

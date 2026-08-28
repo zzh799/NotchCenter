@@ -367,9 +367,9 @@ final class NotchPanelController: NSObject {
 
     // MARK: - 几何
 
-    /// 抽屉窗口内容尺寸（不含岛顶紧凑带）：布局内容 + 编辑模式 AddBlock
-    /// 区域增高；超出屏幕可用高度时封顶（网格 ScrollView 可视高度随之压缩，
-    /// 文档 §5.3）。与 `DrawerPanelView` 根视图共享该尺寸，保证布局一致。
+    /// 抽屉窗口内容尺寸（不含岛顶紧凑带）：布局内容增高；超出屏幕可用
+    /// 高度时封顶（网格 ScrollView 可视高度随之压缩，文档 §5.3）。
+    /// 与 `DrawerPanelView` 根视图共享该尺寸，保证布局一致。
     /// `previewRows` 用于拖拽/缩放预览（按预览布局的最低行临时增高）；
     /// `previewColumns` 同理（按预览布局的实际占用列数临时增宽）。
     func drawerWindowSize(
@@ -381,9 +381,6 @@ final class NotchPanelController: NSObject {
             contentRows: previewRows,
             contentColumns: previewColumns
         )
-        if isEditing {
-            size.height += AddBlockArea.height(for: uiState.catalogPlugins)
-        }
         if let pair {
             let maxHeight = pair.screenFrame.height - 8 - pair.layout.compactHeight
             if size.height > maxHeight {

@@ -38,7 +38,7 @@ extension NotchPanelController {
 
     /// 抽屉网格落点：把屏幕坐标换算成格子坐标。
     /// 列基准为格网最左列（`gridLeftColumn`，左扩时可为负），行自网格
-    /// 内容顶缘向下（顶缘 = 紧凑带 + 顶栏 + 编辑态目录条）。
+    /// 内容顶缘向下（顶缘 = 紧凑带 + 顶栏）。
     private func drawerDropZone(
         at point: NSPoint,
         pair: ScreenPanelPair,
@@ -51,7 +51,6 @@ extension NotchPanelController {
 
         let topInset = pair.layout.compactHeight
             + NotchGridMetrics.drawerTopBarHeight
-            + (isEditing ? AddBlockArea.height(for: uiState.catalogPlugins) : 0)
         // 屏幕坐标 y 轴向上；转成自面板顶缘向下的距离。
         let offsetFromTop = visible.maxY - point.y
         guard offsetFromTop >= topInset else { return nil }
