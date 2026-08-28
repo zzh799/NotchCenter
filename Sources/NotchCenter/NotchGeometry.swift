@@ -79,6 +79,18 @@ struct CompactStripLayout: Equatable {
         bandWidth
     }
 
+    /// 内容坐标 x → **屏幕插入位置**（0...slotCount，slotCount = 末尾）：
+    /// 按屏幕从左到右的顺序找第一个中线在 x 右侧的槽位。
+    /// 返回的是屏幕序号而不是数组下标——落点语义统一为屏幕位置，
+    /// 由 `CompactSlotOrder` 负责与数组下标互转（方案 A）。
+    func screenInsertionIndex(atContentX x: CGFloat) -> Int {
+        guard slotCount > 0 else { return 0 }
+        for (position, index) in CompactSlotOrder.screenOrder(slotCount: slotCount).enumerated() {
+            if x < (slotRect(at: index)?.midX ?? 0) { return position }
+        }
+        return slotCount
+    }
+
     /// 槽位矩形（窗口内容坐标，左上原点）；越界返回 nil。
     func slotRect(at index: Int) -> CGRect? {
         guard index >= 0, index < slotCount else { return nil }
@@ -88,6 +100,117 @@ struct CompactStripLayout: Equatable {
             ? padding + CGFloat(column) * (slotSize.width + spacing)
             : rightPanelX + padding + CGFloat(column) * (slotSize.width + spacing)
         return CGRect(x: x, y: y, width: slotSize.width, height: slotSize.height)
+    }
+}
+
+// MARK: - 快捷区屏幕顺序 ↔ 数组下标
+
+/// 快捷区「屏幕位置 ↔ 数组下标」的双向映射（拖动重排与拖入落位的共同基础）。
+///
+/// 数组下标按奇偶分列（偶数进左面板、奇数进右面板，每侧列号 = index / 2），
+/// 于是**屏幕从左到右 = 全部偶数下标升序 → 全部奇数下标升序**：
+///
+/// ```
+/// 数组 [A, B, C, D, E]  →  屏幕 A C E | B D
+/// 下标  0  1  2  3  4        (0,2,4 在左；1,3 在右)
+/// ```
+///
+/// 如果直接按数组语义插入（旧实现），在数组中间插一个会让后续下标整体
+/// 后移，而下标决定左右分列——屏幕上其余图标会集体换位。因此所有落点都
+/// 先换算成**屏幕位置**，在屏幕序列里移动/插入，再经本映射写回数组，
+/// 保证"屏幕上只有被操作的那一个移动，其余保持相对顺序"。
+enum CompactSlotOrder {
+    /// 屏幕第 position 位对应的数组下标序列（长度 = slotCount）。
+    static func screenOrder(slotCount: Int) -> [Int] {
+        guard slotCount > 0 else { return [] }
+        return stride(from: 0, to: slotCount, by: 2).map { $0 }
+            + stride(from: 1, to: slotCount, by: 2).map { $0 }
+    }
+
+    /// 数组下标 → 屏幕位置（不在范围内返回 nil）。
+    static func screenPosition(of slotIndex: Int, slotCount: Int) -> Int? {
+        screenOrder(slotCount: slotCount).firstIndex(of: slotIndex)
+    }
+
+    /// 重排后的数组内容：把 `from` 移到屏幕位置 `to`（0...count），
+    /// 其余保持屏幕相对顺序。返回 nil 表示无变化（越界或落点即原位）。
+    ///
+    /// - 屏幕序列里移动：移除被拖项 → 插到目标屏幕位置；
+    /// - 写回数组：屏幕第 j 位 → 数组下标 `screenOrder[j]`（映射只依赖总数）。
+    static func reordered(
+        _ slots: [CompactSlotReference?],
+        from: Int,
+        to screenPosition: Int
+    ) -> [CompactSlotReference?]? {
+        let count = slots.count
+        guard slots.indices.contains(from) else { return nil }
+        let order = screenOrder(slotCount: count)
+        guard let fromPosition = order.firstIndex(of: from) else { return nil }
+
+        var screenItems = order.map { slots[$0] }
+        let moved = screenItems.remove(at: fromPosition)
+        let target = min(
+            max(screenPosition > fromPosition ? screenPosition - 1 : screenPosition, 0),
+            screenItems.count
+        )
+        guard target != fromPosition else { return nil }
+        screenItems.insert(moved, at: target)
+
+        var result = slots
+        for (position, slotIndex) in order.enumerated() {
+            result[slotIndex] = screenItems[position]
+        }
+        return result
+    }
+
+    /// 在屏幕位置 `position`（0...count）插入新元素后的数组内容；
+    /// 其余保持屏幕相对顺序（插入后总数 +1，映射随之变化）。
+    static func inserting(
+        _ item: CompactSlotReference,
+        into slots: [CompactSlotReference?],
+        atScreenPosition position: Int
+    ) -> [CompactSlotReference?] {
+        let count = slots.count
+        let oldOrder = screenOrder(slotCount: count)
+        let newOrder = screenOrder(slotCount: count + 1)
+
+        // 新屏幕序列：旧的第 [0, position) 位 + 新元素 + 旧的第 [position...) 位。
+        var screenItems: [CompactSlotReference?] = []
+        screenItems.reserveCapacity(count + 1)
+        for screenPosition in 0...count {
+            if screenPosition == position {
+                screenItems.append(item)
+            } else {
+                let oldIndex = screenPosition < position
+                    ? oldOrder[screenPosition]
+                    : oldOrder[screenPosition - 1]
+                screenItems.append(slots[oldIndex])
+            }
+        }
+
+        var result: [CompactSlotReference?] = Array(repeating: nil, count: count + 1)
+        for (screenPosition, slotIndex) in newOrder.enumerated() {
+            result[slotIndex] = screenItems[screenPosition]
+        }
+        return result
+    }
+
+    /// 移除数组下标 `index` 后的数组内容（其余保持屏幕相对顺序）。
+    /// 与插入/重排同理：直接 remove 会让后续下标重排、屏幕上集体换位。
+    static func removing(
+        _ slots: [CompactSlotReference?],
+        at index: Int
+    ) -> [CompactSlotReference?]? {
+        let count = slots.count
+        guard slots.indices.contains(index) else { return nil }
+        let order = screenOrder(slotCount: count)
+        let screenItems = order.filter { $0 != index }.map { slots[$0] }
+        let newOrder = screenOrder(slotCount: count - 1)
+        var result: [CompactSlotReference?] = Array(repeating: nil, count: count - 1)
+        for (position, slotIndex) in newOrder.enumerated() {
+            result[slotIndex] = screenItems[position]
+        }
+        return result
     }
 }
 

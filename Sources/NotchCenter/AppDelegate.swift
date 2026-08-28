@@ -139,6 +139,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     #endif
 
+    /// 设置面板探针（NOTCHCENTER_SETTINGS_PROBE=1）：展开抽屉 → 打开设置面板
+    /// （抽屉常驻、面板贴挂下方）→ 依次切到各页抓图，验证侧边栏多页布局与
+    /// 组件预览的渲染结果。抓图走 cacheDisplay，无需屏幕录制权限。
+    private func runSettingsProbe(_ panelController: NotchPanelController) {
+        NSApp.activate(ignoringOtherApps: true)
+        panelController.expand(animated: true, activate: false)
+        panelController.showSettings()
+
+        // 页面切换间隔：等 SwiftUI 完成一帧渲染再抓。
+        let pages: [(SettingsPage, TimeInterval)] = [
+            (.general, 1.6),
+            (.components, 2.6),
+            (.layout, 3.6),
+            (.plugins, 4.6)
+        ]
+        for (page, delay) in pages {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                panelController.debugSelectSettingsPage(page)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    panelController.captureSettingsWindowForDebug(suffix: "_\(page.rawValue)")
+                    panelController.capturePanelsForDebug(suffix: "_\(page.rawValue)")
+                }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
+            NSApp.terminate(nil)
+        }
+    }
+
     private func maybeRunSmokeTest() {
         guard ProcessInfo.processInfo.environment["NOTCHCENTER_SMOKE_TEST"] == "1" else { return }
         guard let panelController else { return }
@@ -161,6 +190,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if ProcessInfo.processInfo.environment["NOTCHCENTER_COLLAPSE_PROBE"] == "1" {
             runCollapseProbe(panelController)
+            return
+        }
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_SETTINGS_PROBE"] == "1" {
+            runSettingsProbe(panelController)
+            return
+        }
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_DRAGDROP_PROBE"] == "1" {
+            // 走与设置面板同一路径（抽屉常驻 + 面板贴挂），逐块验证落点判定与落位。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                panelController.expand(animated: true, activate: false)
+                panelController.showSettings()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                panelController.runDragDropProbe()
+            }
+            // 探针结束会回滚布局，等回滚落盘后再退出（退出路径还会 flush 一次）。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                panelController.flush()
+                NSApp.terminate(nil)
+            }
             return
         }
         #endif

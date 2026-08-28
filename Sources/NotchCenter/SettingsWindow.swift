@@ -1,28 +1,75 @@
+import AppKit
 import SwiftUI
 
 // MARK: - 设置面板（文档 §6.1 / §4.8）
-/// 承接原状态栏菜单中的核心设置项：触发模式、抽屉列数、插件管理入口。
+
+/// 设置面板窗口：带侧边栏的多页结构（通用 / 组件 / 布局 / 插件）。
+///
+/// 与抽屉的关系（本次改造的核心）：
+/// - 面板**贴挂在抽屉下方**（顶缘 = 抽屉可见底缘 + 间距），由
+///   `NotchPanelController.positionSettingsWindow()` 在抽屉尺寸变化时重新对齐；
+/// - 面板**置顶**（level 高于抽屉），跨 Space、不随其他应用隐藏；
+/// - 面板可见期间抽屉**常驻展开**（`isSettingsPresented`），改设置即可在
+///   抽屉上看到实时效果，也可直接从「组件」页拖块到抽屉/快速区。
+/// 当前选中的设置页（`@State` 无法从窗口外部驱动，探针/外部切换走这里）。
+@MainActor
+final class SettingsSelection: ObservableObject {
+    @Published var page: SettingsPage = .general
+}
 
 @MainActor
-final class SettingsWindowController: NSWindowController {
-    private let panelController: NotchPanelController
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    /// 弱引用：控制器强持有本窗口控制器，避免环。视图侧各自持有强引用。
+    private weak var panelController: NotchPanelController?
+    private let selection = SettingsSelection()
 
     init(panelController: NotchPanelController) {
         self.panelController = panelController
 
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 480),
-            styleMask: [.titled, .closable],
+        let panel = NSPanel(
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: SettingsWindowMetrics.width,
+                height: SettingsWindowMetrics.height
+            ),
+            styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        window.title = L("settings.window.title")
-        window.isReleasedWhenClosed = false
-        super.init(window: window)
-        window.contentView = NSHostingView(
-            rootView: SettingsView(controller: panelController)
+        panel.title = L("settings.window.title")
+        panel.isReleasedWhenClosed = false
+        panel.titlebarAppearsTransparent = true
+        panel.titleVisibility = .hidden
+        // 不能开“背景可拖动”：从组件卡片的空白处按下拖动时，命中测试会落
+        // 到窗口背景，NSWindow 随即进入窗口拖动循环并吞掉 mouseDragged——
+        // 表现为“拖组件时整个设置面板跟着走”，拖拽会话同时被中断（松手时
+        // 拿不到落点）。窗口拖动仍可经透明 titlebar 完成。
+        panel.isMovableByWindowBackground = false
+        // 置顶：高于抽屉（statusBar 级），不被其他应用窗口遮挡。
+        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.popUpMenuWindow)))
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.hidesOnDeactivate = false
+        // 面板内的开关/输入框需要正常接收键盘，不能只在需要时才成为 key。
+        panel.becomesKeyOnlyIfNeeded = false
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.backgroundColor = NSColor(red: 0.055, green: 0.055, blue: 0.062, alpha: 1)
+        panel.animationBehavior = .none
+
+        super.init(window: panel)
+        panel.delegate = self
+        panel.contentView = NSHostingView(
+            rootView: SettingsRootView(controller: panelController, selection: selection)
         )
-        window.center()
+        // 显式约束内容区：root view 的 `.frame(...)` 不足以阻止 hosting view
+        // 因 HStack/Spacer 把 fitting size 撑到 616，把 contentSize 锁回 560
+        // 后窗口 frame = 588（titlebar 28），与 layout 计算一致。
+        panel.setContentSize(
+            NSSize(
+                width: SettingsWindowMetrics.width,
+                height: SettingsWindowMetrics.height
+            )
+        )
     }
 
     @available(*, unavailable)
@@ -35,120 +82,235 @@ final class SettingsWindowController: NSWindowController {
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    /// 开发期探针用：直接切页（抓图验证各页布局）。
+    func select(_ page: SettingsPage) {
+        selection.page = page
+    }
+
+    // MARK: NSWindowDelegate
+
+    /// 关闭即结束「抽屉常驻」：控制器恢复常规收起逻辑。
+    func windowWillClose(_ notification: Notification) {
+        panelController?.settingsWindowDidClose()
+    }
 }
 
-struct SettingsView: View {
+enum SettingsWindowMetrics {
+    static let width: CGFloat = 780
+    static let height: CGFloat = 560
+    /// 面板顶缘与抽屉可见底缘的间距。
+    static let gapFromDrawer: CGFloat = 8
+}
+
+// MARK: - 页面
+
+enum SettingsPage: String, CaseIterable, Identifiable {
+    case general
+    case components
+    case layout
+    case plugins
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: return L("settings.tab.general")
+        case .components: return L("settings.tab.components")
+        case .layout: return L("settings.tab.layout")
+        case .plugins: return L("settings.tab.plugins")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general: return "gearshape"
+        case .components: return "square.grid.2x2"
+        case .layout: return "rectangle.3.group"
+        case .plugins: return "puzzlepiece.extension"
+        }
+    }
+}
+
+// MARK: - 根视图
+
+struct SettingsRootView: View {
     let controller: NotchPanelController
     @ObservedObject private var settingsStore: SettingsStore
-    @ObservedObject private var layoutEngine: LayoutEngine
+    @ObservedObject private var selection: SettingsSelection
 
-    init(controller: NotchPanelController) {
+    init(controller: NotchPanelController, selection: SettingsSelection) {
         self.controller = controller
         self.settingsStore = controller.settingsStore
-        self.layoutEngine = controller.layoutEngine
+        self.selection = selection
     }
 
     var body: some View {
-        Form {
-            Section(L("settings.section.interaction")) {
-                Picker(L("settings.triggerMode"), selection: $settingsStore.triggerMode) {
-                    ForEach(SettingsStore.TriggerMode.allCases) { mode in
-                        Label(mode.title, systemImage: mode.systemImage).tag(mode)
-                    }
-                }
-                .pickerStyle(.inline)
-            }
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 176)
 
-            Section(L("settings.section.layout")) {
-                Picker(L("settings.columns"), selection: columnBinding) {
-                    ForEach(2...8, id: \.self) { columns in
-                        Text(LF("settings.column.count", columns)).tag(columns)
-                    }
-                }
-            }
+            Divider()
+                .overlay(.white.opacity(0.07))
 
-            Section(L("settings.section.general")) {
-                Toggle(isOn: launchAtLoginBinding) {
-                    Text(L("settings.launchAtLogin"))
-                }
-                if let hint = launchAtLoginHint {
-                    Text(hint)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section(L("settings.section.plugins")) {
-                Button(L("settings.pluginManager")) {
-                    controller.showPluginManager()
-                }
-            }
-
-            // 语言覆盖写入 AppleLanguages，须重启才能让已加载的 bundle 重新选 lproj。
-            Section(L("settings.language")) {
-                Picker(L("settings.language"), selection: $settingsStore.languageOverride) {
-                    Text(L("language.system")).tag(SettingsStore.LanguageOverride.system)
-                    Text("简体中文").tag(SettingsStore.LanguageOverride.simplifiedChinese)
-                    Text("English").tag(SettingsStore.LanguageOverride.english)
-                }
-                if settingsStore.languageOverride != .system {
-                    Text(L("language.restartHint"))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section {
-                Button(L("settings.quit"), role: .destructive) {
-                    NSApp.terminate(nil)
-                }
-            }
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .formStyle(.grouped)
-        .frame(width: 420, height: 480)
+        .background(Color(red: 0.055, green: 0.055, blue: 0.062))
         .environment(\.colorScheme, .dark)
+        .frame(width: SettingsWindowMetrics.width, height: SettingsWindowMetrics.height)
+        // 「组件」页需要抽屉处于编辑模式：拖进来的组件可立即继续拖动/缩放/
+        // 删除，快捷按钮也能直接拖动换位；离开该页即退出。
+        .onChange(of: selection.page) { _, page in
+            controller.setComponentsPageActive(page == .components)
+        }
     }
 
-    private var columnBinding: Binding<Int> {
-        Binding(
-            get: { layoutEngine.userMaxColumns },
-            set: { newValue in
-                layoutEngine.setUserMaxColumns(newValue)
-                controller.refreshAfterLayoutChange()
+    // MARK: 一级侧边栏
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("NotchCenter")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.5))
+                .padding(.horizontal, 14)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+
+            ForEach(SettingsPage.allCases) { page in
+                sidebarItem(page)
             }
-        )
-    }
 
-    // MARK: 开机自启（SMAppService）
+            Spacer(minLength: 0)
 
-    @State private var launchAtLoginEnabled = LaunchAtLogin.isEnabled
-    @State private var launchAtLoginError: String?
-
-    private var launchAtLoginBinding: Binding<Bool> {
-        Binding(
-            get: { launchAtLoginEnabled },
-            set: { newValue in
-                do {
-                    try LaunchAtLogin.setEnabled(newValue)
-                    launchAtLoginEnabled = LaunchAtLogin.isEnabled
-                    launchAtLoginError = nil
-                } catch {
-                    // 注册失败后回读真实状态，避免开关与系统不一致。
-                    launchAtLoginEnabled = LaunchAtLogin.isEnabled
-                    launchAtLoginError = error.localizedDescription
+            Button {
+                NSApp.terminate(nil)
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "power")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(L("settings.quit"))
+                        .font(.system(size: 12))
                 }
+                .foregroundStyle(.white.opacity(0.45))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             }
-        )
+            .buttonStyle(.plain)
+            .help(L("settings.quit"))
+        }
+        .frame(maxHeight: .infinity)
+        .background(Color.white.opacity(0.015))
     }
 
-    /// 开发态裸二进制无法注册登录项；或注册出错时给出提示。
-    private var launchAtLoginHint: String? {
-        if let launchAtLoginError {
-            return LF("settings.launchAtLogin.error", launchAtLoginError)
+    private func sidebarItem(_ page: SettingsPage) -> some View {
+        let isSelected = selection.page == page
+        return Button {
+            selection.page = page
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: page.systemImage)
+                    .font(.system(size: 12, weight: .medium))
+                    .frame(width: 16)
+                Text(page.title)
+                    .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.white.opacity(isSelected ? 0.92 : 0.6))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(.white.opacity(isSelected ? 0.12 : 0))
+            )
+            .contentShape(Rectangle())
         }
-        if Bundle.main.bundleURL.pathExtension != "app" {
-            return L("settings.launchAtLogin.devHint")
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+    }
+
+    // MARK: 内容
+
+    @ViewBuilder
+    private var content: some View {
+        switch selection.page {
+        case .general:
+            GeneralSettingsPage(controller: controller, settingsStore: settingsStore)
+        case .components:
+            ComponentsSettingsPage(controller: controller)
+        case .layout:
+            LayoutSettingsPage(controller: controller, settingsStore: settingsStore)
+        case .plugins:
+            PluginManagerView(pluginManager: controller.pluginManager)
         }
-        return nil
+    }
+}
+
+// MARK: - 控制器入口
+
+extension NotchPanelController {
+    /// 打开设置面板：抽屉常驻展开（不自动收起），面板贴挂到抽屉下方并置顶。
+    /// 面板已可见时再触发一次即关闭（抽屉顶栏齿轮 = 开关）。
+    func showSettings() {
+        let controller = settingsWindowController ?? {
+            let controller = SettingsWindowController(panelController: self)
+            settingsWindowController = controller
+            return controller
+        }()
+
+        if isSettingsPresented {
+            closeSettings()
+            return
+        }
+
+        isSettingsPresented = true
+        cancelCollapse()
+        // 编辑模式与设置面板互斥：两处都能改布局，同时开着会互相打架
+        // （目录条高度也算进抽屉几何）。
+        if isEditing {
+            stopEditMode()
+        }
+        if !isExpanded {
+            expand(animated: true, activate: false)
+        }
+        controller.showSettings()
+        positionSettingsWindow()
+    }
+
+    /// 关闭设置面板（齿轮按钮 / 抽屉关闭按钮 / 窗口关闭）。
+    func closeSettings() {
+        isSettingsPresented = false
+        // 面板关闭即离开组件页：先退出其联动的编辑模式，再按常规逻辑收起。
+        setComponentsPageActive(false)
+        settingsWindowController?.close()
+        // 常驻结束：未钉住时按当前鼠标位置决定是否收起抽屉。
+        if !isPinned {
+            handleMouseLocation(NSEvent.mouseLocation)
+        }
+    }
+
+    /// 窗口关闭回调（delegate 与主动关闭都会走到；幂等）。
+    func settingsWindowDidClose() {
+        guard isSettingsPresented else { return }
+        isSettingsPresented = false
+        setComponentsPageActive(false)
+        if !isPinned {
+            handleMouseLocation(NSEvent.mouseLocation)
+        }
+    }
+
+    /// 把设置面板对齐到抽屉可见底缘：屏幕中线水平居中，顶缘 = 抽屉底缘
+    /// + 间距；屏幕高度不足时贴屏幕底（面板层级更高，允许与抽屉重叠）。
+    func positionSettingsWindow() {
+        guard let window = settingsWindowController?.window else { return }
+        guard let pair = activePair ?? pairs.first else { return }
+        let visible = visibleDrawerFrame(for: pair)
+        let size = window.frame.size
+        let originY = max(
+            visible.minY - SettingsWindowMetrics.gapFromDrawer - size.height,
+            pair.screenFrame.minY + 12
+        )
+        let originX = pair.screenFrame.midX - size.width / 2
+        window.setFrameOrigin(NSPoint(x: round(originX), y: round(originY)))
     }
 }

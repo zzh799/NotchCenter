@@ -28,7 +28,7 @@ NotchCenter/
 │   ├── NotchPanelController.swift   # 核心控制器（hostController 实现）：状态中枢 + 每屏一对面板 + 展开/收起 + 几何
 │   ├── NotchPanelContent.swift      # 控制器 extension：视图构建（rebuildContent/build*）+ 编辑模式两段式进入
 │   ├── NotchPanelInteraction.swift  # 控制器 extension：事件监听 + 鼠标轮询 + 收起协调（handleMouseLocation/scheduleCollapse）
-│   ├── NotchPanelDebugSupport.swift # 控制器 extension：调试（debugTogglePin/capturePanelsForDebug）+ 插件管理窗口
+│   ├── NotchPanelDebugSupport.swift # 控制器 extension：调试（debugTogglePin/capturePanelsForDebug/captureSettingsWindowForDebug）+ 插件管理窗口 + 设置面板探针（NOTCHCENTER_SETTINGS_PROBE）
 │   ├── PanelWindows.swift           # 窗口类型：NotchPanel + 3 个 HostingView + ScreenPanelPair + configurePanel
 │   ├── PanelUIState.swift           # 面板 UI 状态（ObservableObject，@Published 驱动 SwiftUI 刷新）
 │   ├── CompactPanelView.swift       # 刘海两侧紧凑带视图（含槽位容器）
@@ -49,7 +49,11 @@ NotchCenter/
 │   ├── LayoutEngineGeometry.swift   # 布局引擎只读 extension：frame/内容尺寸/窗口尺寸/previewBottomRow
 │   ├── LayoutEngineValidation.swift # 布局引擎只读 extension：validate() 全量健康检查
 │   ├── PluginManagerWindow.swift    # 插件管理窗口（详情区展示各插件 bundle 内 README.md）
-│   ├── SettingsWindow.swift / ReadmeMarkdownView.swift  # 设置面板 + 轻量 Markdown 块解析渲染（ReadmeMarkdownTests）
+│   ├── SettingsWindow.swift / SettingsPages.swift  # 设置面板（侧边栏多页：通用/组件/布局/插件）+ 各页面（拖拽到抽屉/快速区、网格指标可调）
+│   ├── GridMetricsStore.swift       # 抽屉网格指标存储（单元宽/高/间距/内边距，UserDefaults 持久化 + 变更通知）
+│   ├── BlockDragCoordinator.swift   # 跨窗口拖拽协调器：设置面板 → 抽屉/快速区（跟随光标的预览浮窗 + 落点命中 + 落位）
+│   ├── BlockDropTargeting.swift     # 控制器 extension：拖拽落点命中测试（dropZone）+ 落位执行（performBlockDrop/addBlock）+ 落点高亮写入 uiState
+│   ├── ReadmeMarkdownView.swift     # 轻量 Markdown 块解析渲染（ReadmeMarkdownTests）
 │   ├── SettingsStore.swift          # 触发模式（hover/click）+ 开机自启 + 语言覆盖
 │   ├── LaunchAtLogin.swift          # 开机自启（SMAppService，幂等设置 + 状态同步）
 │   ├── Localization.swift           # 宿主 L()/LF() 本地化辅助（资源打进 NotchCenter_NotchCenter.bundle）

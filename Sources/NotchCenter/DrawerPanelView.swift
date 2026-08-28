@@ -234,6 +234,7 @@ struct DrawerPanelView: View {
             ForEach(ui.drawerElements) { element in
                 blockContainer(for: element)
             }
+            dropPlaceholder
         }
         .frame(
             width: ui.drawerContentSize.width,
@@ -244,6 +245,32 @@ struct DrawerPanelView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.86), value: ui.drawerElements.map(\.placement))
         .animation(.spring(response: 0.3, dampingFraction: 0.86), value: previewPositions)
 
+    }
+
+    /// 从设置面板拖入抽屉组件时的落点占位（虚线框）：位置与尺寸都用落点的
+    /// 格子坐标算，与块容器同一套 gridX / gridY 公式（所见即所得）。
+    @ViewBuilder
+    private var dropPlaceholder: some View {
+        if case let .drawer(column, row, columns, rows)? = ui.dropPreview?.zone,
+           ui.dropPreview?.isCompact == false {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.white.opacity(0.055))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                        .foregroundStyle(.white.opacity(0.5))
+                )
+                .frame(
+                    width: gridWidth(columns: columns),
+                    height: gridHeight(rows: rows)
+                )
+                .position(
+                    x: gridX(column: column - ui.drawerGridLeftColumn)
+                        + gridWidth(columns: columns) / 2,
+                    y: gridY(row: row) + gridHeight(rows: rows) / 2
+                )
+                .allowsHitTesting(false)
+        }
     }
 
     /// 单个抽屉块容器（含定位修饰）：独立成方法拆开类型检查表达式——
@@ -319,7 +346,17 @@ struct DrawerPanelView: View {
                 return origin.row + rows
             }
             .max() ?? 1
-        return NotchGridMetrics.contentHeight(rows: previewRows)
+        // 落点在末尾新行时也要撑开：否则占位框被 ScrollView 裁掉
+        // （网格内容高度是滚动区的唯一来源）。
+        let dropRows = dropPlaceholderBottomRow
+        return NotchGridMetrics.contentHeight(rows: max(previewRows, dropRows, 1))
+    }
+
+    /// 拖入落点的最低占用行（无落点为 0）。
+    private var dropPlaceholderBottomRow: Int {
+        guard let preview = ui.dropPreview, !preview.isCompact,
+              case let .drawer(_, row, _, rows) = preview.zone else { return 0 }
+        return row + rows
     }
 
     @State private var previewPositions: [String: LayoutEngine.GridOrigin] = [:]

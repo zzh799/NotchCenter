@@ -94,7 +94,7 @@ extension NotchPanelController {
     /// 可见抽屉矩形（紧凑带 + 当前面板高度，顶贴屏幕）：穿透命中与停留
     /// 判定共用同一公式（方案 E 窗口为固定满高，不能用窗口 frame——
     /// 按内容状态计算可见矩形）。
-    private func visibleDrawerFrame(for pair: ScreenPanelPair) -> NSRect {
+    func visibleDrawerFrame(for pair: ScreenPanelPair) -> NSRect {
         var size = uiState.drawerWindowSize
         size.height += pair.layout.compactHeight
         return NotchGeometry.topCenteredFrame(
@@ -170,6 +170,12 @@ extension NotchPanelController {
 
         // 已展开。
         if activeMenuTrackingCount > 0 {
+            cancelCollapse()
+            return
+        }
+        // 设置面板打开期间抽屉常驻：面板挂在抽屉下方置顶显示，收起会让
+        // 面板悬空，也丢掉“改设置即时看抽屉”的上下文（文档 §6.1 扩展）。
+        if isSettingsPresented {
             cancelCollapse()
             return
         }

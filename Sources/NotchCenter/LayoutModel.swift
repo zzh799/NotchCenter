@@ -3,12 +3,25 @@ import Foundation
 
 // MARK: - 网格指标（文档 §5.3）
 
-/// 抽屉网格固定指标：单元格 150×120，间距 12，内容内边距 16。
+/// 抽屉网格指标访问点：**转发** `GridMetricsStore.shared`（设置 → 布局可调，
+/// 默认单元格 150×120、间距 12、内容内边距 16）。
+///
+/// 静态访问点保持不变，是为了让既有的几何计算 / 视图代码继续同步读取，
+/// 无需改成实例注入：指标变化由控制器监听 `GridMetricsStore.didChangeNotification`
+/// 后重建内容（`rebuildContent`）驱动视图重算，而不是靠 SwiftUI 观察。
+/// 注意：这些值会变，不要把它们的快照缓存进跨刷新存活的结构里。
 enum NotchGridMetrics {
-    static let cellWidth: CGFloat = 150
-    static let cellHeight: CGFloat = 120
-    static let spacing: CGFloat = 12
-    static let contentPadding: CGFloat = 16
+    static var cellWidth: CGFloat { GridMetricsStore.shared.cellWidth }
+    static var cellHeight: CGFloat { GridMetricsStore.shared.cellHeight }
+    static var spacing: CGFloat { GridMetricsStore.shared.spacing }
+    static var contentPadding: CGFloat { GridMetricsStore.shared.contentPadding }
+
+    /// 出厂默认值（"恢复默认"按钮与对照显示用）。
+    static let defaultCellWidth = GridMetricsStore.defaultCellWidth
+    static let defaultCellHeight = GridMetricsStore.defaultCellHeight
+    static let defaultSpacing = GridMetricsStore.defaultSpacing
+    static let defaultContentPadding = GridMetricsStore.defaultContentPadding
+
     /// 抽屉窗口顶部栏（钉住 / 编辑等按钮）高度。
     static let drawerTopBarHeight: CGFloat = 36
 

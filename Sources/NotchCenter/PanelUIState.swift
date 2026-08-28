@@ -38,4 +38,44 @@ final class PanelUIState: ObservableObject {
     @Published var drawerGridLeftColumn = 0
     @Published var drawerElements: [DrawerElement] = []
     @Published var catalogPlugins: [CatalogPluginGroup] = []
+
+    /// 从设置面板拖拽组件时的落点预览（抽屉网格虚线占位 / 快速区插入指示）。
+    /// 仅在拖拽会话期间非空，由 `BlockDragCoordinator` 经控制器写入。
+    @Published var dropPreview: DropPreview?
+
+    struct DropPreview: Equatable {
+        let zone: BlockDragCoordinator.DropZone
+        /// 被拖的是快捷按钮（紧凑块）：快速区画插入指示，不画网格占位。
+        let isCompact: Bool
+        let title: String
+        /// 光标横坐标（紧凑带内容坐标）：插入指示线据此跟随光标——快速区为空
+        /// （没有槽位可参照）时，指示线不能只画在刘海中心。
+        let compactPointerX: CGFloat?
+        /// 编辑模式内部重排时被拖图标的数组下标（从设置面板拖入为 nil）。
+        /// 非空时视图按“插入后的屏幕顺序”给每个图标算显示槽位——
+        /// 拖动过程中其余图标平滑让位。
+        let draggingSlotIndex: Int?
+
+        init(
+            zone: BlockDragCoordinator.DropZone,
+            isCompact: Bool,
+            title: String,
+            compactPointerX: CGFloat? = nil,
+            draggingSlotIndex: Int? = nil
+        ) {
+            self.zone = zone
+            self.isCompact = isCompact
+            self.title = title
+            self.compactPointerX = compactPointerX
+            self.draggingSlotIndex = draggingSlotIndex
+        }
+
+        /// 拖动目标是否与另一份预览一致（忽略逐帧变化的光标坐标）：
+        /// 仅目标变化时才带动画更新，否则每帧都会重启动画。
+        func matchesTarget(of other: DropPreview) -> Bool {
+            zone == other.zone
+                && isCompact == other.isCompact
+                && draggingSlotIndex == other.draggingSlotIndex
+        }
+    }
 }

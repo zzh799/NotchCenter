@@ -38,6 +38,14 @@ final class NotchPanelController: NSObject {
     /// 抽屉是否处于展开状态（纯控制器逻辑，不进 UI 状态）。
     private(set) var isExpanded = false
 
+    /// 设置面板是否可见：可见期间抽屉常驻展开（不自动收起），面板贴挂在
+    /// 抽屉下方并置顶（见 `showSettings` / `settingsWindowDidClose`）。
+    var isSettingsPresented = false
+
+    /// 设置面板停在「组件」页：该页期间抽屉保持编辑模式（拖进来的组件可
+    /// 立即继续拖动 / 缩放 / 删除），离开该页或关闭面板时退出编辑模式。
+    var isEditingForComponentsPage = false
+
     var isRevealedForFileDrag = false
     /// 收起态进入编辑的等待期（揭示→编辑两段式之间）：悬停判定视为停留。
     var isEditEntryPending = false
@@ -65,8 +73,12 @@ final class NotchPanelController: NSObject {
             self.rebuildContent()
         }
 
+        // 注入拖拽协调器：设置面板的组件拖拽由此处的落点命中测试接管。
+        BlockDragCoordinator.shared.controller = self
+
         syncScreens()
         updateScreenConstraint()
+        observeGridMetricsChanges()
 
         // 启用状态恢复（文档 §5.4）：layout.json 记录 enabledPluginIDs。
         if layoutEngine.didLoadFromDisk {
@@ -83,6 +95,25 @@ final class NotchPanelController: NSObject {
         observeScreenChanges()
         observeGlobalMouseEvents()
         observeMenuTracking()
+    }
+
+    /// 网格指标（单元大小 / 间隔 / 内边距）变化后重建内容：抽屉几何全部
+    /// 由 `NotchGridMetrics` 推导，尺寸变化必须走一次完整重建，设置面板
+    /// 也要跟着重新贴挂到新的抽屉底缘。
+    @objc private func gridMetricsDidChange(_ notification: Notification) {
+        refreshAfterLayoutChange()
+        if isSettingsPresented {
+            positionSettingsWindow()
+        }
+    }
+
+    private func observeGridMetricsChanges() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(gridMetricsDidChange(_:)),
+            name: GridMetricsStore.didChangeNotification,
+            object: nil
+        )
     }
 
     // MARK: - 多屏幕管理（文档 §6.3：每个屏幕单独显示一个 NotchCenter）

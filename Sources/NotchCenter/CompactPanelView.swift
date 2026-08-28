@@ -14,7 +14,9 @@ struct CompactElement: Identifiable {
     /// 插件是否提供设置界面（编辑模式右上角齿轮按钮的显隐条件）。
     let hasSettings: Bool
 
-    var id: Int { slotIndex }
+    /// 身份用放置实例（placementID）而不是槽位下标：重排时 SwiftUI 才能识别
+    /// “同一个图标换了位置”并做平滑移动，而不是当作槽位内容更新。
+    var id: String { reference?.placementID ?? "slot-\(slotIndex)" }
 }
 
 struct CompactActions {
@@ -24,6 +26,11 @@ struct CompactActions {
     let onShowSettings: (String, String, CGRect) -> Void
     let onTapBackground: () -> Void
     let onExpand: () -> Void
+    /// 编辑模式拖动重排预览：(被拖图标数组下标, 屏幕插入位置, 光标内容坐标 x)；
+    /// 结束传 (nil, nil, nil) 清空。屏幕位置语义见 `CompactSlotOrder`。
+    let onReorderPreview: (Int?, Int?, CGFloat?) -> Void
+    /// 编辑模式拖动重排提交：(被拖图标数组下标, 屏幕插入位置)。
+    let onReorderCommit: (Int, Int) -> Void
 }
 
 struct CompactPanelView: View {
@@ -89,20 +96,50 @@ struct CompactPanelView: View {
 
                 ForEach(ui.compactElements) { element in
                     if let view = element.view {
-                        let rect = strip.slotRect(at: element.slotIndex) ?? .zero
+                        // 显示槽位：内部重排预览期间按“插入后的屏幕顺序”取位，
+                        // 其余图标随拖动平滑让位；无预览时用真实数组下标。
+                        // 回调用的是真实 slotIndex（数组下标），不受预览影响。
+                        let displayIndex = displaySlotIndex(
+                            for: element,
+                            strip: strip
+                        )
+                        let rect = strip.slotRect(at: displayIndex) ?? .zero
                         CompactBlockContainer(
                             element: element,
                             view: view,
                             isEditing: isEditing,
+                            strip: strip,
+                            slotRect: rect,
                             onRemove: { actions.onRemoveBlock(element.slotIndex) },
                             onShowSettings: { anchorFrame in
                                 guard let reference = element.reference else { return }
                                 actions.onShowSettings(reference.pluginID, reference.placementID, anchorFrame)
                             },
-                            onExpand: actions.onExpand
+                            onExpand: actions.onExpand,
+                            onReorderPreview: actions.onReorderPreview,
+                            onReorderCommit: actions.onReorderCommit
                         )
                         .position(x: rect.midX, y: rect.midY)
                     }
+                }
+
+                // 从设置面板拖入快捷按钮时的插入指示：一条贴在插入点
+                // 左侧的竖线（追加到末尾时贴在最后一个图标右侧）。
+                if let preview = ui.dropPreview, preview.isCompact,
+                   case let .compact(index) = preview.zone {
+                    Capsule(style: .continuous)
+                        .fill(.white.opacity(0.85))
+                        .frame(width: 2.5, height: 20)
+                        .shadow(color: .white.opacity(0.4), radius: 4)
+                        .position(
+                            x: insertionX(
+                                index: index,
+                                strip: strip,
+                                pointerX: preview.compactPointerX
+                            ),
+                            y: panelHeight / 2
+                        )
+                        .allowsHitTesting(false)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -110,20 +147,86 @@ struct CompactPanelView: View {
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.15), value: isHovering)
     }
+
+    /// 内部重排预览中，某图标应显示在的槽位（数组下标）。
+    ///
+    /// 复用引擎同一套 `CompactSlotOrder` 算法：把当前屏幕顺序序列里的被拖项
+    /// 移到目标屏幕位置，再按映射换算每个图标的新数组下标——预览与松手
+    /// 提交必然一致（所见即所得）。
+    private func displaySlotIndex(
+        for element: CompactElement,
+        strip: CompactStripLayout
+    ) -> Int {
+        guard let preview = ui.dropPreview,
+              preview.isCompact,
+              let from = preview.draggingSlotIndex,
+              case let .compact(screenPosition) = preview.zone,
+              let reordered = CompactSlotOrder.reordered(
+                  ui.compactElements.map(\.reference),
+                  from: from,
+                  to: screenPosition
+              ) else {
+            return element.slotIndex
+        }
+        // 找到该图标在重排后数组中的新下标（以 placementID 匹配，跳过空位）。
+        let identity = element.reference?.placementID
+        let newIndex = reordered.firstIndex { candidate in
+            guard let identity else { return false }
+            return candidate?.placementID == identity
+        }
+        guard let newIndex else { return element.slotIndex }
+        return min(max(newIndex, 0), strip.slotCount - 1)
+    }
+
+    /// 插入指示线的横坐标（窗口内容坐标，左上原点）。
+    /// 槽位按添加顺序**左右均衡交替**排布（偶数索引在左、奇数在右），
+    /// 所以索引 i 的位置就是 `slotRect(at: i)`，不必按屏幕顺序换算。
+    /// `pointerX` 为光标横坐标（同上坐标系）：快速区为空、或光标落在紧凑带
+    /// 之外时用它跟随光标（钳制在带内，保证指示线可见）。
+    private func insertionX(
+        index: Int,
+        strip: CompactStripLayout,
+        pointerX: CGFloat?
+    ) -> CGFloat {
+        let gap: CGFloat = 3
+        let bandWidth = strip.windowWidth
+        if let pointerX {
+            return min(max(pointerX, gap), max(bandWidth - gap, gap))
+        }
+        if index >= 0, index < strip.slotCount, let rect = strip.slotRect(at: index) {
+            return rect.minX - gap
+        }
+        // 追加到末尾：贴在最后一个图标右侧。
+        let last = strip.slotCount - 1
+        if last >= 0, let rect = strip.slotRect(at: last) {
+            return rect.maxX + gap
+        }
+        // 还没有任何图标：贴刘海中心（快速区为空时带宽只剩刘海）。
+        return strip.notchCenterX
+    }
 }
 
-/// 紧凑块容器：槽位内的块视图 + 默认点击展开（文档 §6.2）+ 编辑模式移除与设置。
+/// 紧凑块容器：槽位内的块视图 + 默认点击展开（文档 §6.2）+ 编辑模式移除、
+/// 设置与**拖动重排**（横向换位，插入指示线复用于紧凑带层级）。
 private struct CompactBlockContainer: View {
     let element: CompactElement
     let view: AnyView
     let isEditing: Bool
+    /// 紧凑带布局与自身槽位矩形：把拖动手势的局部坐标换算成带内内容坐标。
+    let strip: CompactStripLayout
+    let slotRect: CGRect
     let onRemove: () -> Void
     /// 弹出插件设置浮窗（参数为图标当前全局 frame，作为 SettingPopover 锚点）。
     let onShowSettings: (CGRect) -> Void
     let onExpand: () -> Void
+    let onReorderPreview: (Int?, Int?, CGFloat?) -> Void
+    let onReorderCommit: (Int, Int) -> Void
 
     /// 图标当前全局 frame（窗口坐标）：设置浮窗的锚定矩形。
     @State private var globalFrame: CGRect = .zero
+    /// 拖动位移（横向）：拖动中图标跟手，松手回零。
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -159,6 +262,47 @@ private struct CompactBlockContainer: View {
                 .offset(x: 3, y: -2)
             }
         }
+        // 拖动中整体跟手（角标一起走），并轻微放大表示“已拿起”。
+        .offset(x: dragOffset)
+        .scaleEffect(isDragging ? 1.08 : 1)
+        .shadow(color: .black.opacity(isDragging ? 0.45 : 0), radius: 6, y: 2)
+        // 仅编辑模式挂手势：`.subviews` 等价于不添加（保留子视图自身的点击）。
+        .gesture(reorderGesture, including: isEditing ? .gesture : .subviews)
+    }
+
+    /// 编辑模式拖动重排：位移换算成带内内容坐标 → 屏幕插入位置 → 实时让位
+    /// 预览（其余图标动画移到目标槽位），松手提交换位。
+    /// 纵向位移忽略（快速区只有横向次序）。
+    private var reorderGesture: some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                if !isDragging { isDragging = true }
+                dragOffset = value.translation.width
+                let contentX = contentX(for: value)
+                onReorderPreview(
+                    element.slotIndex,
+                    strip.screenInsertionIndex(atContentX: contentX),
+                    contentX
+                )
+            }
+            .onEnded { value in
+                let contentX = contentX(for: value)
+                let target = strip.screenInsertionIndex(atContentX: contentX)
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                    dragOffset = 0
+                    isDragging = false
+                }
+                // 先提交（内容重建到新顺序）再清预览：若先清预览，视图会先
+                // 跳回旧顺序的位置、再动画到新位置——出现一次可见的回弹。
+                onReorderCommit(element.slotIndex, target)
+                onReorderPreview(nil, nil, nil)
+            }
+    }
+
+    /// 手势位置 → 紧凑带内容坐标：按下点在槽位内的位置 + 累计位移。
+    /// 用 `startLocation` 而非 `location`：后者随视图位移漂移。
+    private func contentX(for value: DragGesture.Value) -> CGFloat {
+        slotRect.minX + value.startLocation.x + value.translation.width
     }
 
     @ViewBuilder

@@ -46,12 +46,15 @@ extension LayoutEngine {
 
     // MARK: 紧凑槽位（文档 §5.2：数组长度即图标数，宽度随其动态伸缩）
 
-    /// 设置某索引的紧凑块引用。`nil` = 移除该图标（闭合空隙，后续图标前移）；
-    /// 非空 = 替换该索引（索引等于当前长度则追加到末尾）；越界忽略。
+    /// 设置某索引的紧凑块引用。`nil` = 移除该图标（**其余保持屏幕相对顺序**，
+    /// 见 `CompactSlotOrder.removing`）；非空 = 替换该索引（索引等于当前长度
+    /// 则追加到末尾）；越界忽略。
     func setCompactSlot(_ index: Int, to ref: CompactSlotReference?) {
         guard let ref else {
-            guard model.compactSlots.indices.contains(index) else { return }
-            model.compactSlots.remove(at: index)
+            guard let remaining = CompactSlotOrder.removing(model.compactSlots, at: index) else {
+                return
+            }
+            model.compactSlots = remaining
             saveToDisk()
             return
         }
@@ -61,6 +64,49 @@ extension LayoutEngine {
             model.compactSlots.append(ref)
         }
         saveToDisk()
+    }
+
+    /// 在**屏幕位置** `position`（0 = 最左，count = 末尾）插入紧凑块
+    /// （设置面板拖拽落点）：越界钳制。
+    ///
+    /// 用屏幕位置而不是数组下标：数组下标按奇偶左右分列，直接按下标插入会让
+    /// 后续下标整体后移、屏幕上其余图标集体换位（见 `CompactSlotOrder`）。
+    @discardableResult
+    func insertCompactBlock(
+        pluginID: String,
+        blockID: String,
+        atScreenPosition position: Int
+    ) -> Bool {
+        guard let block = blockResolver(pluginID, blockID), block.kind == .compact else {
+            return false
+        }
+        let clamped = min(max(position, 0), model.compactSlots.count)
+        model.compactSlots = CompactSlotOrder.inserting(
+            CompactSlotReference(
+                pluginID: pluginID,
+                blockID: blockID,
+                placementID: UUID().uuidString
+            ),
+            into: model.compactSlots,
+            atScreenPosition: clamped
+        )
+        saveToDisk()
+        return true
+    }
+
+    /// 拖动重排快捷按钮（方案 A）：把数组下标 `from` 的图标移到**屏幕位置**
+    /// `to`（0...count）。屏幕上只有被拖的那一个移动，其余保持相对顺序。
+    /// 越界钳制；落点即原位（含右侧相邻）时不改动、不落盘。
+    @discardableResult
+    func moveCompactSlot(from: Int, toScreenPosition to: Int) -> Bool {
+        guard let reordered = CompactSlotOrder.reordered(
+            model.compactSlots,
+            from: from,
+            to: min(max(to, 0), model.compactSlots.count)
+        ) else { return false }
+        model.compactSlots = reordered
+        saveToDisk()
+        return true
     }
 
     func swapCompactSlots(_ first: Int, _ second: Int) {
@@ -136,6 +182,104 @@ extension LayoutEngine {
         compactEmptyColumns()
         saveToDisk()
         return placed
+    }
+
+    /// 在指定网格位置放置抽屉块（设置面板拖拽落点，文档 §5.3）：
+    /// 落点被占/越界时按行优先扫描最近可用位置（与 `moveDrawerBlock`
+    /// 同一语义）；无处可放返回 nil。行仅向下增长（row < 0 一律按 0 计）。
+    @discardableResult
+    func placeDrawerBlock(pluginID: String, blockID: String, column: Int, row: Int) -> PlacedBlock? {
+        guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
+            return nil
+        }
+        let span = (block.defaultSize ?? .small).gridSpan
+        guard let origin = nearestFreeOrigin(
+            for: span,
+            preferredColumn: column,
+            preferredRow: row,
+            excluding: nil
+        ) else { return nil }
+
+        let placed = PlacedBlock(
+            pluginID: pluginID,
+            blockID: blockID,
+            placementID: UUID().uuidString,
+            originColumn: origin.column,
+            originRow: origin.row,
+            widthColumns: span.columns,
+            heightRows: span.rows
+        )
+        model.drawerBlocks.append(placed)
+        compactEmptyRows()
+        compactEmptyColumns()
+        saveToDisk()
+        return placed
+    }
+
+    /// 为给定跨度寻找落点：优先 `preferred`（clamp 到合法列区间，行非负），
+    /// 被占时**由近及远**找最近可用位置，保证“拖到哪都能放下”。
+    ///
+    /// 不能像 `moveDrawerBlock` 那样从列区间下限开始行优先扫描：下限在左扩
+    /// 语义下可为负（capacity 远大于占用列时），被占一格就会被推到最左侧
+    /// （如落点 (0,0) 被占 → 落到 (-3,0)），整个布局向左偏移——与用户
+    /// “放到旁边”的直觉相反。这里按“落点所在行优先、行内先右后左、
+    /// 行按距离递增”的顺序探测：先贴着落点找，再向上下相邻行扩展。
+    private func nearestFreeOrigin(
+        for span: (columns: Int, rows: Int),
+        preferredColumn: Int,
+        preferredRow: Int,
+        excluding placementID: String?
+    ) -> (column: Int, row: Int)? {
+        let others = model.drawerBlocks.filter { $0.placementID != placementID }
+        let bounds = validColumnRange(others: others, width: span.columns)
+        let occupied = occupiedRects(excluding: placementID)
+
+        let clampedColumn = min(max(preferredColumn, bounds.lower), bounds.upper)
+        let clampedRow = max(preferredRow, 0)
+        var candidate = PlacedBlock(
+            pluginID: "",
+            blockID: "",
+            placementID: placementID ?? "",
+            originColumn: clampedColumn,
+            originRow: clampedRow,
+            widthColumns: span.columns,
+            heightRows: span.rows
+        )
+        if !overlaps(candidate, with: occupied) {
+            return (clampedColumn, clampedRow)
+        }
+
+        // 探测下界：既有布局最底行 + 1（新起一行必然无冲突）。
+        let maxRow = max(others.map(\.maxRow).max() ?? 0, clampedRow) + 1
+        let columnReach = max(bounds.upper - clampedColumn, clampedColumn - bounds.lower)
+
+        // 行顺序：落点行、下一行、上一行、下两行…… （距离递增，越界跳过）。
+        var rows: [Int] = []
+        for offset in 0...max(maxRow - clampedRow, clampedRow) {
+            if clampedRow + offset <= maxRow { rows.append(clampedRow + offset) }
+            if offset > 0, clampedRow - offset >= 0 { rows.append(clampedRow - offset) }
+        }
+
+        for row in rows {
+            // 行内顺序：落点列、右侧一格、左侧一格、右侧两格……（先右后左）。
+            for offset in 0...max(columnReach, 0) {
+                if clampedColumn + offset <= bounds.upper {
+                    candidate.originColumn = clampedColumn + offset
+                    candidate.originRow = row
+                    if !overlaps(candidate, with: occupied) {
+                        return (candidate.originColumn, row)
+                    }
+                }
+                if offset > 0, clampedColumn - offset >= bounds.lower {
+                    candidate.originColumn = clampedColumn - offset
+                    candidate.originRow = row
+                    if !overlaps(candidate, with: occupied) {
+                        return (candidate.originColumn, row)
+                    }
+                }
+            }
+        }
+        return nil
     }
 
     func removeDrawerBlock(placementID: String) {

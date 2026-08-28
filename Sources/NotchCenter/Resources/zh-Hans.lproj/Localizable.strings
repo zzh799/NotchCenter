@@ -21,6 +21,32 @@
 "settings.pluginManager" = "插件管理…";
 "settings.quit" = "退出 NotchCenter";
 
+/* 设置侧边栏分页 */
+"settings.tab.general" = "通用";
+"settings.tab.components" = "组件";
+"settings.tab.layout" = "布局";
+"settings.tab.plugins" = "插件";
+
+/* 设置 → 组件 */
+"settings.components.groups" = "插件";
+"settings.components.hint" = "单击添加组件；长按后可拖到抽屉或快速区。";
+"settings.components.compact" = "快捷按钮";
+"settings.components.empty" = "没有可用组件：请先在「插件」页启用插件。";
+
+/* 设置 → 布局 */
+"settings.layout.cell" = "单元大小";
+"settings.layout.cellWidth" = "单元宽";
+"settings.layout.cellHeight" = "单元高";
+"settings.layout.spacingSection" = "间隔与边距";
+"settings.layout.spacing" = "间隔";
+"settings.layout.padding" = "内容边距";
+"settings.layout.columnsSection" = "列数";
+"settings.layout.effectiveColumns" = "当前屏幕最多容纳 %d 列。";
+"settings.layout.previewSection" = "示意";
+"settings.layout.previewCaption" = "单元 %d×%d · 间隔 %d";
+"settings.layout.restoreDefault" = "恢复默认";
+"settings.layout.isDefault" = "已是默认值";
+
 /* 语言覆盖（重启生效） */
 "settings.language" = "语言";
 "language.system" = "跟随系统";

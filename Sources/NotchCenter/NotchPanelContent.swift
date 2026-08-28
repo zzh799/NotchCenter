@@ -74,6 +74,22 @@ extension NotchPanelController {
         }
     }
 
+    /// 设置面板切到 / 离开「组件」页：组件页期间抽屉进入编辑模式——从页内
+    /// 拖进来的组件落位后即可继续拖动、缩放、删除，无需再点一次编辑按钮。
+    /// 离开该页（或关闭面板）时退出编辑模式。
+    func setComponentsPageActive(_ active: Bool) {
+        guard active != isEditingForComponentsPage else { return }
+        isEditingForComponentsPage = active
+        if active {
+            if !isExpanded {
+                expand(animated: true, activate: false)
+            }
+            startEditMode()
+        } else {
+            stopEditMode()
+        }
+    }
+
     // MARK: - 视图构建
 
     /// 刷新面板内容：把布局与元素写入 `uiState`（@Published 驱动 SwiftUI 刷新），
@@ -114,6 +130,12 @@ extension NotchPanelController {
             // 显式标记重绘：应用未激活时也保证状态变化立即上屏。
             pair.hotHostingView?.needsDisplay = true
             pair.drawerHostingView?.needsDisplay = true
+        }
+
+        // 设置面板贴挂在抽屉底缘：抽屉高度变化（增删块、网格指标调整、
+        // 进入编辑模式）后面板必须跟着重新对齐。
+        if isSettingsPresented {
+            positionSettingsWindow()
         }
     }
 
@@ -304,6 +326,16 @@ extension NotchPanelController {
             },
             onExpand: { [weak self] in
                 self?.expand(animated: true, activate: true)
+            },
+            onReorderPreview: { [weak self] draggingSlot, screenPosition, pointerX in
+                self?.updateCompactReorderPreview(
+                    draggingSlot: draggingSlot,
+                    screenPosition: screenPosition,
+                    pointerX: pointerX
+                )
+            },
+            onReorderCommit: { [weak self] from, screenPosition in
+                self?.moveCompactBlock(from: from, toScreenPosition: screenPosition)
             }
         )
     }
@@ -325,13 +357,23 @@ extension NotchPanelController {
             onToggleEdit: { [weak self] in
                 guard let self else { return }
                 if self.isEditing {
+                    // 手动退出编辑时同步清掉“组件页联动”标志，避免之后
+                    // 切页时两个来源对编辑态的判断打架。
+                    self.isEditingForComponentsPage = false
                     self.stopEditMode()
                 } else {
                     self.startEditMode()
                 }
             },
             onCollapse: { [weak self] in
-                self?.collapse(animated: true)
+                guard let self else { return }
+                // 设置面板开着时，关闭按钮先收面板（面板与抽屉是同一组
+                // 常驻 UI），再收抽屉——避免面板孤零零挂在屏中央。
+                if self.isSettingsPresented {
+                    self.closeSettings()
+                    return
+                }
+                self.collapse(animated: true)
             },
             onRemoveBlock: { [weak self] placementID in
                 guard let self else { return }
