@@ -11,6 +11,9 @@ final class PanelUIState: ObservableObject {
     @Published var isPinned = false
     @Published var isEditing = false
 
+    /// 设置窗口是否可见（经控制器 computed 转发；抽屉顶栏提示标签据此显隐）。
+    @Published var isSettingsPresented = false
+
     /// 可见面板尺寸（参考 codex-island 的 model.size：唯一动画真源）：
     /// 收起 = 紧凑带尺寸（宽=带、高=0 内容），展开 = 完整抽屉。一切尺寸
     /// 变化都在 withAnimation 里发生，容器 frame 直接绑定它做 spring 变形

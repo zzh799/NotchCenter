@@ -40,7 +40,11 @@ final class NotchPanelController: NSObject {
 
     /// 设置面板是否可见：可见期间抽屉常驻展开（不自动收起），面板贴挂在
     /// 抽屉下方并置顶（见 `showSettings` / `settingsWindowDidClose`）。
-    var isSettingsPresented = false
+    /// 经 uiState 发布，抽屉顶栏提示标签据此显隐。
+    var isSettingsPresented: Bool {
+        get { uiState.isSettingsPresented }
+        set { uiState.isSettingsPresented = newValue }
+    }
 
     /// 设置面板停在「组件」页：该页期间抽屉保持编辑模式（拖进来的组件可
     /// 立即继续拖动 / 缩放 / 删除），离开该页或关闭面板时退出编辑模式。

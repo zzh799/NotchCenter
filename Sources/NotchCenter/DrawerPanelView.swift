@@ -149,6 +149,24 @@ struct DrawerPanelView: View {
                 tint: .white.opacity(0.65)
             )
 
+            // 编辑模式且设置窗口未打开时，齿轮旁常驻提示「前往设置页添加组件」
+            // （点击齿轮即打开设置并直入组件页）。Spacer(minLength: 0) 保证
+            // 标签出现只压缩弹性空隙，齿轮与右侧按钮组位置均不跳动。
+            if ui.isEditing && !ui.isSettingsPresented {
+                Text(L("panel.hint.goToSettings"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .padding(.horizontal, 6)
+                    .frame(height: 18)
+                    .background(Capsule().fill(.white.opacity(0.06)))
+                    .transition(.opacity)
+                    .onTapGesture {
+                        actions.onShowSettings()
+                    }
+            }
+
             Spacer(minLength: 0)
 
             // 编辑模式隐藏钉住按钮，其槽位让给一键重排（编辑按钮左边）；
