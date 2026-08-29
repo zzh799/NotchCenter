@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - 窗口类型
 
 @MainActor
-final class NotchPanel: NSPanel {
+class NotchPanel: NSPanel {
     var onMouseEvent: ((NSEvent) -> Void)?
     var onEscape: (() -> Void)?
 
@@ -70,9 +70,17 @@ class TransparentHitHostingView<Content: View>: FirstMouseHostingView<Content> {
     }
 }
 
+/// 活动岛面板：永不成为 key/main 窗口——岛上是计时展示与轻量按钮，点击
+/// 不应把焦点从用户当前应用抢走（按钮经 acceptsFirstMouse 直接响应）。
+@MainActor
+final class IslandPanel: NotchPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
 // MARK: - 屏幕面板对
 
-/// 每个物理屏幕一套（紧凑热区 + 抽屉）窗口对；内容状态由共享的
+/// 每个物理屏幕一套（紧凑热区 + 抽屉 + 活动岛）窗口组；内容状态由共享的
 /// PanelUIState 驱动，几何按各自屏幕独立计算（文档 §6.3 多显示器：
 /// 每个屏幕单独显示一个 NotchCenter）。
 @MainActor
@@ -80,8 +88,10 @@ final class ScreenPanelPair {
     let screen: NSScreen
     let hotPanel: NotchPanel
     let drawerPanel: NotchPanel
+    let islandPanel: IslandPanel
     var hotHostingView: TransparentHitHostingView<CompactPanelView>?
     var drawerHostingView: NSHostingView<DrawerPanelView>?
+    var islandHostingView: IslandHostingView<ActivityIslandPanelView>?
 
     init(screen: NSScreen, configure: (NotchPanel) -> Void) {
         self.screen = screen
@@ -97,8 +107,15 @@ final class ScreenPanelPair {
             backing: .buffered,
             defer: false
         )
+        islandPanel = IslandPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
         configure(hotPanel)
         configure(drawerPanel)
+        configure(islandPanel)
     }
 
     /// 该屏幕当前的紧凑图标数（控制器 `refreshCompactGeometry()` 在增删

@@ -140,6 +140,7 @@ extension NotchPanelController {
                 // 显式标记重绘：应用未激活时也保证状态变化立即上屏。
                 pair.hotHostingView?.needsDisplay = true
                 pair.drawerHostingView?.needsDisplay = true
+                pair.islandHostingView?.needsDisplay = true
             }
 
             // 设置面板贴挂在抽屉底缘：抽屉高度变化（增删块、网格指标调整、
@@ -195,6 +196,26 @@ extension NotchPanelController {
             host.layer?.masksToBounds = true
             pair.drawerPanel.contentView = host
             pair.drawerHostingView = host
+        }
+
+        if pair.islandHostingView == nil {
+            let host = IslandHostingView(
+                rootView: ActivityIslandPanelView(
+                    ui: uiState,
+                    onVisibleSizeChange: { [weak self] size in
+                        self?.uiState.islandVisibleSize = size
+                    }
+                )
+            )
+            host.visibleSizeProvider = { [weak self] in
+                self?.uiState.islandVisibleSize ?? .zero
+            }
+            host.translatesAutoresizingMaskIntoConstraints = true
+            host.autoresizingMask = [.width, .height]
+            host.wantsLayer = true
+            host.layer?.masksToBounds = true
+            pair.islandPanel.contentView = host
+            pair.islandHostingView = host
         }
     }
 

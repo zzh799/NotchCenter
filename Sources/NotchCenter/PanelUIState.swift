@@ -45,6 +45,13 @@ final class PanelUIState: ObservableObject {
     /// 仅在拖拽会话期间非空，由 `BlockDragCoordinator` 经控制器写入。
     @Published var dropPreview: DropPreview?
 
+    /// 活动岛内容（插件活动状态的专属 UI，按提交顺序堆叠在刘海下方）。
+    /// 由控制器经 HostController.showActivityIsland / removeActivityIsland 维护。
+    @Published var activityIslands: [ActivityIslandContent] = []
+    /// 活动岛当前可见内容尺寸（SwiftUI 侧布局回写，含退出/让位动画的中间帧）：
+    /// 活动岛窗口命中测试与 `ignoresMouseEvents` 光标跟踪据此穿透透明区。
+    @Published var islandVisibleSize: CGSize = .zero
+
     struct DropPreview: Equatable {
         let zone: BlockDragCoordinator.DropZone
         /// 被拖的是快捷按钮（紧凑块）：快速区画插入指示，不画网格占位。

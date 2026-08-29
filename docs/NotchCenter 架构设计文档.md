@@ -55,13 +55,15 @@ NotchCenter/
 │       ├── NotchCenterPlugin.swift
 │       ├── NotchBlock.swift
 │       ├── BlockContext.swift
+│       ├── ActivityIsland.swift
 │       ├── BlockSize.swift
 │       ├── PluginSettingsContext.swift
 │       └── ...
 ├── Plugins/                       # 官方插件源码，作为独立 bundle target
 │   ├── NotesPlugin/
 │   ├── ScratchpadPlugin/
-│   └── CaffeinatePlugin/
+│   ├── CaffeinatePlugin/
+│   └── PomodoroPlugin/
 ├── Vendor/                        # 可能保留 vendored 依赖（如 MarkdownEngine 供笔记插件使用）
 ├── Resources/
 ├── Tests/
@@ -257,6 +259,31 @@ public protocol NotchCenterPlugin {
 - 所有插件 API、视图工厂方法、`StateStore`、`BlockContext` 服务均 `@MainActor`。
 - 插件内部后台任务自行处理，但 UI/状态更新必须回主线程。
 - 核心所有插件交互（加载、调用、布局渲染）均保证主线程执行。
+
+### 4.10 活动岛（Activity Island）
+
+插件需要向用户**常驻展示活动状态**（计时器、进行中任务等）时，经 `HostController` 提交活动岛内容，核心在刘海正下方弹出小岛展示插件专属 UI：
+
+```swift
+@MainActor
+public struct ActivityIslandContent: Identifiable {
+    public let id: String          // 活动唯一标识；同 id 重复提交 = 覆盖更新
+    public let maxSize: CGSize     // 整岛（含宿主底衬）最大尺寸
+    public let view: AnyView       // 岛内容（观察插件自身的模型，自由更新）
+}
+
+extension HostController {
+    func showActivityIsland(_ content: ActivityIslandContent)   // 展示/更新
+    func removeActivityIsland(id: String)                       // 收回
+}
+```
+
+- **多岛堆叠**：多个活动并存时按提交顺序在刘海下方垂直堆叠。
+- **窗口模型**：每屏一个固定尺寸岛窗口（顶缘贴刘海底缘、绕屏幕中线居中），窗口 frame 不参与动画；进出与紧凑/展开变形全部发生在窗口内容内（同抽屉 model.size 模式）。
+- **穿透双机制**：`IslandHostingView.hitTest`（顶缘起 + 水平居中的可见矩形）+ `ignoresMouseEvents` 光标跟踪（30Hz 轮询）；可见尺寸由 SwiftUI 侧逐帧回写 `PanelUIState.islandVisibleSize`，命中区域跟随内容动画。
+- **让位规则**：抽屉展开期间活动岛整体隐藏（可见尺寸归零、全穿透），抽屉收起后自动恢复；`IslandPanel` 永不成为 key/main 窗口（点击岛不抢焦点）。
+- **生命周期**：插件进入活动状态时提交、退出/禁用时按 id 收回；`showActivityIsland` / `removeActivityIsland(id:)` 必须保持为 `HostController` **协议要求**（extension 只提供默认实现），避免存在类型分发的静态遮蔽（同 §4.7 家族坑）。
+- 参考实现：`PomodoroPlugin`（运行中在刘海下方常驻倒计时小岛，微休息自动展开）。
 
 ---
 

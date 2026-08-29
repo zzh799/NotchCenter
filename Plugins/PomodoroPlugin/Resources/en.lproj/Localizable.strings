@@ -1,0 +1,51 @@
+/* PomodoroPlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 块与菜单 */
+"block.compact.name" = "Pomodoro";
+"block.drawer.name" = "Pomodoro Timer";
+"menu.start" = "Start Pomodoro";
+"menu.stop" = "Stop Pomodoro";
+
+/* 阶段与控制 */
+"phase.focus" = "Focus";
+"phase.rest" = "Break";
+"phase.microBreak" = "Micro Break";
+"phase.paused" = "Paused";
+"help.pause" = "Pause";
+"help.resume" = "Resume";
+"help.skip" = "Skip";
+"help.stop" = "Stop";
+
+/* 活动岛 */
+"island.hint" = "Look ~6 m away and relax your eyes";
+"island.backToFocus" = "Back to focus";
+
+/* 紧凑块交互提示与无障碍 */
+"compact.help.start" = "Start focus session";
+"compact.help.stop" = "Stop pomodoro";
+"a11y.pomodoro" = "Pomodoro timer";
+
+/* 抽屉块 */
+"drawer.startFocus" = "Start Focus";
+"drawer.focusFor" = "Focus for %d min";
+"drawer.completed" = "%d completed today";
+
+/* 设置界面 */
+"settings.section.timer" = "Timer";
+"settings.section.reminder" = "Random Reminder";
+"settings.section.sound" = "Sound Effects";
+"settings.focusMinutes" = "Focus Time";
+"settings.restMinutes" = "Break Time";
+"settings.reminderMin" = "Min Interval";
+"settings.reminderMax" = "Max Interval";
+"settings.microBreakDuration" = "Micro Break";
+"settings.sound.microBreak" = "During Micro Break";
+"settings.sound.start" = "Start Sound";
+"settings.sound.end" = "End Sound";
+"settings.preview" = "Preview sound";
+"settings.explanation" = "While focusing, a chime plays at a random interval and a short micro break starts. The activity island next to the notch shows the live timer.";
+"sound.none" = "None";
+
+/* 单位 */
+"unit.minutes" = "%d min";
+"unit.seconds" = "%d s";

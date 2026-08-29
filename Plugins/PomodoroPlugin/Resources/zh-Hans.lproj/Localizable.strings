@@ -1,0 +1,51 @@
+/* PomodoroPlugin 简体中文文案（键集合必须与 en 基准一致，LocalizationTests 校验） */
+
+/* 块与菜单 */
+"block.compact.name" = "番茄钟";
+"block.drawer.name" = "番茄钟计时";
+"menu.start" = "开始番茄钟";
+"menu.stop" = "停止番茄钟";
+
+/* 阶段与控制 */
+"phase.focus" = "专注中";
+"phase.rest" = "休息中";
+"phase.microBreak" = "微休息";
+"phase.paused" = "已暂停";
+"help.pause" = "暂停";
+"help.resume" = "继续";
+"help.skip" = "跳过";
+"help.stop" = "停止";
+
+/* 活动岛 */
+"island.hint" = "看看 6 米外的景物，放松眼睛";
+"island.backToFocus" = "回到专注";
+
+/* 紧凑块交互提示与无障碍 */
+"compact.help.start" = "开始专注";
+"compact.help.stop" = "停止番茄钟";
+"a11y.pomodoro" = "番茄钟";
+
+/* 抽屉块 */
+"drawer.startFocus" = "开始专注";
+"drawer.focusFor" = "专注 %d 分钟";
+"drawer.completed" = "今日完成 %d 个";
+
+/* 设置界面 */
+"settings.section.timer" = "计时设置";
+"settings.section.reminder" = "随机提示音";
+"settings.section.sound" = "声音效果";
+"settings.focusMinutes" = "专注时间";
+"settings.restMinutes" = "休息时间";
+"settings.reminderMin" = "最小间隔";
+"settings.reminderMax" = "最大间隔";
+"settings.microBreakDuration" = "微休息时长";
+"settings.sound.microBreak" = "微休息中";
+"settings.sound.start" = "开始音效";
+"settings.sound.end" = "结束音效";
+"settings.preview" = "试听";
+"settings.explanation" = "专注期间按随机间隔响起提示音并进入短暂微休息；刘海旁的活动岛实时显示计时进度。";
+"sound.none" = "无";
+
+/* 单位 */
+"unit.minutes" = "%d 分钟";
+"unit.seconds" = "%d 秒";

@@ -147,6 +147,7 @@ final class NotchPanelController: NSObject {
             GhostProbe.log("syncScreens hide stale pair=\(NSStringFromRect(stale.screen.frame))")
             stale.hotPanel.orderOut(nil)
             stale.drawerPanel.orderOut(nil)
+            stale.islandPanel.orderOut(nil)
         }
 
         // 为新接入的屏幕创建面板对。
@@ -156,9 +157,10 @@ final class NotchPanelController: NSObject {
             pairs.append(pair)
         }
 
-        // 各自定位紧凑热区；展开中的那块同时定位抽屉。
+        // 各自定位紧凑热区与活动岛；展开中的那块同时定位抽屉。
         for pair in pairs {
             positionCompactPanel(pair)
+            syncIslandPanel(pair)
         }
         if let active = activePair, isExpanded {
             active.drawerPanel.setFrame(drawerFrame(for: active), display: true)
