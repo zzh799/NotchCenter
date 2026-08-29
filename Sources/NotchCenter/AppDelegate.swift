@@ -168,6 +168,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 设置切页卡顿自动复现（NOTCHCENTER_SETTINGS_SWITCH_AUTO=1，配
+    /// NOTCHCENTER_SETTINGS_SWITCH_LOG=1 读 `[switch]` 日志）：复现「组件页
+    /// （编辑模式激活）→ 切布局页」路径——展开抽屉 → 打开设置直入组件页
+    /// （进入编辑）→ 切布局页（stopEditMode）→ 切回组件页（applyEditMode）→
+    /// 模拟滑杆逐格拖动（gridMetricsDidChange）→ 恢复指标并退出。
+    private func runSettingsSwitchAutoProbe(_ panelController: NotchPanelController) {
+        let metrics = GridMetricsStore.shared
+        let savedWidth = metrics.value(for: .cellWidth)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            NSLog("switch-auto: open settings on components (enter edit)")
+            NSApp.activate(ignoringOtherApps: true)
+            panelController.expand(animated: true, activate: false)
+            panelController.showSettings(page: .components)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            NSLog("switch-auto: components -> layout")
+            panelController.debugSelectSettingsPage(.layout)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            NSLog("switch-auto: layout -> components")
+            panelController.debugSelectSettingsPage(.components)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
+            NSLog("switch-auto: simulate slider drag (cellWidth)")
+            for step in 1...8 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(step) * 0.06) {
+                    metrics.set(.cellWidth, to: savedWidth + CGFloat(step) * 4)
+                }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.5) {
+            metrics.set(.cellWidth, to: savedWidth)
+            panelController.flush()
+            NSApp.terminate(nil)
+        }
+    }
+
     private func maybeRunSmokeTest() {
         guard ProcessInfo.processInfo.environment["NOTCHCENTER_SMOKE_TEST"] == "1" else { return }
         guard let panelController else { return }
@@ -190,6 +228,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if ProcessInfo.processInfo.environment["NOTCHCENTER_SETTINGS_PROBE"] == "1" {
             runSettingsProbe(panelController)
+            return
+        }
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_SETTINGS_SWITCH_AUTO"] == "1" {
+            runSettingsSwitchAutoProbe(panelController)
             return
         }
         if ProcessInfo.processInfo.environment["NOTCHCENTER_DRAGDROP_PROBE"] == "1" {

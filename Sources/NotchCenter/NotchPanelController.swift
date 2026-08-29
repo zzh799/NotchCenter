@@ -55,6 +55,8 @@ final class NotchPanelController: NSObject {
     var isEditEntryPending = false
     var activeMenuTrackingCount = 0
     var collapseTask: DispatchWorkItem?
+    /// 网格指标变化的重建合并任务（滑杆拖动逐格通知 → 停顿后重建一次）。
+    var metricsRebuildTask: Task<Void, Never>?
     var mousePollingTimer: Timer?
     var globalMouseDownMonitor: Any?
     var globalMouseUpMonitor: Any?
@@ -105,9 +107,19 @@ final class NotchPanelController: NSObject {
     /// 由 `NotchGridMetrics` 推导，尺寸变化必须走一次完整重建，设置面板
     /// 也要跟着重新贴挂到新的抽屉底缘。
     @objc private func gridMetricsDidChange(_ notification: Notification) {
-        refreshAfterLayoutChange()
-        if isSettingsPresented {
-            positionSettingsWindow()
+        // 滑杆拖动会逐格发通知（每格一次全量重建 + 窗口重排）。全量重建合并
+        // 到停顿 100ms 后执行一次；store 侧每格仍即时持久化，设置页预览
+        // （GridMetricsPreview 等）走 objectWillChange 即时刷新，不受合并影响。
+        metricsRebuildTask?.cancel()
+        metricsRebuildTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 100 * NSEC_PER_MSEC)
+            guard !Task.isCancelled, let self else { return }
+            SettingsSwitchProbe.measure("gridMetricsDidChange rebuild (debounced)") {
+                self.refreshAfterLayoutChange()
+                if self.isSettingsPresented {
+                    self.positionSettingsWindow()
+                }
+            }
         }
     }
 

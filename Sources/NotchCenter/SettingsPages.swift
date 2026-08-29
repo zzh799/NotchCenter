@@ -278,6 +278,9 @@ struct ComponentsSettingsPage: View {
             }
         }
         .onAppear(perform: rebuildIfNeeded)
+        .onDisappear {
+            SettingsSwitchProbe.log("componentsPage.disappear")
+        }
         .onChange(of: pluginSignature) { _, newValue in
             guard newValue != signature else { return }
             rebuildIfNeeded()
@@ -480,65 +483,100 @@ struct LayoutSettingsPage: View {
     @ObservedObject var settingsStore: SettingsStore
     @ObservedObject private var layoutEngine: LayoutEngine
     @ObservedObject private var metrics = GridMetricsStore.shared
+    /// 切页卡顿诊断：init → 首帧 onAppear 的间隔（SettingsSwitchProbe）。
+    private let initTimestamp = CFAbsoluteTimeGetCurrent()
+    @State private var didLogFirstFrame = false
 
     init(controller: NotchPanelController, settingsStore: SettingsStore) {
+        #if DEBUG
+        let initStart = CFAbsoluteTimeGetCurrent()
+        #endif
         self.controller = controller
         self.settingsStore = settingsStore
         self.layoutEngine = controller.layoutEngine
+        #if DEBUG
+        SettingsSwitchProbe.log(
+            "layoutPage.init +\(Int((CFAbsoluteTimeGetCurrent() - initStart) * 1000))ms"
+        )
+        #endif
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                SettingsSection(title: L("settings.layout.cell")) {
-                    MetricsSlider(title: L("settings.layout.cellWidth"), metric: .cellWidth)
-                    MetricsSlider(title: L("settings.layout.cellHeight"), metric: .cellHeight)
-                }
-
-                SettingsSection(title: L("settings.layout.spacingSection")) {
-                    MetricsSlider(title: L("settings.layout.spacing"), metric: .spacing)
-                    MetricsSlider(title: L("settings.layout.padding"), metric: .contentPadding)
-                }
-
-                SettingsSection(title: L("settings.layout.columnsSection")) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 10) {
-                            Text(L("settings.columns"))
-                                .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.72))
-                            Spacer(minLength: 0)
-                            Picker("", selection: columnBinding) {
-                                ForEach(2...8, id: \.self) { columns in
-                                    Text(LF("settings.column.count", columns)).tag(columns)
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(width: 130)
-                        }
-                        Text(LF("settings.layout.effectiveColumns", layoutEngine.effectiveMaxColumns()))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                SettingsSection(title: L("settings.layout.previewSection")) {
-                    GridMetricsPreview()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                HStack(spacing: 10) {
-                    Button(L("settings.layout.restoreDefault")) {
-                        metrics.resetToDefaults()
-                    }
-                    .disabled(metrics.isDefault)
-                    Text(metrics.isDefault ? L("settings.layout.isDefault") : "")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }
+                cellSection
+                spacingSection
+                columnsSection
+                previewSection
+                restoreSection
             }
             .padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onAppear {
+            guard !didLogFirstFrame else { return }
+            didLogFirstFrame = true
+            let sinceInit = (CFAbsoluteTimeGetCurrent() - initTimestamp) * 1000
+            SettingsSwitchProbe.log("layoutPage.firstFrame +\(Int(sinceInit))ms after init")
+        }
+    }
+
+    // MARK: 分节内容
+
+    private var cellSection: some View {
+        SettingsSection(title: L("settings.layout.cell")) {
+            MetricsSlider(title: L("settings.layout.cellWidth"), metric: .cellWidth)
+            MetricsSlider(title: L("settings.layout.cellHeight"), metric: .cellHeight)
+        }
+    }
+
+    private var spacingSection: some View {
+        SettingsSection(title: L("settings.layout.spacingSection")) {
+            MetricsSlider(title: L("settings.layout.spacing"), metric: .spacing)
+            MetricsSlider(title: L("settings.layout.padding"), metric: .contentPadding)
+        }
+    }
+
+    private var columnsSection: some View {
+        SettingsSection(title: L("settings.layout.columnsSection")) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Text(L("settings.columns"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.72))
+                    Spacer(minLength: 0)
+                    Picker("", selection: columnBinding) {
+                        ForEach(2...8, id: \.self) { columns in
+                            Text(LF("settings.column.count", columns)).tag(columns)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 130)
+                }
+                Text(LF("settings.layout.effectiveColumns", layoutEngine.effectiveMaxColumns()))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var previewSection: some View {
+        SettingsSection(title: L("settings.layout.previewSection")) {
+            GridMetricsPreview()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var restoreSection: some View {
+        HStack(spacing: 10) {
+            Button(L("settings.layout.restoreDefault")) {
+                metrics.resetToDefaults()
+            }
+            .disabled(metrics.isDefault)
+            Text(metrics.isDefault ? L("settings.layout.isDefault") : "")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
         }
     }
 
@@ -566,21 +604,38 @@ private struct MetricsSlider: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.72))
                 .frame(width: 76, alignment: .leading)
-            Slider(
-                value: store.binding(for: metric),
-                in: Double(range.lowerBound)...Double(range.upperBound),
-                step: 1
-            )
-            TextField(
-                "",
-                value: store.binding(for: metric),
-                format: .number.precision(.fractionLength(0))
-            )
-            .multilineTextAlignment(.trailing)
-            .frame(width: 48)
-            .textFieldStyle(.roundedBorder)
-            .font(.system(size: 11).monospacedDigit())
+            sliderControl(range)
+            numberField
         }
+    }
+
+    /// 连续滑杆 + setter 内四舍五入。不用 `Slider(step: 1)`：macOS 桥接会按
+    /// 区间格数生成 tick marks（cellWidth 区间 191 格），四条滑杆的首帧挂载
+    /// 合计 ~120ms，正是设置面板「组件页 → 布局页」卡顿的主因；连续滑杆 +
+    /// 取整（1pt 量化远小于可视像素）手感无差别、首帧挂载接近零成本。
+    private func sliderControl(_ range: ClosedRange<CGFloat>) -> some View {
+        Slider(
+            value: Binding(
+                get: { Double(store.value(for: metric)) },
+                set: {
+                    let clamped = min(max($0, Double(range.lowerBound)), Double(range.upperBound))
+                    store.set(metric, to: CGFloat(clamped.rounded()))
+                }
+            ),
+            in: Double(range.lowerBound)...Double(range.upperBound)
+        )
+    }
+
+    private var numberField: some View {
+        TextField(
+            "",
+            value: store.binding(for: metric),
+            format: .number.precision(.fractionLength(0))
+        )
+        .multilineTextAlignment(.trailing)
+        .frame(width: 48)
+        .textFieldStyle(.roundedBorder)
+        .font(.system(size: 11).monospacedDigit())
     }
 }
 

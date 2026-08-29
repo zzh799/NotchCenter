@@ -53,22 +53,31 @@ extension NotchPanelController {
 
     /// 进入编辑状态的内容过渡（`drawerWindowSize` spring 增高，窗口不动）。
     private func applyEditMode() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-            isEditing = true
+        SettingsSwitchProbe.measure("applyEditMode") {
+            // 编辑模式视觉（顶栏按钮切换、提示标签、块编辑 chrome）全部由
+            // `ui.isEditing` 驱动，且没有任何块视图读取 layoutInfo.isEditing，
+            // 这里只翻转状态、不做全量块视图重建（编辑期的增删/移动/缩放各自
+            // 已走 refreshAfterEdit 全量路径；进出编辑本身不改变任何布局数据
+            // 与窗口尺寸）。全量重建是设置面板切页卡顿的来源之一。
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                isEditing = true
+            }
         }
-        rebuildContent(animated: true)
     }
 
     /// 由 HostController.exitEditMode / 视图动作调用。
     /// 高度收缩由内容 spring + 窗口逐帧跟随完成（syncDrawerFrame）。
     func stopEditMode() {
-        guard isEditing else { return }
-        // 退出编辑时锚定块可能消失/移位，设置浮窗先随编辑态一起收场。
-        SettingPopover.shared.dismiss()
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-            isEditing = false
+        SettingsSwitchProbe.measure("stopEditMode") {
+            guard isEditing else { return }
+            // 退出编辑时锚定块可能消失/移位，设置浮窗先随编辑态一起收场。
+            SettingPopover.shared.dismiss()
+            // 只翻转状态（同 applyEditMode：视觉全由 ui.isEditing 驱动，
+            // 不做全量块视图重建）。
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                isEditing = false
+            }
         }
-        rebuildContent(animated: true)
         if !isPinned {
             handleMouseLocation(NSEvent.mouseLocation)
         }
@@ -78,6 +87,9 @@ extension NotchPanelController {
     /// 拖进来的组件落位后即可继续拖动、缩放、删除，无需再点一次编辑按钮。
     /// 离开该页（或关闭面板）时退出编辑模式。
     func setComponentsPageActive(_ active: Bool) {
+        SettingsSwitchProbe.log(
+            "setComponentsPageActive(\(active)) current=\(isEditingForComponentsPage)"
+        )
         guard active != isEditingForComponentsPage else { return }
         isEditingForComponentsPage = active
         if active {
@@ -101,38 +113,40 @@ extension NotchPanelController {
     /// `refreshCompactGeometry()` 同步——只有增删紧凑图标/换屏的路径需要，
     /// 其余路径计数未变无需调用。
     func rebuildContent(animated: Bool = false) {
-        // 紧凑元素的上下文 frame 以主屏几何近似（槽位尺寸跨屏一致，
-        // 视觉几何由各面板的 layout 参数精确持有）。
-        let contextLayout = primaryLayout()
+        SettingsSwitchProbe.measure("rebuildContent total (animated=\(animated))") {
+            // 紧凑元素的上下文 frame 以主屏几何近似（槽位尺寸跨屏一致，
+            // 视觉几何由各面板的 layout 参数精确持有）。
+            let contextLayout = primaryLayout()
 
-        let apply = {
-            self.uiState.showsClickModeHint = self.settingsStore.triggerMode == .click
-            self.uiState.compactElements = self.buildCompactElements(layout: contextLayout)
+            let apply = {
+                self.uiState.showsClickModeHint = self.settingsStore.triggerMode == .click
+                self.uiState.compactElements = self.buildCompactElements(layout: contextLayout)
 
-            self.uiState.drawerContentSize = self.layoutEngine.drawerContentSize()
-            self.uiState.drawerGridLeftColumn = self.layoutEngine.gridLeftColumn()
-            self.uiState.drawerWindowSize = self.drawerWindowSize(for: self.activePair ?? self.pairs.first)
-            self.uiState.drawerElements = self.buildDrawerElements()
-        }
-        if animated {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                self.uiState.drawerContentSize = self.layoutEngine.drawerContentSize()
+                self.uiState.drawerGridLeftColumn = self.layoutEngine.gridLeftColumn()
+                self.uiState.drawerWindowSize = self.drawerWindowSize(for: self.activePair ?? self.pairs.first)
+                self.uiState.drawerElements = self.buildDrawerElements()
+            }
+            if animated {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                    apply()
+                }
+            } else {
                 apply()
             }
-        } else {
-            apply()
-        }
 
-        for pair in pairs {
-            buildViewsIfNeeded(pair)
-            // 显式标记重绘：应用未激活时也保证状态变化立即上屏。
-            pair.hotHostingView?.needsDisplay = true
-            pair.drawerHostingView?.needsDisplay = true
-        }
+            for pair in pairs {
+                buildViewsIfNeeded(pair)
+                // 显式标记重绘：应用未激活时也保证状态变化立即上屏。
+                pair.hotHostingView?.needsDisplay = true
+                pair.drawerHostingView?.needsDisplay = true
+            }
 
-        // 设置面板贴挂在抽屉底缘：抽屉高度变化（增删块、网格指标调整、
-        // 进入编辑模式）后面板必须跟着重新对齐。
-        if isSettingsPresented {
-            positionSettingsWindow()
+            // 设置面板贴挂在抽屉底缘：抽屉高度变化（增删块、网格指标调整、
+            // 进入编辑模式）后面板必须跟着重新对齐。
+            if isSettingsPresented {
+                positionSettingsWindow()
+            }
         }
     }
 
@@ -185,88 +199,96 @@ extension NotchPanelController {
     }
 
     private func buildCompactElements(layout: NotchLayout) -> [CompactElement] {
-        (0..<compactIconCount).map { index in
-            let frame = compactSlotFrame(index: index, layout: layout, slotCount: compactIconCount)
-            guard let reference = layoutEngine.compactSlot(at: index),
-                  let entry = pluginManager.entry(for: reference.pluginID),
-                  entry.isEnabled,
-                  let block = pluginManager.block(pluginID: reference.pluginID, blockID: reference.blockID),
-                  block.kind == .compact,
-                  let store = entry.stateStore else {
+        SettingsSwitchProbe.measure("buildCompactElements count=\(compactIconCount)") {
+            (0..<compactIconCount).map { index in
+                let frame = compactSlotFrame(index: index, layout: layout, slotCount: compactIconCount)
+                guard let reference = layoutEngine.compactSlot(at: index),
+                      let entry = pluginManager.entry(for: reference.pluginID),
+                      entry.isEnabled,
+                      let block = pluginManager.block(pluginID: reference.pluginID, blockID: reference.blockID),
+                      block.kind == .compact,
+                      let store = entry.stateStore else {
+                    return CompactElement(
+                        slotIndex: index,
+                        reference: nil,
+                        block: nil,
+                        view: nil,
+                        frame: frame,
+                        hasSettings: false
+                    )
+                }
+                let context = BlockContext(
+                    pluginID: reference.pluginID,
+                    blockID: reference.blockID,
+                    placementID: reference.placementID,
+                    stateStore: store,
+                    hostController: self,
+                    layoutInfo: BlockLayoutInfo(
+                        region: .compact,
+                        placementID: reference.placementID,
+                        frame: frame,
+                        isEditing: isEditing,
+                        compactSlotIndex: index
+                    )
+                )
                 return CompactElement(
                     slotIndex: index,
-                    reference: nil,
-                    block: nil,
-                    view: nil,
+                    reference: reference,
+                    block: block,
+                    view: SettingsSwitchProbe.measure(
+                        "makeView compact \(reference.pluginID).\(reference.blockID)"
+                    ) { block.makeView(context) },
                     frame: frame,
-                    hasSettings: false
+                    hasSettings: block.instanceSettingsView != nil
+                        || entry.instance?.settingsView != nil
                 )
             }
-            let context = BlockContext(
-                pluginID: reference.pluginID,
-                blockID: reference.blockID,
-                placementID: reference.placementID,
-                stateStore: store,
-                hostController: self,
-                layoutInfo: BlockLayoutInfo(
-                    region: .compact,
-                    placementID: reference.placementID,
-                    frame: frame,
-                    isEditing: isEditing,
-                    compactSlotIndex: index
-                )
-            )
-            return CompactElement(
-                slotIndex: index,
-                reference: reference,
-                block: block,
-                view: block.makeView(context),
-                frame: frame,
-                hasSettings: block.instanceSettingsView != nil
-                    || entry.instance?.settingsView != nil
-            )
         }
     }
 
     private func buildDrawerElements() -> [DrawerElement] {
-        layoutEngine.drawerBlocks.compactMap { placement in
-            guard let entry = pluginManager.entry(for: placement.pluginID),
-                  entry.isEnabled,
-                  let block = pluginManager.block(pluginID: placement.pluginID, blockID: placement.blockID),
-                  block.kind == .drawer,
-                  let store = entry.stateStore else {
-                return nil
-            }
-            let frame = layoutEngine.frame(for: placement)
-            let currentSpan = GridSpan(columns: placement.widthColumns, rows: placement.heightRows)
-            let context = BlockContext(
-                pluginID: placement.pluginID,
-                blockID: placement.blockID,
-                placementID: placement.placementID,
-                stateStore: store,
-                hostController: self,
-                layoutInfo: BlockLayoutInfo(
-                    region: .drawer,
+        SettingsSwitchProbe.measure("buildDrawerElements count=\(layoutEngine.drawerBlocks.count)") {
+            layoutEngine.drawerBlocks.compactMap { placement in
+                guard let entry = pluginManager.entry(for: placement.pluginID),
+                      entry.isEnabled,
+                      let block = pluginManager.block(pluginID: placement.pluginID, blockID: placement.blockID),
+                      block.kind == .drawer,
+                      let store = entry.stateStore else {
+                    return nil
+                }
+                let frame = layoutEngine.frame(for: placement)
+                let currentSpan = GridSpan(columns: placement.widthColumns, rows: placement.heightRows)
+                let context = BlockContext(
+                    pluginID: placement.pluginID,
+                    blockID: placement.blockID,
                     placementID: placement.placementID,
-                    frame: frame,
-                    size: nil,
-                    originColumn: placement.originColumn,
-                    originRow: placement.originRow,
-                    widthColumns: placement.widthColumns,
-                    heightRows: placement.heightRows,
-                    isEditing: isEditing
+                    stateStore: store,
+                    hostController: self,
+                    layoutInfo: BlockLayoutInfo(
+                        region: .drawer,
+                        placementID: placement.placementID,
+                        frame: frame,
+                        size: nil,
+                        originColumn: placement.originColumn,
+                        originRow: placement.originRow,
+                        widthColumns: placement.widthColumns,
+                        heightRows: placement.heightRows,
+                        isEditing: isEditing
+                    )
                 )
-            )
-            return DrawerElement(
-                placement: placement,
-                view: block.makeView(context),
-                supportedSpans: block.supportedSpans.sorted { lhs, rhs in
-                    lhs.columns == rhs.columns ? lhs.rows < rhs.rows : lhs.columns < rhs.columns
-                },
-                currentSpan: currentSpan,
-                hasSettings: block.instanceSettingsView != nil
-                    || entry.instance?.settingsView != nil
-            )
+                return DrawerElement(
+                    placement: placement,
+                    view: SettingsSwitchProbe.measure(
+                        "makeView drawer \(placement.pluginID).\(placement.blockID)"
+                    ) { block.makeView(context) },
+                    supportedSpans: block.supportedSpans.sorted { lhs, rhs in
+                        lhs.columns == rhs.columns ? lhs.rows < rhs.rows : lhs.columns < rhs.columns
+                    },
+                    currentSpan: currentSpan,
+                    hasSettings: block.instanceSettingsView != nil
+                        || entry.instance?.settingsView != nil
+                )
+            }
         }
     }
 

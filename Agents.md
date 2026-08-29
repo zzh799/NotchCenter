@@ -57,6 +57,7 @@ NotchCenter/
 │   ├── LaunchAtLogin.swift          # 开机自启（SMAppService，幂等设置 + 状态同步）
 │   ├── Localization.swift           # 宿主 L()/LF() 本地化辅助（资源打进 NotchCenter_NotchCenter.bundle）
 │   ├── CorePaths.swift / FileDragDetection.swift / PanelDecoration.swift
+│   ├── SettingsSwitchProbe.swift    # 设置面板切页诊断（仅 DEBUG）：NOTCHCENTER_SETTINGS_SWITCH_LOG=1 输出编辑模式进出/内容重建/网格指标通知耗时；NOTCHCENTER_SETTINGS_SWITCH_AUTO=1 自动复现切页路径（驱动脚本在 AppDelegate）
 │   ├── ResizeProbeLog.swift         # 诊断日志开关（仅 DEBUG）：NOTCHCENTER_RESIZE_LOG 缩放管线事件
 │   ├── ResizeProbeWindow.swift      # 复刻管线对照页（仅 DEBUG）：ResizeProbeWindowController + ResizeProbeView（NOTCHCENTER_RESIZE_PROBE）
 │   ├── SizeLabWindow.swift         # 块尺寸对照实验室（仅 DEBUG）：同一块组件在全部跨度档（1×1…上限可调）下的批量并排对比 + 可调最小单元格；插件管理窗口网格按钮或 NOTCHCENTER_SIZE_LAB 打开（NOTCHCENTER_SIZE_LAB_CAPTURE 自动截图）

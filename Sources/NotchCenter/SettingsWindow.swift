@@ -317,15 +317,17 @@ extension NotchPanelController {
     /// 把设置面板对齐到抽屉可见底缘：屏幕中线水平居中，顶缘 = 抽屉底缘
     /// + 间距；屏幕高度不足时贴屏幕底（面板层级更高，允许与抽屉重叠）。
     func positionSettingsWindow() {
-        guard let window = settingsWindowController?.window else { return }
-        guard let pair = activePair ?? pairs.first else { return }
-        let visible = visibleDrawerFrame(for: pair)
-        let size = window.frame.size
-        let originY = max(
-            visible.minY - SettingsWindowMetrics.gapFromDrawer - size.height,
-            pair.screenFrame.minY + 12
-        )
-        let originX = pair.screenFrame.midX - size.width / 2
-        window.setFrameOrigin(NSPoint(x: round(originX), y: round(originY)))
+        SettingsSwitchProbe.measure("positionSettingsWindow") {
+            guard let window = settingsWindowController?.window else { return }
+            guard let pair = activePair ?? pairs.first else { return }
+            let visible = visibleDrawerFrame(for: pair)
+            let size = window.frame.size
+            let originY = max(
+                visible.minY - SettingsWindowMetrics.gapFromDrawer - size.height,
+                pair.screenFrame.minY + 12
+            )
+            let originX = pair.screenFrame.midX - size.width / 2
+            window.setFrameOrigin(NSPoint(x: round(originX), y: round(originY)))
+        }
     }
 }
