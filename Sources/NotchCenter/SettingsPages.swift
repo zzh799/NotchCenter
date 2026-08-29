@@ -367,7 +367,7 @@ struct ComponentsSettingsPage: View {
             // 类型区分靠卡片名称行的「快捷按钮 / N×N」标注。
             let items = group.compactItems + group.drawerItems
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 208, maximum: 260), spacing: 12)],
+                columns: [GridItem(.adaptive(minimum: 156, maximum: 200), spacing: 12)],
                 spacing: 12
             ) {
                 ForEach(items) { item in
@@ -409,16 +409,17 @@ private struct ComponentCard: View {
     @ObservedObject private var dragCoordinator = BlockDragCoordinator.shared
 
     private let previewHeight: CGFloat = 96
-    private let previewWidth: CGFloat = 196
+    private let previewWidth: CGFloat = 148
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // 名称/尺寸与预览居中对齐：预览在卡片内水平居中，文字随之居中。
+        VStack(alignment: .center, spacing: 8) {
             preview
                 .frame(height: previewHeight)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .brightness(isHovering ? 0.08 : 0)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .center, spacing: 2) {
                 Text(item.displayName)
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(.white.opacity(isHovering ? 0.95 : 0.86))
