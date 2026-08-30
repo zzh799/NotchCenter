@@ -18,6 +18,10 @@ struct DrawerElement: Identifiable {
     var id: String { placement.placementID }
 }
 
+/// 抽屉顶栏与块上的 chrome / CRUD 动作。
+///
+/// 拖拽与缩放的引擎交互**不在这里**，走 `DrawerInteractionState.Bridge`——
+/// 那部分有严格的时序契约（预览与提交同源、松手顺序），需要能被测试驱动。
 struct DrawerActions {
     let onShowSettings: () -> Void
     /// 打开设置并直入「组件」页（非编辑态由 setComponentsPageActive 联动进入编辑模式）。
@@ -29,22 +33,8 @@ struct DrawerActions {
     /// 编辑模式块左上角设置按钮：(pluginID, placementID, 块全局 frame)，经
     /// SettingPopover 展示设置——优先块实例级视图，回退插件级。
     let onShowBlockSettings: (String, String, CGRect) -> Void
-    let onMoveBlock: (String, Int, Int) -> Void
-    let onResizeBlock: (String, Int, Int) -> Void
     /// 编辑模式一键重排：按阅读顺序紧密排布所有抽屉块。
     let onReorderBlocks: () -> Void
-    /// 拖动实时预览：返回全体块（推挤 + 离线压实）后的新位置（不落盘），
-    /// 与提交共用同一算法——预览即最终布局。其余块据此实时推挤
-    /// （`previewPositions`），被拖块落点供占位框使用（视图自取）。
-    let onPreviewMove: (String, Int, Int) -> [String: LayoutEngine.GridOrigin]
-    /// 抽屉内重排的落点预览（虚线占位框；面板尺寸/左列由控制器在
-    /// `onPreviewMove` 内同帧写入）。
-    /// 传 nil 清空（拖动结束或取消）。
-    let onUpdateReorderPreview: (LayoutEngine.GridOrigin?, GridSpan?) -> Void
-    /// 缩放实时预览：返回全体块的新位置（下方块推挤下移，不落盘）。
-    let onPreviewResize: (String, Int, Int) -> [String: LayoutEngine.GridOrigin]
-    /// 拖拽结束提交（含自动重排）。
-    let onCommitDrag: (String, Int, Int) -> Void
 }
 
 struct DrawerPanelView: View {
@@ -56,11 +46,33 @@ struct DrawerPanelView: View {
     var compactView: CompactPanelView
     let actions: DrawerActions
 
+    /// 拖拽 / 缩放的手势状态。**每屏一份**，不挂到控制器或 `PanelUIState`：
+    /// `drawerWindowSize` 等跨屏共享量已经够多了，再把"谁在拖"扩散成全局
+    /// 会让状态耦合失控。
+    @StateObject private var interaction: DrawerInteractionState
+
     /// 抽屉内容淡入淡出（参考 codex-island 的 contentVisible 节奏：
     /// 展开后段淡入、收起时先淡出再缩形）。
     @State private var contentVisible = false
 
     private let cornerRadius: CGFloat = 18
+
+    init(
+        ui: PanelUIState,
+        layout: NotchLayout,
+        compactView: CompactPanelView,
+        actions: DrawerActions,
+        bridge: DrawerInteractionState.Bridge
+    ) {
+        self.ui = ui
+        self.layout = layout
+        self.compactView = compactView
+        self.actions = actions
+        // `StateObject(wrappedValue:)` 只在首次渲染求值一次；根视图由
+        // `buildViewsIfNeeded` 在面板窗口不存在时才构造，故本对象生命周期
+        // 与面板一致（等价于改动前挂在视图上的 @State）。
+        _interaction = StateObject(wrappedValue: DrawerInteractionState(bridge: bridge))
+    }
 
     var body: some View {
         // 参考codex-island 的 model.size 模式：容器 frame 直接绑定
@@ -123,6 +135,9 @@ struct DrawerPanelView: View {
                 withAnimation(.easeOut(duration: 0.1)) {
                     contentVisible = false
                 }
+                // 手势状态随面板存活（content 退出布局但状态对象不释放）：
+                // 不清的话残留的预览原点会让块在下次展开时停在旧预览位置。
+                interaction.reset()
             }
         }
     }
@@ -240,12 +255,12 @@ struct DrawerPanelView: View {
         )
         .animation(DrawerAnimation.spring, value: ui.drawerElements.map(\.id))
         .animation(DrawerAnimation.spring, value: ui.drawerElements.map(\.placement))
-        .animation(DrawerAnimation.spring, value: previewPositions)
+        .animation(DrawerAnimation.spring, value: interaction.previewOrigins)
 
     }
 
     /// 从设置面板拖入抽屉组件时的落点占位（虚线框）：位置与尺寸都用落点的
-    /// 格子坐标算，与块容器同一套 gridX / gridY 公式（所见即所得）。
+    /// 格坐标算，与块容器共用 `geometry`（所见即所得）。
     @ViewBuilder
     private var dropPlaceholder: some View {
         if let cell = dropPlaceholderCell {
@@ -297,17 +312,24 @@ struct DrawerPanelView: View {
                 rowSpan: max(element.placement.heightRows, 0)
             )
         )
+        let previewSpan = interaction.previewSpan(for: element.id)
         return DrawerBlockContainer(
             element: element,
             isEditing: ui.isEditing,
-            isDragging: draggingPlacementID == element.id,
+            isDragging: interaction.draggingPlacementID == element.id,
             hasSettings: element.hasSettings,
-            previewColumns: resizingPlacementID == element.id ? resizePreviewColumns : nil,
-            previewRows: resizingPlacementID == element.id ? resizePreviewRows : nil,
+            previewColumns: previewSpan?.columns,
+            previewRows: previewSpan?.rows,
             onResizeChanged: { translation in
-                handleResizeTranslate(translation, for: element)
+                interaction.updateResize(
+                    element.id,
+                    translation: translation,
+                    placement: element.placement,
+                    supportedSpans: element.supportedSpans,
+                    metrics: GridMetrics.current
+                )
             },
-            onResizeCommit: { commitResize(for: element) },
+            onResizeCommit: { interaction.commitResize(element.id) },
             onRemove: { actions.onRemoveBlock(element.id) },
             onShowSettings: { anchorFrame in
                 actions.onShowBlockSettings(
@@ -317,16 +339,14 @@ struct DrawerPanelView: View {
                 )
             },
             onDragChanged: { translation in
-                draggingPlacementID = element.id
+                interaction.beginDrag(element.id)
                 let target = dragTarget(for: element, translation: translation)
-                // 全量 origins 写入 previewPositions：其余块实时推挤，
-                // 被拖块落点喂给占位框（预览即最终布局）。
-                let origins = actions.onPreviewMove(element.id, target.0, target.1)
-                guard let dragged = origins[element.id] else { return }
-                previewPositions = origins
-                actions.onUpdateReorderPreview(
-                    dragged,
-                    GridSpan(
+                // 推挤预览与落点占位框都在这里更新（详见 DrawerInteractionState）。
+                interaction.updateDrag(
+                    element.id,
+                    column: target.0,
+                    row: target.1,
+                    span: GridSpan(
                         columns: element.placement.widthColumns,
                         rows: element.placement.heightRows
                     )
@@ -334,24 +354,13 @@ struct DrawerPanelView: View {
             },
             onDragEnded: { translation in
                 let target = dragTarget(for: element, translation: translation)
-                // `previewPositions` 同时服务拖动推挤与缩放预览，松手后
-                // 不再需要（提交布局由 onCommitDrag 写入），这里无动画兜底
-                // 清空——缩放/推挤遗留的预览不该在落位时闪一下。
-                if !previewPositions.isEmpty { previewPositions = [:] }
-                //
-                // `draggingPlacementID = nil` 必须**早于** onCommitDrag：
-                // 否则 `resolveOrigin` 那一帧仍走「拖动块排除」分支，块会
-                // 先弹回原位再瞬移到落点。
-                //
-                // 落位动画本身无需额外代码：调用方（DrawerBlockContainer）
-                // 已用**同一个** spring 常量把 dragOffset 归零，与
-                // onCommitDrag 触发的 placement 变化在同一个 runloop tick
-                // 起播；两者视觉位置相加（position + offset）即为「从光标
-                // spring 飞到落点」的单条曲线。参数一旦漂移，合成曲线会
-                // 折一下——这就是 DrawerAnimation 必须唯一的原因。
-                draggingPlacementID = nil
-                actions.onUpdateReorderPreview(nil, nil)
-                actions.onCommitDrag(element.id, target.0, target.1)
+                // 落位动画无需额外代码：调用方（DrawerBlockContainer）已用
+                // **同一个** spring 常量把 dragOffset 归零，与提交触发的
+                // placement 变化在同一个 runloop tick 起播；两者视觉位置相加
+                // （position + offset）即为「从光标 spring 飞到落点」的单条
+                // 曲线。参数一旦漂移，合成曲线会折一下——这就是
+                // DrawerAnimation 必须唯一的原因。
+                interaction.endDrag(element.id, column: target.0, row: target.1)
             }
         )
         .frame(width: blockFrame.width, height: blockFrame.height)
@@ -378,9 +387,8 @@ struct DrawerPanelView: View {
             let origin = resolveOrigin(for: element)
             // 正在缩放的块以预览行数计——模型里的 heightRows 还是旧值，
             // 底层块长高时它是唯一增高来源。
-            let rows = resizingPlacementID == element.id
-                ? (resizePreviewRows ?? element.placement.heightRows)
-                : element.placement.heightRows
+            let rows = interaction.previewSpan(for: element.id)?.rows
+                ?? element.placement.heightRows
             return GridCell(
                 column: origin.column,
                 row: origin.row,
@@ -396,93 +404,13 @@ struct DrawerPanelView: View {
         return geometry.contentHeight(covering: cells)
     }
 
-    @State private var previewPositions: [String: LayoutEngine.GridOrigin] = [:]
-    @State private var draggingPlacementID: String?
-    /// 缩放预览：正在调整的块及其目标跨度（由父视图持有，跨手势中断稳定）。
-    @State private var resizingPlacementID: String?
-    @State private var resizePreviewColumns: Int?
-    @State private var resizePreviewRows: Int?
-
-    /// 缩放位移 → 目标跨度。按下瞬间位移为零，目标即当前尺寸（不会瞬间缩小）。
-    /// 量化经 `ResizeHysteresis` 死区迟滞：连续位移越过当前预览的半格边界
-    /// 加余量后才换档，边界两侧形成稳定带——朴素的 round() 会在半格边界处
-    /// 随 ±1px 抖动在相邻整数间来回翻转，预览随之在原尺寸与目标尺寸间闪烁
-    /// （历史上用“候选距离 +1”做余量，整数 L1 距离下等价于“更近即切换”，
-    /// 实际没有死区）。基准仍固定为按下时的 placement，除当前预览外无路径
-    /// 依赖状态，不依赖手势重启启发式。
-    private func handleResizeTranslate(_ translation: CGSize, for element: DrawerElement) {
-        if resizingPlacementID != element.id {
-            resizingPlacementID = element.id
-            resizePreviewColumns = element.placement.widthColumns
-            resizePreviewRows = element.placement.heightRows
-        }
-
-        let metrics = GridMetrics.current
-        let base = GridSpan(
-            columns: element.placement.widthColumns,
-            rows: element.placement.heightRows
-        )
-        let current = GridSpan(
-            columns: resizePreviewColumns ?? base.columns,
-            rows: resizePreviewRows ?? base.rows
-        )
-
-        guard let candidate = ResizeSpanResolver.resolve(
-            base: base,
-            translation: translation,
-            current: current,
-            supportedSpans: element.supportedSpans,
-            metrics: metrics
-        ) else { return }
-
-        let previousColumns = resizePreviewColumns
-        let previousRows = resizePreviewRows
-        resizePreviewColumns = candidate.columns
-        resizePreviewRows = candidate.rows
-
-        // 预览跨度变化时同步推挤下方块（下方整块实时下移，面板随之增高）。
-        if previousColumns != candidate.columns || previousRows != candidate.rows {
-            previewPositions = actions.onPreviewResize(element.id, candidate.columns, candidate.rows)
-        }
-
-        #if DEBUG
-        let raw = ResizeSpanResolver.continuous(
-            base: base,
-            translation: translation,
-            metrics: metrics
-        )
-        ResizeProbeLog.resizeEvent(
-            translation: translation,
-            continuousColumns: raw.columns,
-            continuousRows: raw.rows,
-            preview: candidate
-        )
-        #endif
-    }
-
-    /// 松手提交预览跨度（预览始终 ∈ supportedSpans，所见即所得）。
-    /// 与当前一致时也走提交路径：清空推挤预览并让引擎按需压实/回落面板高度。
-    private func commitResize(for element: DrawerElement) {
-        defer {
-            resizingPlacementID = nil
-            resizePreviewColumns = nil
-            resizePreviewRows = nil
-        }
-        guard let columns = resizePreviewColumns, let rows = resizePreviewRows else { return }
-        withAnimation(DrawerAnimation.spring) {
-            previewPositions = [:]
-        }
-        actions.onResizeBlock(element.id, columns, rows)
-    }
-
     private func resolveOrigin(for element: DrawerElement) -> LayoutEngine.GridOrigin {
-        if let preview = previewPositions[element.id],
-           draggingPlacementID != element.id {
-            return preview
-        }
-        return LayoutEngine.GridOrigin(
-            column: element.placement.originColumn,
-            row: element.placement.originRow
+        interaction.resolveOrigin(
+            placementID: element.id,
+            committed: LayoutEngine.GridOrigin(
+                column: element.placement.originColumn,
+                row: element.placement.originRow
+            )
         )
     }
 

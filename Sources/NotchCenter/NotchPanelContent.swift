@@ -183,7 +183,8 @@ extension NotchPanelController {
                         actions: compactActions(),
                         showsBand: false
                     ),
-                    actions: drawerActions()
+                    actions: drawerActions(),
+                    bridge: drawerInteractionBridge()
                 )
             )
             host.visibleHeightProvider = { [weak self, weak pair] in
@@ -425,72 +426,53 @@ extension NotchPanelController {
                     placement: .overlay
                 )
             },
-            onMoveBlock: { [weak self] placementID, column, row in
-                self?.layoutEngine.moveDrawerBlock(placementID: placementID, toColumn: column, toRow: row)
-                self?.refreshAfterEdit()
-            },
-            onResizeBlock: { [weak self] placementID, columns, rows in
-                self?.layoutEngine.resizeDrawerBlock(placementID: placementID, toColumns: columns, toRows: rows)
-                self?.refreshAfterEdit()
-            },
             onReorderBlocks: { [weak self] in
                 self?.layoutEngine.reorderDrawerBlocks()
                 self?.refreshAfterEdit()
-            },
-            onPreviewMove: { [weak self] placementID, column, row in
-                guard let self else { return [:] }
-                let target = self.clampedDropTarget(
+            }
+        )
+    }
+
+    /// 抽屉拖拽 / 缩放与引擎之间的接口（由 `DrawerInteractionState` 驱动）。
+    ///
+    /// 与 `DrawerActions` 分开：这些回调承载"预览即最终布局"的时序契约，
+    /// 需要能被测试用假实现整组替换。
+    func drawerInteractionBridge() -> DrawerInteractionState.Bridge {
+        DrawerInteractionState.Bridge(
+            previewMove: { [weak self] placementID, column, row in
+                self?.applyDrawerDrag(
                     placementID: placementID,
                     column: column,
-                    row: row
-                )
-                // 推挤 + 离线压实一次返回（预览 == 提交）：全体块的新位置
-                // 写回 previewPositions，拖动期间实时推挤。
-                let origins = self.layoutEngine.previewCommittedArrangement(
-                    moving: placementID,
-                    toColumn: target.column,
-                    toRow: target.row
-                )
-                // 左扩/增宽/增高与推挤同帧（写 drawerGridLeftColumn + 尺寸，
-                // 与推挤共用同一 spring）；左扩 = 全体块横移 + 面板重居中。
-                self.applyPreviewWindowSize(origins, resized: nil)
-                return origins
+                    row: row,
+                    phase: .preview
+                ) ?? [:]
             },
-            onUpdateReorderPreview: { [weak self] origin, span in
+            previewResize: { [weak self] placementID, columns, rows in
+                self?.applyDrawerResize(
+                    placementID: placementID,
+                    columns: columns,
+                    rows: rows,
+                    phase: .preview
+                ) ?? [:]
+            },
+            commitMove: { [weak self] placementID, column, row in
+                self?.applyDrawerDrag(
+                    placementID: placementID,
+                    column: column,
+                    row: row,
+                    phase: .commit
+                )
+            },
+            commitResize: { [weak self] placementID, columns, rows in
+                self?.applyDrawerResize(
+                    placementID: placementID,
+                    columns: columns,
+                    rows: rows,
+                    phase: .commit
+                )
+            },
+            setReorderPreview: { [weak self] origin, span in
                 self?.updateDrawerReorderPreview(origin, span: span)
-            },
-            onPreviewResize: { [weak self] placementID, columns, rows in
-                guard let self else { return [:] }
-                let origins = self.layoutEngine.previewArrangement(
-                    resizing: placementID,
-                    toColumns: columns,
-                    toRows: rows
-                )
-                // 底层块长高/加宽不推挤任何人：新跨度必须显式传入才会
-                // 增高/增宽面板。
-                self.applyPreviewWindowSize(
-                    origins,
-                    resized: (placementID, rows, columns)
-                )
-                return origins
-            },
-            onCommitDrag: { [weak self] placementID, column, row in
-                guard let self else { return }
-                // 与 onPreviewMove 共用同一夹紧目标 + 同一组合 API（推挤 +
-                // 离线压实）：占位框预示的落点 == 松手后真正提交的位置
-                // （所见即所得，且提交侧压实为幂等兜底、零二次位移）。
-                let target = self.clampedDropTarget(
-                    placementID: placementID,
-                    column: column,
-                    row: row
-                )
-                let origins = self.layoutEngine.previewCommittedArrangement(
-                    moving: placementID,
-                    toColumn: target.column,
-                    toRow: target.row
-                )
-                _ = self.layoutEngine.commitArrangement(origins)
-                self.refreshAfterEdit()
             }
         )
     }
