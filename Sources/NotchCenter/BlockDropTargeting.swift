@@ -126,9 +126,9 @@ extension NotchPanelController {
     }
 
     /// 抽屉内重排的落点预览：**只写虚线占位框，不写面板尺寸与左列**——
-    /// 窗口尺寸与 `drawerGridLeftColumn`（含左扩）由 `onPreviewMove` 回调
-    /// 内的 `applyPreviewWindowSize` 按同一份压实 origins 同帧写入（推挤、
-    /// 增宽与全体块横移共用同一 spring）。本方法只负责占位框本身。
+    /// 窗口尺寸与 `drawerGridLeftColumn`（含左扩）由 `applyDrawerDrag`
+    /// 预览阶段内的 `applyPreviewWindowSize` 按同一份压实 origins 同帧
+    /// 写入（推挤、增宽与全体块横移共用同一 spring）。本方法只负责占位框本身。
     ///
     /// `origin` / `span` 任一为 nil 表示清空（拖动结束或取消）；
     /// nil 分支保留 `applyDropPreviewWindowSize(nil)` 作松手复位兜底
@@ -173,7 +173,7 @@ extension NotchPanelController {
     /// 同帧写入，全体块横移 + 面板重居中，代价已确认接受）。行只向下增长
     /// （网格不支持负行）。
     ///
-    /// 预览（`onPreviewMove`）与提交（`onCommitDrag`）必须共用它，
+    /// 预览与提交（`applyDrawerDrag` 的两个阶段）必须共用它，
     /// 否则占位框预示的落点会和真正落到的位置不一致。
     func clampedDropTarget(
         placementID: String,

@@ -147,13 +147,10 @@ struct DrawerPanelView: View {
             topBar
                 .frame(height: NotchGridMetrics.drawerTopBarHeight)
 
-            // 滚动指示条必须隐藏：网格内容高度与可视区高度是两个独立动画值
-            // （gridFrameHeight 与窗口高度各自的 spring 表现层，逐帧量化差
-            // ±0.1~0.3pt），多行缩少行时 doc/clip 反复跨越相等点，NSScrollView
-            // 的滚动条随之反复亮灭（NOTCHCENTER_SHRINKSCROLL_PROBE 实测：同一
-            // 收缩动画中 vHidden 翻转多次）。抽屉本来就是内容自适应面板，静止态
-            // 内容 ≡ 可视区，滚动条没有存在意义；屏幕封顶时滚轮滚动依旧可用
-            // （仅无指示条）。与紧凑带 HorizontalDragScroll 同理。
+            // 滚动指示条必须隐藏：抽屉是内容自适应面板，静止态内容 ≡ 可视区，
+            // 滚动条没有存在意义；且内容高度与可视区高度是两个独立的 spring
+            // 动画值，多行缩少行时二者逐帧量化差会让滚动条反复亮灭。屏幕
+            // 封顶截断内容时滚轮滚动依旧可用（仅无指示条）。
             ScrollView(showsIndicators: false) {
                 grid
             }

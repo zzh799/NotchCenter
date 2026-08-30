@@ -63,9 +63,9 @@ struct DrawerBlockContainer: View {
             // 编辑模式压暗层：透明黑盖住块内容，弱化内容细节、衬托其上的
             // 白色描边与编辑角标。圆角与 clipShape 对齐，避免方角黑块露出
             // 圆角外。同时仍是手势屏蔽层：屏蔽块内容自身手势（如文本选中），
-            // 让拖动/缩放在所有块上行为一致。所有层都用 overlay——尺寸严格
-            // 等于内容本身，不会被外层的旧尺寸 proposal 撑大（此前用
-            // ZStack + 弹性子视图，缩小到 1 行时位置会上偏半行）。
+            // 让拖动/缩放在所有块上行为一致。所有层都用 overlay 而非 ZStack：
+            // overlay 尺寸严格等于内容本身，不会被外层旧尺寸的 proposal 撑大
+            // （否则缩小到 1 行时位置会上偏半行）。
             .overlay {
                 if isEditing {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -173,8 +173,7 @@ struct DrawerBlockContainer: View {
     /// （`.global` 锚定窗口，拖拽期间窗口不动）：默认的 `.local` 空间挂在
     /// 握把上，预览每长一格，握把连同其 local 空间整体平移一格，translation
     /// 瞬间反跳一整格——死区无法吸收，形成“增长 → 平移量清零 → 缩回 →
-    /// 恢复”的逐事件自激振荡（原大小/目标大小逐像素切换）。复刻复现与
-    /// 日志见 `ResizeProbe`（NOTCHCENTER_RESIZE_PROBE=1）。
+    /// 恢复”的逐事件自激振荡（原大小/目标大小逐像素切换）。
     private var resizeGesture: some Gesture {
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in

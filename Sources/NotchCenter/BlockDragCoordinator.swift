@@ -38,8 +38,7 @@ final class BlockDragCoordinator: ObservableObject {
         /// 用 `GridSpan` 而非元组：元组不参与 `Equatable` 自动合成。
         let span: GridSpan
         /// 跟手浮窗内容：真实组件视图 + 1:1 尺寸。
-        /// 为 nil 时浮窗回退到名称胶囊、落位不做飞行——自动化探针
-        /// （`NOTCHCENTER_DRAGDROP_PROBE`）走这条路径，行为与视图无关。
+        /// 为 nil 时浮窗回退到名称胶囊、落位不做飞行。
         let preview: DragPreviewContent?
 
         var isCompact: Bool { kind == .compact }

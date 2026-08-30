@@ -473,10 +473,8 @@ final class NotchPanelController: NSObject {
         withAnimation(DrawerAnimation.spring) {
             // 块已被推挤，左列必须重算：左扩 = 全体块横移 + 面板重居中。
             uiState.drawerGridLeftColumn = metrics.leftColumn ?? uiState.drawerGridLeftColumn
-            // 容器高度随预览最低行同步更新（曾只更新宽度、高度钉在提交布局
-            // 的旧行高）：缩小时网格内容比可视区高一截，ScrollView 反复亮起
-            // 滚动条。与宽度一样按预览几何计，DrawerPanelView 的网格高度
-            // 只读这个值。
+            // 容器高度随预览最低行同步更新：若高度仍钉在提交布局的旧行高，
+            // 缩小时网格内容会高过可视区，ScrollView 反复亮起滚动条。
             uiState.drawerContentSize = metrics.contentSize
             guard uiState.drawerWindowSize != metrics.windowSize else { return }
             uiState.drawerWindowSize = metrics.windowSize
@@ -484,9 +482,9 @@ final class NotchPanelController: NSObject {
     }
 
     /// 拖拽**落点预览**期间的面板增高/增宽：只按「占位框 ∪ 提交布局」的
-    /// 并集扩展，**绝不写 `drawerGridLeftColumn`**——所有块的横坐标都是
-    /// `gridX(列 − drawerGridLeftColumn)`，改左列等于让全体块横移，与
-    ///「拖动期间其余块零位移」直接冲突；也不写 `previewPositions`。
+    /// 并集扩展，**绝不写 `drawerGridLeftColumn`**——所有块的渲染横坐标都
+    /// 减左列，改左列等于让全体块横移，与「拖动期间其余块零位移」直接
+    /// 冲突；也不写推挤预览原点（`DrawerInteractionState.previewOrigins`）。
     ///
     /// 与 `applyPreviewWindowSize` 的分工就在这里：后者服务**块已被推挤**
     /// 的预览（缩放/抽屉内重排，可以重算左列），本方法服务**块还没动、
