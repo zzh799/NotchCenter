@@ -15,9 +15,8 @@ extension LayoutEngine {
     /// 列支持左右双向：目标列可为负（向左拖出时格网随内容向左扩大），
     /// 但合并后的总跨度不得超过容量（屏幕约束）。
     ///
-    /// 安放顺序按 `orderedPlacementsForMove` 插入：**向下拖跨过下方相邻块
-    /// 顶缘后可交换**（旧语义里被拖块恒占阅读序首位，下移后压实拉回原状、
-    /// 永远无法交换）；上移/水平逐位保持旧语义。
+    /// 安放顺序按 `orderedPlacementsForMove` 插入：**向下拖压到下方相邻块
+    /// 即交换**（与上移同阈值）；上移/水平为被拖块抢占语义。
     func previewArrangement(moving placementID: String, toColumn: Int, toRow: Int) -> [String: GridOrigin] {
         guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
             return [:]
@@ -34,9 +33,11 @@ extension LayoutEngine {
     }
 
     /// moving 拖拽的安放顺序（阅读顺序重排）：
-    /// - **下移**（clamp 后目标行 > 原行）：`originRow <= 目标行` 的其余块
-    ///   先安放（其顶缘已被跨过，保位优先），被拖块随后，其余块殿后——
-    ///   跨过下方块顶缘即交换，未跨顶缘则压实拉回原状（零反馈即「未跨越」）。
+    /// - **下移**（clamp 后目标行 > 原行）：与**目标矩形重叠**的其余块先安放
+    ///   （保位优先），被拖块随后，其余块殿后——首次压到下方块即交换。
+    ///   判据不能是「`originRow <= 目标行`」（跨过下方块顶缘才交换）：行顶边
+    ///   锚定 + 空行压实会把被拖块腾出的顶部行闭合，未真正交换的下移一律零反馈，
+    ///   大组件要拖到跨过下方块顶缘（紧邻时即自身高度的格数）才交换，而上移 1 格就换——方向偏置。
     /// - **上移/水平**：被拖块首位（抢占语义，与旧 `pushDownOrigins(changed:)`
     ///   逐位一致——上移交换与水平交换手感不变）。
     private func orderedPlacementsForMove(
@@ -48,8 +49,8 @@ extension LayoutEngine {
         guard changed.originRow > sourceRow else {
             return [changed] + others
         }
-        let before = others.filter { $0.originRow <= changed.originRow }
-        let after = others.filter { $0.originRow > changed.originRow }
+        let before = others.filter { Self.rectsOverlap($0, changed) }
+        let after = others.filter { !Self.rectsOverlap($0, changed) }
         return before + [changed] + after
     }
 

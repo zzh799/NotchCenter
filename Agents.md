@@ -50,7 +50,7 @@ NotchCenter/
 │   ├── LayoutEngine.swift           # 布局引擎核心：类声明/LayoutIssue/存储属性/init（含加载）/查询/saveToDisk/重叠几何辅助
 │   ├── LayoutEngineSanitization.swift # 布局引擎 extension：sanitized(_:) 加载净化（损坏布局自愈）
 │   ├── LayoutEngineMutation.swift   # 布局引擎 extension：布局修改公开 API（列数/屏幕约束/启用插件/紧凑槽位/抽屉增删移缩/提交）
-│   ├── LayoutEngineArrangement.swift # 布局引擎 extension：推挤与预览算法（GridOrigin/previewArrangement/pushDownOrigins/placeInOrder/applyOrigins/validColumnRange；moving 拖拽为插入序安放，下移跨顶缘可交换）
+│   ├── LayoutEngineArrangement.swift # 布局引擎 extension：推挤与预览算法（GridOrigin/previewArrangement/pushDownOrigins/placeInOrder/applyOrigins/validColumnRange；moving 拖拽为插入序安放，下移压到下方块即交换、与上移同阈值）
 │   ├── LayoutEngineCompaction.swift # 布局引擎 extension：compactEmptyRows / compactEmptyColumns 空洞压实
 │   ├── LayoutEngineGeometry.swift   # 布局引擎只读 extension：frame/内容尺寸/窗口尺寸/previewBottomRow
 │   ├── LayoutEngineValidation.swift # 布局引擎只读 extension：validate() 全量健康检查

@@ -687,10 +687,10 @@ final class LayoutEngineTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    // MARK: 拖拽方向对称性：下移跨顶缘可交换（插入序安放）
+    // MARK: 拖拽方向对称性：下移压到下方块即交换（插入序安放）
 
     /// 核心钉子：向下拖跨过下方相邻块顶缘（目标行 == 下方块 originRow）
-    /// 即触发交换——旧语义里被拖块恒占阅读序首位，下移后压实拉回原状、
+    /// 即交换——旧语义里被拖块恒占阅读序首位，下移后压实拉回原状、
     /// 永远无法交换。
     func testDragDownPastTopEdgeSwaps() throws {
         register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .large], defaultSize: .small)
@@ -718,25 +718,50 @@ final class LayoutEngineTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    /// 下移未跨过下方块顶缘（目标行 < 下方块 originRow）：压实拉回原状，
-    /// 布局逐块不变——零反馈即「未跨越」，符合直觉。
-    func testDragDownBelowTopEdgeKeepsLayout() throws {
+    /// 下移与上移同阈值：目标矩形首次压到下方块（未跨过其顶缘）即交换，
+    /// 不再是「零反馈直到跨过顶缘」——那让大组件下移需要移动自身高度的格数。
+    func testDragDownOntoNeighborSwaps() throws {
         register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .large], defaultSize: .small)
         let (engine, directory, _) = try makeEngine()
         placeRaw(engine, id: "x", column: 0, row: 0, width: 2, height: 1)
         placeRaw(engine, id: "a", column: 0, row: 1, width: 2, height: 2)
         placeRaw(engine, id: "b", column: 0, row: 3, width: 2, height: 2)
 
-        // a 下移 1 格：目标行 2 < b 的顶缘 3。
+        // a 下移 1 格：目标行 2，底缘压进 b 的顶缘（行 3）。
         let preview = engine.previewCommittedArrangement(moving: "a", toColumn: 0, toRow: 2)
-        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: 0, row: 1))
-        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 3))
+        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: 0, row: 3), "被拖块落到下方块之下")
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 1), "下方块保位并整体上移")
         XCTAssertEqual(preview["x"], LayoutEngine.GridOrigin(column: 0, row: 0))
+
+        _ = engine.commitArrangement(preview)
+        XCTAssertTrue(engine.validate().isEmpty)
         try? FileManager.default.removeItem(at: directory)
     }
 
-    /// 上移对称性对照：向上 1 格跨过上方块顶缘即交换（旧语义已如此，
-    /// 插入序安放不得改变它）。
+    /// 方向对称性：大组件（3 行）与紧邻的小块（1 行），下移 1 格与上移 1 格
+    /// 必须落到**同一个**交换结果——阈值不得按拖动方向偏置。
+    func testDragSwapThresholdIsDirectionSymmetric() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .large], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "big", column: 0, row: 0, width: 2, height: 3)
+        placeRaw(engine, id: "small", column: 0, row: 3, width: 2, height: 1)
+
+        // 大组件下移 1 格（目标行 1，底缘压进 small 的顶缘 3）。
+        let down = engine.previewCommittedArrangement(moving: "big", toColumn: 0, toRow: 1)
+        // 小块上移 1 格（目标行 2，落入 big 的包围盒）。
+        let up = engine.previewCommittedArrangement(moving: "small", toColumn: 0, toRow: 2)
+
+        XCTAssertEqual(
+            down, up,
+            "同一对相邻块，交换结果必须与拖动方向无关"
+        )
+        XCTAssertEqual(down["small"], LayoutEngine.GridOrigin(column: 0, row: 0))
+        XCTAssertEqual(down["big"], LayoutEngine.GridOrigin(column: 0, row: 1))
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 上移对称性对照：向上 1 格、被拖块顶缘进入上方块包围盒即抢占交换
+    /// （旧语义已如此，插入序安放不得改变它）。
     func testDragUpSwapsSymmetrically() throws {
         register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .large], defaultSize: .small)
         let (engine, directory, _) = try makeEngine()
