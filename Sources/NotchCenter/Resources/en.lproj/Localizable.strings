@@ -78,10 +78,6 @@
 "panel.help.tidy" = "Tidy layout (top-to-bottom, left-to-right)";
 "panel.help.pin" = "Pin drawer open";
 "panel.help.unpin" = "Unpin drawer";
-"panel.help.editLayout" = "Edit layout";
-"panel.help.doneEditing" = "Done editing layout";
-"panel.help.closeDrawer" = "Close drawer";
-"panel.help.addComponent" = "Add component";
 
 /* 面板交互提示标签 */
 

@@ -50,7 +50,7 @@ final class NotchPanelController: NSObject {
     /// 立即继续拖动 / 缩放 / 删除），离开该页或关闭面板时退出编辑模式。
     ///
     /// ⚠️ 权威来源约定：这个标志由 `setComponentsPageActive` 独占写入；
-    /// 用户手动退出编辑（`onToggleEdit`）时清零，避免之后切页时两个来源
+    /// 关闭面板或切走组件页时清零，避免之后切页时两个来源
     /// 对编辑态的判断打架。`isEditing` 是两者合并后的只读视图。
     var isEditingForComponentsPage = false
 

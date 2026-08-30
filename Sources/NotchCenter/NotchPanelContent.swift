@@ -349,11 +349,9 @@ extension NotchPanelController {
     func drawerActions() -> DrawerActions {
         DrawerActions(
             onShowSettings: { [weak self] in
-                self?.showSettings()
-            },
-            onAddComponent: { [weak self] in
-                // 直入「组件」页：非编辑态由 setComponentsPageActive 联动
-                // 进入编辑模式；编辑态下传 .components 无强制退出编辑副作用。
+                // 打开设置并直入「组件」页：非编辑态由 setComponentsPageActive
+                // 联动进入编辑模式；编辑态下传 .components 无强制退出编辑副作用。
+                // 再次点击 = 关闭面板 → 联动退出编辑模式。
                 self?.showSettings(page: .components)
             },
             onTogglePin: { [weak self] in
@@ -364,27 +362,6 @@ extension NotchPanelController {
                 if !self.isPinned, !self.isEditing {
                     self.handleMouseLocation(NSEvent.mouseLocation)
                 }
-            },
-            onToggleEdit: { [weak self] in
-                guard let self else { return }
-                if self.isEditing {
-                    // 手动退出编辑时同步清掉“组件页联动”标志，避免之后
-                    // 切页时两个来源对编辑态的判断打架。
-                    self.isEditingForComponentsPage = false
-                    self.stopEditMode()
-                } else {
-                    self.startEditMode()
-                }
-            },
-            onCollapse: { [weak self] in
-                guard let self else { return }
-                // 设置面板开着时，关闭按钮先收面板（面板与抽屉是同一组
-                // 常驻 UI），再收抽屉——避免面板孤零零挂在屏中央。
-                if self.isSettingsPresented {
-                    self.closeSettings()
-                    return
-                }
-                self.collapse(animated: true)
             },
             onRemoveBlock: { [weak self] placementID in
                 guard let self else { return }

@@ -24,11 +24,7 @@ struct DrawerElement: Identifiable {
 /// 那部分有严格的时序契约（预览与提交同源、松手顺序），需要能被测试驱动。
 struct DrawerActions {
     let onShowSettings: () -> Void
-    /// 打开设置并直入「组件」页（非编辑态由 setComponentsPageActive 联动进入编辑模式）。
-    let onAddComponent: () -> Void
     let onTogglePin: () -> Void
-    let onToggleEdit: () -> Void
-    let onCollapse: () -> Void
     let onRemoveBlock: (String) -> Void
     /// 编辑模式块左上角设置按钮：(pluginID, placementID, 块全局 frame)，经
     /// SettingPopover 展示设置——优先块实例级视图，回退插件级。
@@ -169,19 +165,7 @@ struct DrawerPanelView: View {
                 tint: .white.opacity(0.65)
             )
 
-            Spacer(minLength: 0)
-
-            // 添加组件（常驻）：打开设置并直入「组件」页，替代原编辑模式
-            // 提示胶囊「前往设置页添加组件」。
-            topBarButton(
-                systemImage: "plus.rectangle.on.rectangle",
-                help: L("panel.help.addComponent"),
-                action: actions.onAddComponent,
-                tint: .white.opacity(0.65)
-            )
-
-            // 编辑模式隐藏钉住按钮，其槽位让给一键重排（添加组件按钮右边）；
-            // 钉住状态保留，退出编辑后恢复显示——槽位固定，编辑/关闭按钮不跳动。
+            // 一键重排仅在编辑模式可用，常驻设置按钮右侧。
             if ui.isEditing {
                 topBarButton(
                     systemImage: "arrow.down.forward.and.arrow.up.backward",
@@ -190,33 +174,20 @@ struct DrawerPanelView: View {
                     tint: .white.opacity(0.9)
                 )
                 .transition(.opacity)
-            } else {
-                topBarButton(
-                    systemImage: ui.isPinned ? "pin.fill" : "pin",
-                    help: ui.isPinned ? L("panel.help.unpin") : L("panel.help.pin"),
-                    action: actions.onTogglePin,
-                    tint: .white.opacity(0.65),
-                    // 固定态常驻高亮（比悬停高亮亮一档，见 TopBarButton）。
-                    isActive: ui.isPinned
-                )
-                .transition(.opacity)
             }
 
-            topBarButton(
-                systemImage: ui.isEditing ? "pencil.slash" : "pencil",
-                help: ui.isEditing ? L("panel.help.doneEditing") : L("panel.help.editLayout"),
-                action: actions.onToggleEdit,
-                tint: .white.opacity(0.65),
-                // 编辑态常驻高亮。
-                isActive: ui.isEditing
-            )
+            Spacer(minLength: 0)
 
+            // 编辑模式隐藏钉住按钮，退出编辑后恢复显示——槽位固定，按钮不跳动。
             topBarButton(
-                systemImage: "chevron.down",
-                help: L("panel.help.closeDrawer"),
-                action: actions.onCollapse,
-                tint: .white.opacity(0.65)
+                systemImage: ui.isPinned ? "pin.fill" : "pin",
+                help: ui.isPinned ? L("panel.help.unpin") : L("panel.help.pin"),
+                action: actions.onTogglePin,
+                tint: .white.opacity(0.65),
+                // 固定态常驻高亮（比悬停高亮亮一档，见 TopBarButton）。
+                isActive: ui.isPinned
             )
+            .transition(.opacity)
         }
         .padding(.horizontal, 4)
     }

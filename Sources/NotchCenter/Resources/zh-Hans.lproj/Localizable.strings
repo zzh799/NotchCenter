@@ -78,10 +78,6 @@
 "panel.help.tidy" = "整理布局（自上而下、自左向右）";
 "panel.help.pin" = "固定抽屉常开";
 "panel.help.unpin" = "取消固定抽屉";
-"panel.help.editLayout" = "编辑布局";
-"panel.help.doneEditing" = "完成布局编辑";
-"panel.help.closeDrawer" = "关闭抽屉";
-"panel.help.addComponent" = "添加组件";
 
 /* 面板交互提示标签 */
 
