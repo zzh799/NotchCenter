@@ -114,6 +114,20 @@ struct ComponentCatalogItem: Identifiable {
 
     var id: String { pluginID + "." + blockID }
 
+    /// 跟手浮窗的 1:1 像素尺寸：抽屉块按默认跨度的格网尺寸，
+    /// 紧凑块按刘海两侧的槽位尺寸。
+    var previewSize: CGSize {
+        isCompact
+            ? CGSize(
+                width: NotchGeometry.compactSlotSize.width,
+                height: NotchGeometry.compactSlotSize.height
+            )
+            : CGSize(
+                width: NotchGridMetrics.contentWidth(columns: span.columns),
+                height: NotchGridMetrics.contentHeight(rows: span.rows)
+            )
+    }
+
     var payload: BlockDragCoordinator.Payload {
         BlockDragCoordinator.Payload(
             pluginID: pluginID,
@@ -121,7 +135,11 @@ struct ComponentCatalogItem: Identifiable {
             kind: isCompact ? .compact : .drawer,
             displayName: displayName,
             symbolName: symbolName,
-            span: span
+            span: span,
+            preview: BlockDragCoordinator.DragPreviewContent(
+                view: preview,
+                size: previewSize
+            )
         )
     }
 }

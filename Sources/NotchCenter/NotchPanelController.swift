@@ -293,6 +293,10 @@ final class NotchPanelController: NSObject {
         if isEditing {
             isEditing = false
         }
+        // 抽屉消失后进行中的拖拽会话与落位飞行都失去意义：立即收尾，
+        // 否则浮窗会悬在空气里、新块可能卡在隐形状态（landingPlacementID）。
+        BlockDragCoordinator.shared.cancel()
+        DragPreviewLanding.shared.cancel()
         setDrawerRevealed(false, animated: animated)
         // 浮窗锚定的块随抽屉消失：Kit 的 BlockPopover 订阅此通知立即关闭，
         // 不等收起动画结束（否则浮窗悬在已消失的块上方）。
@@ -460,7 +464,7 @@ final class NotchPanelController: NSObject {
             previewRows: bottomRow,
             previewColumns: layoutEngine.previewOccupiedColumns(origins: origins, resized: resizedColumns)
         )
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+        withAnimation(DrawerAnimation.spring) {
             uiState.drawerGridLeftColumn = columnRange.min
             // 容器高度随预览最低行同步更新（曾只更新宽度、高度钉在提交布局
             // 的旧行高）：缩小时网格内容比可视区高一截，ScrollView 反复亮起
@@ -473,6 +477,105 @@ final class NotchPanelController: NSObject {
             guard uiState.drawerWindowSize != size else { return }
             uiState.drawerWindowSize = size
         }
+    }
+
+    /// 拖拽**落点预览**期间的面板增高/增宽：只按「占位框 ∪ 提交布局」的
+    /// 并集扩展，**绝不写 `drawerGridLeftColumn`**——所有块的横坐标都是
+    /// `gridX(列 − drawerGridLeftColumn)`，改左列等于让全体块横移，与
+    ///「拖动期间其余块零位移」直接冲突；也不写 `previewPositions`。
+    ///
+    /// 与 `applyPreviewWindowSize` 的分工就在这里：后者服务**块已被推挤**
+    /// 的预览（缩放/抽屉内重排，可以重算左列），本方法服务**块还没动、
+    /// 只有占位框**的预览（从设置面板拖入）。
+    ///
+    /// 顺带修掉一个既有缺陷：网格内容高度（`gridFrameHeight`）虽已计入
+    /// 落点行，但窗口可见高度没跟着长，落点落在新行时占位框会被
+    /// ScrollView 裁掉。
+    ///
+    /// `zone` 为 nil 表示回到提交布局的尺寸（拖拽取消或落位后）。
+    func applyDropPreviewWindowSize(_ zone: BlockDragCoordinator.DropZone?) {
+        guard isExpanded, let pair = activePair else { return }
+        let left = layoutEngine.gridLeftColumn()
+        var rows = layoutEngine.drawerContentRows()
+        var right = left + layoutEngine.occupiedColumns()
+        if case let .drawer(column, row, columns, blockRows)? = zone {
+            rows = max(rows, row + blockRows)
+            right = max(right, column + columns)
+        }
+        let columnSpan = min(max(right - left, 1), layoutEngine.effectiveMaxColumns())
+        let size = drawerWindowSize(
+            for: pair,
+            previewRows: rows,
+            previewColumns: columnSpan
+        )
+        let content = CGSize(
+            width: NotchGridMetrics.contentWidth(columns: columnSpan),
+            height: NotchGridMetrics.contentHeight(rows: max(rows, 1))
+        )
+        // 值未变直接返回：拖动中每帧都调用，重复赋值会不断重启 spring
+        // （表现为面板尺寸抖动）。
+        guard uiState.drawerWindowSize != size || uiState.drawerContentSize != content else {
+            return
+        }
+        // 内容尺寸与窗口尺寸必须同相同帧，否则 ScrollView 会反复亮灭滚动条。
+        withAnimation(DrawerAnimation.spring) {
+            uiState.drawerContentSize = content
+            uiState.drawerWindowSize = size
+        }
+    }
+
+    /// 网格格坐标 → 屏幕矩形（Cocoa 坐标，左下原点）。
+    ///
+    /// 与 `BlockDropTargeting.drawerDropZone` 的「屏幕 → 格坐标」换算
+    /// **严格互逆**（同一套常量、同一套偏移）：跟手浮窗的落位终点若与
+    /// 占位框差一格，飞行结束时会看到一次明显跳动。
+    ///
+    /// 面板布局链（见 `DrawerPanelView.content` / `body`）：
+    /// 可见面板 = 紧凑带(`compactHeight`) + 顶栏(`drawerTopBarHeight`) +
+    /// 网格（水平内边距 `contentPadding`），顶缘钉死屏幕顶端。
+    func drawerScreenRect(
+        column: Int,
+        row: Int,
+        columns: Int,
+        rows: Int
+    ) -> CGRect? {
+        guard let pair = activePair else { return nil }
+        let visible = visibleDrawerFrame(for: pair)
+        let stepWidth = NotchGridMetrics.cellWidth + NotchGridMetrics.spacing
+        let stepHeight = NotchGridMetrics.cellHeight + NotchGridMetrics.spacing
+        let x = visible.minX
+            + NotchGridMetrics.contentPadding
+            + CGFloat(column - layoutEngine.gridLeftColumn()) * stepWidth
+        // 网格内容顶缘：自可见面板顶缘向下让出紧凑带与顶栏。
+        let topEdgeY = visible.maxY
+            - pair.layout.compactHeight
+            - NotchGridMetrics.drawerTopBarHeight
+            - CGFloat(row) * stepHeight
+        let size = CGSize(
+            width: NotchGridMetrics.contentWidth(columns: columns),
+            height: NotchGridMetrics.contentHeight(rows: rows)
+        )
+        // Cocoa 原点在左下：顶缘减高度即底边。
+        return CGRect(
+            x: x,
+            y: topEdgeY - size.height,
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    /// 落位飞行的终点：某块**提交后**的最终屏幕矩形。
+    /// 必须用提交后的几何算——面板宽度与最左列都可能因落位而改变，
+    /// 用拖动时的旧几何会让终点偏离真实块几 pt 到一整格。
+    func landingRect(placementID: String) -> CGRect? {
+        guard let placed = layoutEngine.drawerBlocks
+            .first(where: { $0.placementID == placementID }) else { return nil }
+        return drawerScreenRect(
+            column: placed.originColumn,
+            row: placed.originRow,
+            columns: placed.widthColumns,
+            rows: placed.heightRows
+        )
     }
 
     /// 编辑操作提交后的刷新：内容 spring 重建（窗口高度固定，

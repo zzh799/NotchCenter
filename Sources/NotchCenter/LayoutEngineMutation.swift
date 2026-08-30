@@ -420,8 +420,12 @@ extension LayoutEngine {
         return true
     }
 
-    /// 提交拖拽预览结果（与 previewArrangement 同一算法，保证所见即所得），
-    /// 随后压实空行与空列（拖走后遗留的整行/整列空洞由下方/右侧块上移/左移闭合）。
+    /// 提交拖拽预览结果（与 `previewCommittedArrangement` 同一算法——推挤 +
+    /// 离线压实，保证所见即所得），随后压实空行与空列（拖走后遗留的整行/
+    /// 整列空洞由下方/右侧块上移/左移闭合）。
+    ///
+    /// 预览侧已经离线压实过，此处的压实是**幂等兜底**：压实后无空行/空列，
+    /// 循环首轮即退出、零位移；对任何传入未压实 origins 的调用方仍正确。
     @discardableResult
     func commitArrangement(_ origins: [String: GridOrigin]) -> Bool {
         guard !origins.isEmpty else { return false }

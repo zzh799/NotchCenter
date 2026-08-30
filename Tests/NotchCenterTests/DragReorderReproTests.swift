@@ -3,7 +3,7 @@ import XCTest
 import NotchCenterKit
 
 // 拖拽排序复现测试：完全模拟 DrawerPanelView.onCommitDrag 的调用序列
-// （previewArrangement → commitArrangement），暴力重放随机拖拽，
+// （previewCommittedArrangement → commitArrangement），暴力重放随机拖拽，
 // 校验提交后的布局不变量：块间不得重叠、行号不得失控增长。
 @MainActor
 final class DragReorderReproTests: XCTestCase {
@@ -51,8 +51,9 @@ final class DragReorderReproTests: XCTestCase {
     }
 
     /// 视图语义：target = 原始位置 + 四舍五入(位移/格尺寸)。这里直接用绝对目标格。
+    /// 复刻新视图调用序列：推挤 + 离线压实（预览即最终布局）→ 提交。
     private func dragAndCommit(_ engine: LayoutEngine, id: String, toColumn: Int, toRow: Int) {
-        let origins = engine.previewArrangement(moving: id, toColumn: toColumn, toRow: toRow)
+        let origins = engine.previewCommittedArrangement(moving: id, toColumn: toColumn, toRow: toRow)
         _ = engine.commitArrangement(origins)
     }
 

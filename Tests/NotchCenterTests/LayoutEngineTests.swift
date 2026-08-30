@@ -571,6 +571,57 @@ final class LayoutEngineTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    /// 组合预览 API（推挤 + 离线压实）与提交逐块严格相等，含左扩场景：
+    /// 预览即最终布局，松手零二次位移。
+    func testPreviewCommittedArrangementMatchesCommitWithLeftExpansion() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 1, height: 1)
+        placeRaw(engine, id: "b", column: 1, row: 0, width: 1, height: 1)
+
+        let preview = engine.previewCommittedArrangement(moving: "a", toColumn: -1, toRow: 0)
+        // 左扩内建：落点列为负；空列 0 由压实闭合（b 左移，与提交一致）。
+        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: -1, row: 0))
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 0))
+
+        // 提交侧压实是幂等兜底：预览（已压实）与提交结果逐块严格相等。
+        _ = engine.commitArrangement(preview)
+        for block in engine.drawerBlocks {
+            XCTAssertEqual(
+                LayoutEngine.GridOrigin(column: block.originColumn, row: block.originRow),
+                preview[block.placementID],
+                "块 \(block.placementID) 的预览与提交不一致"
+            )
+        }
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 压实纯函数不得触碰实时模型：预览链路在临时副本上离线压实，
+    /// `model.drawerBlocks` 必须逐位不变。
+    func testCompactionPureFunctionsDoNotMutateModel() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 1, height: 1)
+        placeRaw(engine, id: "b", column: 1, row: 2, width: 1, height: 1)
+        let before = engine.model.drawerBlocks
+
+        // 留有空洞（空行 1、空列边界外）的副本：压实纯函数返回新数组，
+        // 引擎模型不受影响。
+        var copy = engine.model.drawerBlocks
+        copy[1].originColumn = -2 // 负列空洞，向 0 收拢分支也要覆盖
+        let rowsResult = LayoutEngine.compactEmptyRows(copy)
+        let columnsResult = LayoutEngine.compactEmptyColumns(copy)
+        XCTAssertTrue(rowsResult.changed, "副本存在空行，压实应报告变化")
+        XCTAssertTrue(columnsResult.changed, "副本存在负列空洞，压实应报告变化")
+        XCTAssertEqual(
+            engine.model.drawerBlocks.map { "\($0.placementID):\($0.originColumn),\($0.originRow)" },
+            before.map { "\($0.placementID):\($0.originColumn),\($0.originRow)" },
+            "压实纯函数不得修改实时布局模型"
+        )
+        try? FileManager.default.removeItem(at: directory)
+    }
+
     /// 左侧有空列时允许左扩；左移后的负列空洞向 0 收拢（左侧块右移）。
     func testLeftGapCompactsTowardZero() throws {
         register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
@@ -627,6 +678,126 @@ final class LayoutEngineTests: XCTestCase {
         placeRaw(engine, id: "b", column: 1, row: 1, width: 4, height: 1)
         let issues = engine.validate()
         XCTAssertTrue(issues.contains { if case .outOfBounds = $0 { return true }; return false })
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    // MARK: 拖拽方向对称性：下移跨顶缘可交换（插入序安放）
+
+    /// 核心钉子：向下拖跨过下方相邻块顶缘（目标行 == 下方块 originRow）
+    /// 即触发交换——旧语义里被拖块恒占阅读序首位，下移后压实拉回原状、
+    /// 永远无法交换。
+    func testDragDownPastTopEdgeSwaps() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .large], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "x", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "a", column: 0, row: 1, width: 2, height: 2)
+        placeRaw(engine, id: "b", column: 0, row: 3, width: 2, height: 2)
+
+        // a 下移 2 格：目标行 3 == b 的顶缘。
+        let preview = engine.previewCommittedArrangement(moving: "a", toColumn: 0, toRow: 3)
+        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: 0, row: 3), "被拖块落到下方块原位之下")
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 1), "下方块保位并整体上移")
+        XCTAssertEqual(preview["x"], LayoutEngine.GridOrigin(column: 0, row: 0))
+
+        // 预览即提交：逐块严格相等。
+        _ = engine.commitArrangement(preview)
+        for block in engine.drawerBlocks {
+            XCTAssertEqual(
+                LayoutEngine.GridOrigin(column: block.originColumn, row: block.originRow),
+                preview[block.placementID],
+                "块 \(block.placementID) 的预览与提交不一致"
+            )
+        }
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 下移未跨过下方块顶缘（目标行 < 下方块 originRow）：压实拉回原状，
+    /// 布局逐块不变——零反馈即「未跨越」，符合直觉。
+    func testDragDownBelowTopEdgeKeepsLayout() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .large], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "x", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "a", column: 0, row: 1, width: 2, height: 2)
+        placeRaw(engine, id: "b", column: 0, row: 3, width: 2, height: 2)
+
+        // a 下移 1 格：目标行 2 < b 的顶缘 3。
+        let preview = engine.previewCommittedArrangement(moving: "a", toColumn: 0, toRow: 2)
+        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: 0, row: 1))
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 3))
+        XCTAssertEqual(preview["x"], LayoutEngine.GridOrigin(column: 0, row: 0))
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 上移对称性对照：向上 1 格跨过上方块顶缘即交换（旧语义已如此，
+    /// 插入序安放不得改变它）。
+    func testDragUpSwapsSymmetrically() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .large], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "x", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "a", column: 0, row: 1, width: 2, height: 2)
+        placeRaw(engine, id: "b", column: 0, row: 3, width: 2, height: 2)
+
+        // b 上移 1 格：目标行 2 落入 a 的包围盒（a 底行 2）。
+        let preview = engine.previewCommittedArrangement(moving: "b", toColumn: 0, toRow: 2)
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 1), "b 抢占 a 上方槽位")
+        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: 0, row: 3), "a 被挤到 b 下方")
+        XCTAssertEqual(preview["x"], LayoutEngine.GridOrigin(column: 0, row: 0))
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 斜向移动（行变 + 列变）：安放顺序只由目标行决定，列走 clamp。
+    func testDiagonalMoveSwapsByRow() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .large], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 1, width: 2, height: 2)
+        placeRaw(engine, id: "b", column: 0, row: 3, width: 2, height: 2)
+        placeRaw(engine, id: "c", column: 2, row: 1, width: 2, height: 2)
+
+        // a 斜移到 (2, 3)：跨过 b 顶缘，行方向交换生效、列落到 c 下方。
+        let preview = engine.previewCommittedArrangement(moving: "a", toColumn: 2, toRow: 3)
+        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: 2, row: 2))
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 2))
+        XCTAssertEqual(preview["c"], LayoutEngine.GridOrigin(column: 2, row: 0))
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 2x2 满排布：宽块下移跨过下方整块顶缘，插入到其后（落到本列底部），
+    /// 其余块不动。
+    func testWideBlockDownwardInsertBetweenRows() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .large], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "tl", column: 0, row: 0, width: 2, height: 2)
+        placeRaw(engine, id: "tr", column: 2, row: 0, width: 2, height: 2)
+        placeRaw(engine, id: "bl", column: 0, row: 2, width: 2, height: 2)
+        placeRaw(engine, id: "br", column: 2, row: 2, width: 2, height: 2)
+
+        // tl 下移 2 格：目标行 2 == bl 顶缘 → tl 落到左列底部，tr/bl/br 不动。
+        let preview = engine.previewCommittedArrangement(moving: "tl", toColumn: 0, toRow: 2)
+        XCTAssertEqual(preview["tl"], LayoutEngine.GridOrigin(column: 0, row: 4))
+        XCTAssertEqual(preview["tr"], LayoutEngine.GridOrigin(column: 2, row: 0))
+        XCTAssertEqual(preview["bl"], LayoutEngine.GridOrigin(column: 0, row: 2))
+        XCTAssertEqual(preview["br"], LayoutEngine.GridOrigin(column: 2, row: 2))
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 左扩 + 下移组合：目标列可为负（左扩）、目标行跨过下方块顶缘（交换），
+    /// 压实闭合空洞后无负列残留。
+    func testDragDownWithLeftExpansion() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .large], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 2, height: 2)
+        placeRaw(engine, id: "b", column: 0, row: 2, width: 2, height: 2)
+
+        // a 斜移到 (-2, 2)：跨过 b 顶缘 + 向左拖出两列。
+        let preview = engine.previewCommittedArrangement(moving: "a", toColumn: -2, toRow: 2)
+        XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: -2, row: 0))
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 0))
+
+        _ = engine.commitArrangement(preview)
+        XCTAssertEqual(engine.occupiedColumns(), 4)
+        XCTAssertTrue(engine.validate().isEmpty)
         try? FileManager.default.removeItem(at: directory)
     }
 }

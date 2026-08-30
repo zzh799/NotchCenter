@@ -45,6 +45,14 @@ final class PanelUIState: ObservableObject {
     /// 仅在拖拽会话期间非空，由 `BlockDragCoordinator` 经控制器写入。
     @Published var dropPreview: DropPreview?
 
+    /// 落位飞行期间**被隐藏**的块（目前只有从设置面板拖入的新块）。
+    ///
+    /// 非空时该块以 `opacity(0)` 渲染——飞行全程屏幕上只有跟手浮窗一份
+    /// 内容，避免重影；飞行结束后在同一次更新里清空，交接不留空帧。
+    /// 这是一个纯视觉状态，任何异常路径都必须无条件清掉它，
+    /// 否则块会永久隐形（见 `DragPreviewLanding.cancel`）。
+    @Published var landingPlacementID: String?
+
     /// 活动岛内容（插件活动状态的专属 UI，按提交顺序堆叠在刘海下方）。
     /// 由控制器经 HostController.showActivityIsland / removeActivityIsland 维护。
     @Published var activityIslands: [ActivityIslandContent] = []
@@ -64,19 +72,26 @@ final class PanelUIState: ObservableObject {
         /// 非空时视图按“插入后的屏幕顺序”给每个图标算显示槽位——
         /// 拖动过程中其余图标平滑让位。
         let draggingSlotIndex: Int?
+        /// 落点来自**抽屉内重排**（区别于从设置面板拖入）。
+        /// 两种来源共用同一份虚线占位框绘制，此标记只用于判等与调试——
+        /// 拖动目标跨来源切换时必须算作「目标变了」，否则占位框会卡在
+        /// 上一个来源的位置。
+        let isDrawerReorder: Bool
 
         init(
             zone: BlockDragCoordinator.DropZone,
             isCompact: Bool,
             title: String,
             compactPointerX: CGFloat? = nil,
-            draggingSlotIndex: Int? = nil
+            draggingSlotIndex: Int? = nil,
+            isDrawerReorder: Bool = false
         ) {
             self.zone = zone
             self.isCompact = isCompact
             self.title = title
             self.compactPointerX = compactPointerX
             self.draggingSlotIndex = draggingSlotIndex
+            self.isDrawerReorder = isDrawerReorder
         }
 
         /// 拖动目标是否与另一份预览一致（忽略逐帧变化的光标坐标）：
@@ -85,6 +100,7 @@ final class PanelUIState: ObservableObject {
             zone == other.zone
                 && isCompact == other.isCompact
                 && draggingSlotIndex == other.draggingSlotIndex
+                && isDrawerReorder == other.isDrawerReorder
         }
     }
 }

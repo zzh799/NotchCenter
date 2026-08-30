@@ -100,7 +100,9 @@ extension LayoutEngine {
         return max(committed, preview, 1)
     }
 
-    private func drawerContentRows() -> Int {
+    /// 提交布局的占用行数（拖入落点预览要据此算「占位框 ∪ 提交布局」的
+    /// 并集行数，故放开访问控制）。
+    func drawerContentRows() -> Int {
         let occupiedRows = model.drawerBlocks.map { $0.originRow + $0.heightRows }.max() ?? 0
         return max(occupiedRows, 1)
     }

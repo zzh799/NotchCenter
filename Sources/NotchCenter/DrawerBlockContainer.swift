@@ -116,7 +116,7 @@ struct DrawerBlockContainer: View {
                             onDragChanged(value.translation)
                         }
                         .onEnded { value in
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                            withAnimation(DrawerAnimation.spring) {
                                 dragOffset = .zero
                             }
                             onDragEnded(value.translation)
@@ -126,7 +126,7 @@ struct DrawerBlockContainer: View {
             // 缩放预览跨度变化（新行/新列）时容器尺寸 spring 变形：
             // 与面板扩大/其余块推挤同一动画（同帧完成，不等松手）。
             .animation(
-                .spring(response: 0.3, dampingFraction: 0.86),
+                DrawerAnimation.spring,
                 value: ResizePreviewState(columns: previewColumns, rows: previewRows)
             )
     }

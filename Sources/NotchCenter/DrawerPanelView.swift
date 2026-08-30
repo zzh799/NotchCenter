@@ -31,8 +31,14 @@ struct DrawerActions {
     let onResizeBlock: (String, Int, Int) -> Void
     /// 编辑模式一键重排：按阅读顺序紧密排布所有抽屉块。
     let onReorderBlocks: () -> Void
-    /// 拖拽实时预览：返回全体块的新位置（不落盘）。
+    /// 拖动实时预览：返回全体块（推挤 + 离线压实）后的新位置（不落盘），
+    /// 与提交共用同一算法——预览即最终布局。其余块据此实时推挤
+    /// （`previewPositions`），被拖块落点供占位框使用（视图自取）。
     let onPreviewMove: (String, Int, Int) -> [String: LayoutEngine.GridOrigin]
+    /// 抽屉内重排的落点预览（虚线占位框；面板尺寸/左列由控制器在
+    /// `onPreviewMove` 内同帧写入）。
+    /// 传 nil 清空（拖动结束或取消）。
+    let onUpdateReorderPreview: (LayoutEngine.GridOrigin?, GridSpan?) -> Void
     /// 缩放实时预览：返回全体块的新位置（下方块推挤下移，不落盘）。
     let onPreviewResize: (String, Int, Int) -> [String: LayoutEngine.GridOrigin]
     /// 拖拽结束提交（含自动重排）。
@@ -239,9 +245,9 @@ struct DrawerPanelView: View {
             height: gridFrameHeight,
             alignment: .topLeading
         )
-        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: ui.drawerElements.map(\.id))
-        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: ui.drawerElements.map(\.placement))
-        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: previewPositions)
+        .animation(DrawerAnimation.spring, value: ui.drawerElements.map(\.id))
+        .animation(DrawerAnimation.spring, value: ui.drawerElements.map(\.placement))
+        .animation(DrawerAnimation.spring, value: previewPositions)
 
     }
 
@@ -297,14 +303,38 @@ struct DrawerPanelView: View {
             onDragChanged: { translation in
                 draggingPlacementID = element.id
                 let target = dragTarget(for: element, translation: translation)
-                previewPositions = actions.onPreviewMove(element.id, target.0, target.1)
+                // 全量 origins 写入 previewPositions：其余块实时推挤，
+                // 被拖块落点喂给占位框（预览即最终布局）。
+                let origins = actions.onPreviewMove(element.id, target.0, target.1)
+                guard let dragged = origins[element.id] else { return }
+                previewPositions = origins
+                actions.onUpdateReorderPreview(
+                    dragged,
+                    GridSpan(
+                        columns: element.placement.widthColumns,
+                        rows: element.placement.heightRows
+                    )
+                )
             },
             onDragEnded: { translation in
                 let target = dragTarget(for: element, translation: translation)
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-                    previewPositions = [:]
-                }
+                // `previewPositions` 同时服务拖动推挤与缩放预览，松手后
+                // 不再需要（提交布局由 onCommitDrag 写入），这里无动画兜底
+                // 清空——缩放/推挤遗留的预览不该在落位时闪一下。
+                if !previewPositions.isEmpty { previewPositions = [:] }
+                //
+                // `draggingPlacementID = nil` 必须**早于** onCommitDrag：
+                // 否则 `resolveOrigin` 那一帧仍走「拖动块排除」分支，块会
+                // 先弹回原位再瞬移到落点。
+                //
+                // 落位动画本身无需额外代码：调用方（DrawerBlockContainer）
+                // 已用**同一个** spring 常量把 dragOffset 归零，与
+                // onCommitDrag 触发的 placement 变化在同一个 runloop tick
+                // 起播；两者视觉位置相加（position + offset）即为「从光标
+                // spring 飞到落点」的单条曲线。参数一旦漂移，合成曲线会
+                // 折一下——这就是 DrawerAnimation 必须唯一的原因。
                 draggingPlacementID = nil
+                actions.onUpdateReorderPreview(nil, nil)
                 actions.onCommitDrag(element.id, target.0, target.1)
             }
         )
@@ -322,6 +352,11 @@ struct DrawerPanelView: View {
             y: gridY(row: origin.row)
                 + gridHeight(rows: element.placement.heightRows) / 2
         )
+        // 落位飞行：新块先隐形，让跟手浮窗独占画面（避免一明一暗的重影）；
+        // 飞行结束时同一次更新里清空，交接不留空帧。
+        // 独立于方法之外、不内联回 grid —— 内联会让 SwiftUI 类型检查
+        // 耗时显著回退（本方法的拆分就是为此）。
+        .opacity(ui.landingPlacementID == element.id ? 0 : 1)
     }
 
     /// 网格高度 = 块实占行数（预览/非预览一律按块包围盒计）：预览可能把
@@ -436,7 +471,7 @@ struct DrawerPanelView: View {
             resizePreviewRows = nil
         }
         guard let columns = resizePreviewColumns, let rows = resizePreviewRows else { return }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+        withAnimation(DrawerAnimation.spring) {
             previewPositions = [:]
         }
         actions.onResizeBlock(element.id, columns, rows)

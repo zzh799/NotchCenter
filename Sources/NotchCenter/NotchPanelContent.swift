@@ -59,7 +59,7 @@ extension NotchPanelController {
             // 这里只翻转状态、不做全量块视图重建（编辑期的增删/移动/缩放各自
             // 已走 refreshAfterEdit 全量路径；进出编辑本身不改变任何布局数据
             // 与窗口尺寸）。全量重建是设置面板切页卡顿的来源之一。
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+            withAnimation(DrawerAnimation.spring) {
                 isEditing = true
             }
         }
@@ -74,7 +74,7 @@ extension NotchPanelController {
             SettingPopover.shared.dismiss()
             // 只翻转状态（同 applyEditMode：视觉全由 ui.isEditing 驱动，
             // 不做全量块视图重建）。
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+            withAnimation(DrawerAnimation.spring) {
                 isEditing = false
             }
         }
@@ -128,7 +128,7 @@ extension NotchPanelController {
                 self.uiState.drawerElements = self.buildDrawerElements()
             }
             if animated {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                withAnimation(DrawerAnimation.spring) {
                     apply()
                 }
             } else {
@@ -434,13 +434,25 @@ extension NotchPanelController {
             },
             onPreviewMove: { [weak self] placementID, column, row in
                 guard let self else { return [:] }
-                let origins = self.layoutEngine.previewArrangement(
-                    moving: placementID,
-                    toColumn: column,
-                    toRow: row
+                let target = self.clampedDropTarget(
+                    placementID: placementID,
+                    column: column,
+                    row: row
                 )
-                self.applyPreviewWindowSize(origins)
+                // 推挤 + 离线压实一次返回（预览 == 提交）：全体块的新位置
+                // 写回 previewPositions，拖动期间实时推挤。
+                let origins = self.layoutEngine.previewCommittedArrangement(
+                    moving: placementID,
+                    toColumn: target.column,
+                    toRow: target.row
+                )
+                // 左扩/增宽/增高与推挤同帧（写 drawerGridLeftColumn + 尺寸，
+                // 与推挤共用同一 spring）；左扩 = 全体块横移 + 面板重居中。
+                self.applyPreviewWindowSize(origins, resized: nil)
                 return origins
+            },
+            onUpdateReorderPreview: { [weak self] origin, span in
+                self?.updateDrawerReorderPreview(origin, span: span)
             },
             onPreviewResize: { [weak self] placementID, columns, rows in
                 guard let self else { return [:] }
@@ -459,10 +471,18 @@ extension NotchPanelController {
             },
             onCommitDrag: { [weak self] placementID, column, row in
                 guard let self else { return }
-                let origins = self.layoutEngine.previewArrangement(
+                // 与 onPreviewMove 共用同一夹紧目标 + 同一组合 API（推挤 +
+                // 离线压实）：占位框预示的落点 == 松手后真正提交的位置
+                // （所见即所得，且提交侧压实为幂等兜底、零二次位移）。
+                let target = self.clampedDropTarget(
+                    placementID: placementID,
+                    column: column,
+                    row: row
+                )
+                let origins = self.layoutEngine.previewCommittedArrangement(
                     moving: placementID,
-                    toColumn: column,
-                    toRow: row
+                    toColumn: target.column,
+                    toRow: target.row
                 )
                 _ = self.layoutEngine.commitArrangement(origins)
                 self.refreshAfterEdit()
