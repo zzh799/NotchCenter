@@ -48,10 +48,19 @@ final class NotchPanelController: NSObject {
 
     /// 设置面板停在「组件」页：该页期间抽屉保持编辑模式（拖进来的组件可
     /// 立即继续拖动 / 缩放 / 删除），离开该页或关闭面板时退出编辑模式。
+    ///
+    /// ⚠️ 权威来源约定：这个标志由 `setComponentsPageActive` 独占写入；
+    /// 用户手动退出编辑（`onToggleEdit`）时清零，避免之后切页时两个来源
+    /// 对编辑态的判断打架。`isEditing` 是两者合并后的只读视图。
     var isEditingForComponentsPage = false
 
     var isRevealedForFileDrag = false
-    /// 收起态进入编辑的等待期（揭示→编辑两段式之间）：悬停判定视为停留。
+    /// 收起态进入编辑的等待期（揭示 → 编辑两段式之间）：悬停判定视为停留。
+    ///
+    /// 两段式存在的原因：窗口固定满高，揭示（收起尺寸 → 全尺寸）与编辑
+    /// 高度变化共用 `uiState.drawerWindowSize` 这**唯一一条** spring 通道，
+    /// 同帧叠加会让动画从中间值起跳。等待期内该标志必须参与收起守卫
+    /// （`DrawerStayConditions`）——漏判会让揭示在中途被收起。
     var isEditEntryPending = false
     var activeMenuTrackingCount = 0
     var collapseTask: DispatchWorkItem?

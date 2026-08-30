@@ -169,22 +169,9 @@ extension NotchPanelController {
             return
         }
 
-        // 已展开。
-        if activeMenuTrackingCount > 0 {
-            cancelCollapse()
-            return
-        }
-        // 设置面板打开期间抽屉常驻：面板挂在抽屉下方置顶显示，收起会让
-        // 面板悬空，也丢掉“改设置即时看抽屉”的上下文（文档 §6.1 扩展）。
-        if isSettingsPresented {
-            cancelCollapse()
-            return
-        }
-        if isEditing || isEditEntryPending || isPinned {
-            cancelCollapse()
-            return
-        }
-        if settingsStore.triggerMode == .click {
+        // 已展开：守卫条件（`DrawerStayConditions`）任一成立即保持，
+        // 与 `scheduleCollapse` 到期回调共用同一判据。
+        if shouldKeepExpanded() {
             cancelCollapse()
             return
         }
@@ -195,6 +182,28 @@ extension NotchPanelController {
         }
     }
 
+    /// 展开态是否应当保持：`handleMouseLocation` 与 `scheduleCollapse`
+    /// 到期回调的**唯一判据**。
+    ///
+    /// 此前两处各自维护条件清单，到期回调漏了 `isEditEntryPending` 与
+    /// `isSettingsPresented`——收起态点编辑按钮后（0.38s 等待期）把鼠标
+    /// 移出停留区，揭示会在中途被收起。清单收进 `DrawerStayConditions`
+    /// 后不再可能漏。
+    func shouldKeepExpanded() -> Bool {
+        stayConditions().shouldKeepExpanded
+    }
+
+    private func stayConditions() -> DrawerStayConditions {
+        DrawerStayConditions(
+            isMenuTracking: activeMenuTrackingCount > 0,
+            isSettingsPresented: isSettingsPresented,
+            isEditing: isEditing,
+            isEditEntryPending: isEditEntryPending,
+            isPinned: isPinned,
+            isClickTriggered: settingsStore.triggerMode == .click
+        )
+    }
+
     private func scheduleCollapse() {
         guard collapseTask == nil else { return }
         guard activeMenuTrackingCount == 0 else { return }
@@ -202,8 +211,7 @@ extension NotchPanelController {
         let task = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.collapseTask = nil
-            guard self.activeMenuTrackingCount == 0 else { return }
-            guard !self.isEditing, !self.isPinned else { return }
+            guard !self.shouldKeepExpanded() else { return }
             guard !self.isPointInExpandedStayRegion(NSEvent.mouseLocation) else { return }
             self.collapse(animated: true)
         }
