@@ -406,34 +406,23 @@ struct DrawerPanelView: View {
             resizePreviewRows = element.placement.heightRows
         }
 
-        let stepW = NotchGridMetrics.cellWidth + NotchGridMetrics.spacing
-        let stepH = NotchGridMetrics.cellHeight + NotchGridMetrics.spacing
-        let continuousColumns = CGFloat(element.placement.widthColumns) + translation.width / stepW
-        let continuousRows = CGFloat(element.placement.heightRows) + translation.height / stepH
-
-        let currentColumns = resizePreviewColumns ?? element.placement.widthColumns
-        let currentRows = resizePreviewRows ?? element.placement.heightRows
-
-        let rawColumns = min(
-            max(ResizeHysteresis.quantized(continuousColumns, current: currentColumns), 1),
-            4
+        let metrics = GridMetrics.current
+        let base = GridSpan(
+            columns: element.placement.widthColumns,
+            rows: element.placement.heightRows
         )
-        let rawRows = min(
-            max(ResizeHysteresis.quantized(continuousRows, current: currentRows), 1),
-            6
+        let current = GridSpan(
+            columns: resizePreviewColumns ?? base.columns,
+            rows: resizePreviewRows ?? base.rows
         )
 
-        // 候选跨度中离原始目标最近的那个。
-        var nearest: GridSpan?
-        var nearestDistance = Int.max
-        for span in element.supportedSpans {
-            let distance = abs(span.columns - rawColumns) + abs(span.rows - rawRows)
-            if distance < nearestDistance {
-                nearestDistance = distance
-                nearest = span
-            }
-        }
-        guard let candidate = nearest else { return }
+        guard let candidate = ResizeSpanResolver.resolve(
+            base: base,
+            translation: translation,
+            current: current,
+            supportedSpans: element.supportedSpans,
+            metrics: metrics
+        ) else { return }
 
         let previousColumns = resizePreviewColumns
         let previousRows = resizePreviewRows
@@ -446,10 +435,15 @@ struct DrawerPanelView: View {
         }
 
         #if DEBUG
+        let raw = ResizeSpanResolver.continuous(
+            base: base,
+            translation: translation,
+            metrics: metrics
+        )
         ResizeProbeLog.resizeEvent(
             translation: translation,
-            continuousColumns: continuousColumns,
-            continuousRows: continuousRows,
+            continuousColumns: raw.columns,
+            continuousRows: raw.rows,
             preview: candidate
         )
         #endif
@@ -485,14 +479,12 @@ struct DrawerPanelView: View {
         for element: DrawerElement,
         translation: CGSize
     ) -> (Int, Int) {
-        let cellWidth = NotchGridMetrics.cellWidth + NotchGridMetrics.spacing
-        let cellHeight = NotchGridMetrics.cellHeight + NotchGridMetrics.spacing
-        let deltaColumns = Int((translation.width / cellWidth).rounded())
-        let deltaRows = Int((translation.height / cellHeight).rounded())
-        return (
-            element.placement.originColumn + deltaColumns,
-            element.placement.originRow + deltaRows
+        let target = DragTargetResolver.target(
+            placement: element.placement,
+            translation: translation,
+            metrics: GridMetrics.current
         )
+        return (target.column, target.row)
     }
 
     private func gridX(column: Int) -> CGFloat {

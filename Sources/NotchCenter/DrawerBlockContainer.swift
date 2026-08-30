@@ -1,4 +1,5 @@
 import AppKit
+import NotchCenterKit
 import SwiftUI
 
 /// 抽屉块容器：稳定身份 + 块视图 + 编辑模式（文档 §5.5）。
@@ -34,12 +35,19 @@ struct DrawerBlockContainer: View {
     var body: some View {
         let columns = previewColumns ?? element.placement.widthColumns
         let rows = previewRows ?? element.placement.heightRows
-        let width = NotchGridMetrics.contentWidth(columns: columns)
-        let height = NotchGridMetrics.contentHeight(rows: rows)
+        let metrics = GridMetrics.current
+        let width = metrics.width(columns: columns)
+        let height = metrics.height(rows: rows)
         // 缩放预览补偿：容器被外层按旧尺寸居中定位，内部变大会以中心对称扩张。
         // 把增长量的一半平移回来，使组件左上角始终锚定在原点（原点不随缩放改变）。
-        let deltaWidth = width - NotchGridMetrics.contentWidth(columns: element.placement.widthColumns)
-        let deltaHeight = height - NotchGridMetrics.contentHeight(rows: element.placement.heightRows)
+        let compensation = ResizeCompensation.offset(
+            from: GridSpan(
+                columns: element.placement.widthColumns,
+                rows: element.placement.heightRows
+            ),
+            to: GridSpan(columns: columns, rows: rows),
+            metrics: metrics
+        )
 
         // 预览尺寸必须显式套在内容上（含所有 overlay），否则块永远按外层
         // 提案的原始尺寸渲染，补偿偏移会退化成纯位移（上移/下移半行的来源）。
@@ -106,7 +114,7 @@ struct DrawerBlockContainer: View {
                 }
             }
             .contentShape(Rectangle())
-            .offset(x: deltaWidth / 2, y: deltaHeight / 2)
+            .offset(compensation)
             .offset(dragOffset)
             .gesture(
                 isEditing && !isResizing
