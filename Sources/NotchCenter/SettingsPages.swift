@@ -296,9 +296,6 @@ struct ComponentsSettingsPage: View {
             }
         }
         .onAppear(perform: rebuildIfNeeded)
-        .onDisappear {
-            SettingsSwitchProbe.log("componentsPage.disappear")
-        }
         .onChange(of: pluginSignature) { _, newValue in
             guard newValue != signature else { return }
             rebuildIfNeeded()
@@ -502,22 +499,11 @@ struct LayoutSettingsPage: View {
     @ObservedObject var settingsStore: SettingsStore
     @ObservedObject private var layoutEngine: LayoutEngine
     @ObservedObject private var metrics = GridMetricsStore.shared
-    /// 切页卡顿诊断：init → 首帧 onAppear 的间隔（SettingsSwitchProbe）。
-    private let initTimestamp = CFAbsoluteTimeGetCurrent()
-    @State private var didLogFirstFrame = false
 
     init(controller: NotchPanelController, settingsStore: SettingsStore) {
-        #if DEBUG
-        let initStart = CFAbsoluteTimeGetCurrent()
-        #endif
         self.controller = controller
         self.settingsStore = settingsStore
         self.layoutEngine = controller.layoutEngine
-        #if DEBUG
-        SettingsSwitchProbe.log(
-            "layoutPage.init +\(Int((CFAbsoluteTimeGetCurrent() - initStart) * 1000))ms"
-        )
-        #endif
     }
 
     var body: some View {
@@ -531,12 +517,6 @@ struct LayoutSettingsPage: View {
             }
             .padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .onAppear {
-            guard !didLogFirstFrame else { return }
-            didLogFirstFrame = true
-            let sinceInit = (CFAbsoluteTimeGetCurrent() - initTimestamp) * 1000
-            SettingsSwitchProbe.log("layoutPage.firstFrame +\(Int(sinceInit))ms after init")
         }
     }
 

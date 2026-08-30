@@ -112,17 +112,6 @@ extension NotchPanelController {
         guard isExpanded, let pair = activePair else { return }
         let visibleFrame = visibleDrawerFrame(for: pair)
         let inside = visibleFrame.contains(cursor)
-        #if DEBUG
-        if ResizeProbeLog.isEnabled {
-            NSLog(
-                "click-probe cursor=%@ visible=%@ inside=%@ ignoring=%@",
-                NSStringFromPoint(cursor),
-                NSStringFromRect(visibleFrame),
-                String(describing: inside),
-                String(describing: pair.drawerPanel.ignoresMouseEvents)
-            )
-        }
-        #endif
         if pair.drawerPanel.ignoresMouseEvents == inside {
             pair.drawerPanel.ignoresMouseEvents = !inside
         }

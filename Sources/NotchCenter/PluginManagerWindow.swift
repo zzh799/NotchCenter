@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 final class PluginManagerWindowController: NSWindowController {
     private let pluginManager: PluginManager
 
-    init(pluginManager: PluginManager, onOpenSizeLab: (() -> Void)? = nil) {
+    init(pluginManager: PluginManager) {
         self.pluginManager = pluginManager
 
         let window = NSWindow(
@@ -23,7 +23,7 @@ final class PluginManagerWindowController: NSWindowController {
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.contentView = NSHostingView(
-            rootView: PluginManagerView(pluginManager: pluginManager, onOpenSizeLab: onOpenSizeLab)
+            rootView: PluginManagerView(pluginManager: pluginManager)
         )
         window.center()
     }
@@ -38,8 +38,6 @@ final class PluginManagerWindowController: NSWindowController {
 /// 插件设置不在这里内嵌：统一走编辑模式齿轮触发的 SettingPopover 浮窗。
 struct PluginManagerView: View {
     @ObservedObject var pluginManager: PluginManager
-    /// 仅 DEBUG 注入：打开块尺寸对照实验室（SizeLabWindow）。
-    var onOpenSizeLab: (() -> Void)?
 
     @State private var selectedPluginID: String?
     @State private var errorMessage: String?
@@ -77,17 +75,6 @@ struct PluginManagerView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer()
-                #if DEBUG
-                if let onOpenSizeLab {
-                    Button(action: onOpenSizeLab) {
-                        Image(systemName: "square.grid.2x2")
-                            .font(.system(size: 11, weight: .bold))
-                    }
-                    .buttonStyle(.plain)
-                    .help("块尺寸对照实验室（Size Lab）")
-                    .padding(.trailing, 6)
-                }
-                #endif
                 Button(action: installBundle) {
                     Image(systemName: "plus")
                         .font(.system(size: 11, weight: .bold))
@@ -314,5 +301,19 @@ struct PluginReadmeSection: View {
             return nil
         }
         return text
+    }
+}
+
+extension NotchPanelController {
+    /// 打开插件管理窗口（懒加载，缓存实例）。
+    func showPluginManager() {
+        let controller = pluginManagerWindowController ?? {
+            let controller = PluginManagerWindowController(pluginManager: pluginManager)
+            pluginManagerWindowController = controller
+            return controller
+        }()
+        controller.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        controller.window?.makeKeyAndOrderFront(nil)
     }
 }

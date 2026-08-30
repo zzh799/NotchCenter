@@ -123,11 +123,9 @@ final class NotchPanelController: NSObject {
         metricsRebuildTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 100 * NSEC_PER_MSEC)
             guard !Task.isCancelled, let self else { return }
-            SettingsSwitchProbe.measure("gridMetricsDidChange rebuild (debounced)") {
-                self.refreshAfterLayoutChange()
-                if self.isSettingsPresented {
-                    self.positionSettingsWindow()
-                }
+            self.refreshAfterLayoutChange()
+            if self.isSettingsPresented {
+                self.positionSettingsWindow()
             }
         }
     }
@@ -153,7 +151,6 @@ final class NotchPanelController: NSObject {
         let stalePairs = pairs.filter { pair in !screens.contains { $0 === pair.screen } }
         pairs.removeAll { pair in !screens.contains { $0 === pair.screen } }
         for stale in stalePairs {
-            GhostProbe.log("syncScreens hide stale pair=\(NSStringFromRect(stale.screen.frame))")
             stale.hotPanel.orderOut(nil)
             stale.drawerPanel.orderOut(nil)
             stale.islandPanel.orderOut(nil)
@@ -246,7 +243,6 @@ final class NotchPanelController: NSObject {
     }
 
     func expand(animated: Bool, activate: Bool = true) {
-        GhostProbe.log("expand enter isExpanded=\(isExpanded) activate=\(activate) mouse=\(NSStringFromPoint(NSEvent.mouseLocation))")
         if isExpanded {
             if activate {
                 NSApp.activate(ignoringOtherApps: true)
@@ -261,7 +257,6 @@ final class NotchPanelController: NSObject {
         }
         activePair = pair
         layoutEngine.updateScreenConstraint(width: pair.screenFrame.width)
-        GhostProbe.log("expand pair=\(pair.screen.frame)")
 
         cancelCollapse()
         isExpanded = true
@@ -289,13 +284,11 @@ final class NotchPanelController: NSObject {
     /// 活抽屉（“新建笔记多出一块面板”的根因）。
     private func hideOtherDrawers(keeping kept: ScreenPanelPair?) {
         for pair in pairs where pair !== kept {
-            GhostProbe.log("hideOtherDrawers orderOut pair=\(NSStringFromRect(pair.screen.frame))")
             pair.drawerPanel.orderOut(nil)
         }
     }
 
     func collapse(animated: Bool) {
-        GhostProbe.log("collapse enter isExpanded=\(isExpanded) pair=\(activePair.map { NSStringFromRect($0.screen.frame) } ?? "nil")")
         guard isExpanded else { return }
         isExpanded = false
         isRevealedForFileDrag = false
@@ -317,7 +310,6 @@ final class NotchPanelController: NSObject {
             // 因“已重新展开”整体跳过——跨屏再展开时上一块屏的抽屉会
             // 永久残留。
             let kept = self.isExpanded ? self.activePair : nil
-            GhostProbe.log("collapse completion kept=\(kept.map { NSStringFromRect($0.screen.frame) } ?? "nil")")
             for pair in self.pairs where pair !== kept {
                 pair.drawerPanel.orderOut(nil)
                 self.positionCompactPanel(pair)
@@ -598,15 +590,6 @@ final class NotchPanelController: NSObject {
 }
 
 // MARK: - HostController 协议实现
-
-/// 临时探针：NOTCHCENTER_GHOST_PROBE=1 时输出展开/收起/换屏决策日志。
-enum GhostProbe {
-    static var isEnabled: Bool { ProcessInfo.processInfo.environment["NOTCHCENTER_GHOST_PROBE"] == "1" }
-    static func log(_ message: String) {
-        guard isEnabled else { return }
-        NSLog("[ghost] \(message)")
-    }
-}
 
 extension NotchPanelController: HostController {
     func expandDrawer() {

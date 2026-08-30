@@ -11,14 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         EditMenuInstaller.install()
         panelController = NotchPanelController()
         panelController?.showDocked()
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["NOTCHCENTER_RESIZE_PROBE"] == "1" {
-            ResizeProbeWindowController.shared.show()
-        }
-        if ProcessInfo.processInfo.environment["NOTCHCENTER_SIZE_LAB"] == "1" {
-            panelController?.showSizeLab()
-        }
-        #endif
         maybeRunSmokeTest()
     }
 
@@ -51,206 +43,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Smoke test（开发期验证，非发布路径）
 
-    /// 首次/二次进入编辑模式的对照诊断（NOTCHCENTER_EDIT_FIRST=1）：
-    /// 收起态直接进入编辑（首次），逐步抓帧与窗口几何；退出后再次进入
-    /// （二次）对照。定位“仅首次出现”的过渡异常。
-    private func runFirstEditDiagnostic(_ panelController: NotchPanelController) {
-        func dump(_ tag: String) {
-            guard let pair = panelController.activePair else { return }
-            NSLog(
-                "edit-first[%@] drawer=%@ visible=%@ expanded=%@",
-                tag,
-                NSStringFromRect(pair.drawerPanel.frame),
-                NSStringFromSize(panelController.uiState.drawerWindowSize),
-                String(describing: panelController.uiState.isDrawerExpanded)
-            )
-        }
-        func capture(_ suffix: String, at deadline: DispatchTime) {
-            DispatchQueue.main.asyncAfter(deadline: deadline) {
-                panelController.capturePanelsForDebug(suffix: suffix)
-                dump(suffix)
-            }
-        }
-
-        let enter = DispatchTime.now() + 1.0
-        DispatchQueue.main.asyncAfter(deadline: enter) {
-            NSLog("edit-first: enter #1 (from docked)")
-            // 真实点击伴随应用激活；非激活窗口上 preference 不传播，
-            // 诊断须对齐该前提。
-            NSApp.activate(ignoringOtherApps: true)
-            panelController.startEditMode()
-        }
-        for (i, dt) in [0.08, 0.18, 0.30, 0.45, 0.70, 1.00].enumerated() {
-            capture("_first\(i)", at: enter + dt)
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
-            NSLog("edit-first: exit")
-            // 钉住抽屉避免自动收起：二次进入走“展开态”路径（与用户操作一致）。
-            panelController.debugTogglePin()
-            panelController.stopEditMode()
-        }
-        let reenter = DispatchTime.now() + 4.0
-        DispatchQueue.main.asyncAfter(deadline: reenter) {
-            NSLog("edit-first: enter #2 (from expanded)")
-            NSApp.activate(ignoringOtherApps: true)
-            panelController.startEditMode()
-        }
-        for (i, dt) in [0.15, 0.35, 0.70].enumerated() {
-            capture("_second\(i)", at: reenter + dt)
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
-            NSApp.terminate(nil)
-        }
-    }
-
-    #if DEBUG
-    /// 收起动画中帧诊断（NOTCHCENTER_COLLAPSE_PROBE=1）：展开抽屉（钉住防
-    /// 自动收起）→ 收起 → 抓收起过程中帧。验证岛顶紧凑带是否钉死容器顶缘：
-    /// 收起时 `content` 退出布局后，若动画容器 frame 的对齐为默认垂直居中，
-    /// 只剩紧凑带的 VStack 会坠到仍在收缩的容器中部（图标从上往下掉）。
-    private func runCollapseProbe(_ panelController: NotchPanelController) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            // preference 日志在非激活窗口上不传播，诊断须对齐真实点击的前提。
-            NSApp.activate(ignoringOtherApps: true)
-            panelController.expand(animated: true, activate: false)
-            // 展开过渡同样逐帧自拍：图标应在展开全程保持静止。
-            panelController.captureDrawerWindowSamples(prefix: "live_open")
-            // 钉住避免 hover 模式下鼠标不在停留区被自动收起。
-            panelController.debugTogglePin()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            panelController.capturePanelsForDebug(suffix: "_open")
-        }
-        let collapse = DispatchTime.now() + 2.0
-        DispatchQueue.main.asyncAfter(deadline: collapse) {
-            panelController.collapse(animated: true)
-            // 逐帧自拍抽屉窗口：观察紧凑带在收起过渡中的实际位置（像素）。
-            panelController.captureDrawerWindowSamples(prefix: "live_coll")
-            // 需要几何对照（model vs presentation 层位置）时再开 layer dump。
-            if ProcessInfo.processInfo.environment["NOTCHCENTER_COLLAPSE_LAYERS"] == "1" {
-                panelController.dumpDrawerLayerTreeSamples()
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
-            NSApp.terminate(nil)
-        }
-    }
-    #endif
-
-    /// 设置面板探针（NOTCHCENTER_SETTINGS_PROBE=1）：展开抽屉 → 打开设置面板
-    /// （抽屉常驻、面板贴挂下方）→ 依次切到各页抓图，验证侧边栏多页布局与
-    /// 组件预览的渲染结果。抓图走 cacheDisplay，无需屏幕录制权限。
-    private func runSettingsProbe(_ panelController: NotchPanelController) {
-        NSApp.activate(ignoringOtherApps: true)
-        panelController.expand(animated: true, activate: false)
-        panelController.showSettings()
-
-        // 页面切换间隔：等 SwiftUI 完成一帧渲染再抓。
-        let pages: [(SettingsPage, TimeInterval)] = [
-            (.general, 1.6),
-            (.components, 2.6),
-            (.layout, 3.6),
-            (.plugins, 4.6)
-        ]
-        for (page, delay) in pages {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                panelController.debugSelectSettingsPage(page)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    panelController.captureSettingsWindowForDebug(suffix: "_\(page.rawValue)")
-                    panelController.capturePanelsForDebug(suffix: "_\(page.rawValue)")
-                }
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
-            NSApp.terminate(nil)
-        }
-    }
-
-    /// 设置切页卡顿自动复现（NOTCHCENTER_SETTINGS_SWITCH_AUTO=1，配
-    /// NOTCHCENTER_SETTINGS_SWITCH_LOG=1 读 `[switch]` 日志）：复现「组件页
-    /// （编辑模式激活）→ 切布局页」路径——展开抽屉 → 打开设置直入组件页
-    /// （进入编辑）→ 切布局页（stopEditMode）→ 切回组件页（applyEditMode）→
-    /// 模拟滑杆逐格拖动（gridMetricsDidChange）→ 恢复指标并退出。
-    private func runSettingsSwitchAutoProbe(_ panelController: NotchPanelController) {
-        let metrics = GridMetricsStore.shared
-        let savedWidth = metrics.value(for: .cellWidth)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            NSLog("switch-auto: open settings on components (enter edit)")
-            NSApp.activate(ignoringOtherApps: true)
-            panelController.expand(animated: true, activate: false)
-            panelController.showSettings(page: .components)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            NSLog("switch-auto: components -> layout")
-            panelController.debugSelectSettingsPage(.layout)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-            NSLog("switch-auto: layout -> components")
-            panelController.debugSelectSettingsPage(.components)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6.5) {
-            NSLog("switch-auto: simulate slider drag (cellWidth)")
-            for step in 1...8 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(step) * 0.06) {
-                    metrics.set(.cellWidth, to: savedWidth + CGFloat(step) * 4)
-                }
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8.5) {
-            metrics.set(.cellWidth, to: savedWidth)
-            panelController.flush()
-            NSApp.terminate(nil)
-        }
-    }
-
+    /// 应用级健康检查（`NOTCHCENTER_SMOKE_TEST=1`）：打印已发现插件、
+    /// 加载错误与布局校验结果后自动退出，供 CI 使用。
     private func maybeRunSmokeTest() {
         guard ProcessInfo.processInfo.environment["NOTCHCENTER_SMOKE_TEST"] == "1" else { return }
         guard let panelController else { return }
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["NOTCHCENTER_RESIZE_AUTO"] == "1" {
-            panelController.runResizeAutoDiagnostic()
-            return
-        }
-        if ProcessInfo.processInfo.environment["NOTCHCENTER_SHRINKSCROLL_PROBE"] == "1" {
-            panelController.runShrinkScrollProbe()
-            return
-        }
-        if ProcessInfo.processInfo.environment["NOTCHCENTER_EDIT_FIRST"] == "1" {
-            runFirstEditDiagnostic(panelController)
-            return
-        }
-        if ProcessInfo.processInfo.environment["NOTCHCENTER_COLLAPSE_PROBE"] == "1" {
-            runCollapseProbe(panelController)
-            return
-        }
-        if ProcessInfo.processInfo.environment["NOTCHCENTER_SETTINGS_PROBE"] == "1" {
-            runSettingsProbe(panelController)
-            return
-        }
-        if ProcessInfo.processInfo.environment["NOTCHCENTER_SETTINGS_SWITCH_AUTO"] == "1" {
-            runSettingsSwitchAutoProbe(panelController)
-            return
-        }
-        if ProcessInfo.processInfo.environment["NOTCHCENTER_DRAGDROP_PROBE"] == "1" {
-            // 走与设置面板同一路径（抽屉常驻 + 面板贴挂），逐块验证落点判定与落位。
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                panelController.expand(animated: true, activate: false)
-                panelController.showSettings()
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                panelController.runDragDropProbe()
-            }
-            // 探针结束会回滚布局，等回滚落盘后再退出（退出路径还会 flush 一次）。
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                panelController.flush()
-                NSApp.terminate(nil)
-            }
-            return
-        }
-        #endif
+
         print("=== NotchCenter smoke test ===")
         print("bundleURL: \(Bundle.main.bundleURL.path)")
         print("builtInPlugIns: \(CorePaths.builtInPlugInsDirectory.path)")
@@ -263,62 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         print("layout: maxColumns=\(panelController.layoutEngine.userMaxColumns) enabled=\(panelController.layoutEngine.enabledPluginIDs.sorted())")
         print("layout issues: \(panelController.layoutEngine.validate().count)")
 
-        if ProcessInfo.processInfo.environment["NOTCHCENTER_SCREENSHOT"] == "1" {
-            // 截图验证模式：0.8s 后展开抽屉，2.5s 后把两个面板渲染为 PNG，25s 后退出。
-            print("screenshot mode: expanding drawer in 0.8s")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                panelController.expand(animated: true, activate: false)
-            }
-            if ProcessInfo.processInfo.environment["NOTCHCENTER_EDIT"] == "1" {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                    panelController.startEditMode()
-                }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                panelController.capturePanelsForDebug()
-                print("panels captured")
-            }
-            // 调试序列：展开动画中间帧 → 点击 pin → 截图；进入编辑模式 → 截图。
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                panelController.capturePanelsForDebug(suffix: "_reveal")
-                print("reveal captured")
-            }
-            // 调试序列：点击 pin → 截图（验证图标是否立即刷新）；进入编辑模式 → 截图。
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                panelController.debugTogglePin()
-                print("pin toggled")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
-                panelController.capturePanelsForDebug(suffix: "_pin")
-                print("pin captured")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
-                panelController.startEditMode()
-                print("edit mode entered")
-            }
-            // 编辑过渡中帧：窗口 frame（AppKit 0.35s）接近完成、内容 spring
-            // （约 0.55s 收尾）仍落后的错位期抓图，验证内容顶对齐
-            // （紧凑带不下坠、菜单栏不漏出）。
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.78) {
-                panelController.capturePanelsForDebug(suffix: "_editmid")
-                print("edit mid captured")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
-                panelController.capturePanelsForDebug(suffix: "_edit")
-                print("edit captured")
-            }
-            // 拖拽排序验证：预留落点后抓帧窗口，供外部输入驱动在 6-9s 间执行拖放。
-            DispatchQueue.main.asyncAfter(deadline: .now() + 9.0) {
-                panelController.capturePanelsForDebug(suffix: "_afterdrag")
-                print("after-drag captured")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
-                NSApp.terminate(nil)
-            }
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                NSApp.terminate(nil)
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            NSApp.terminate(nil)
         }
     }
 }
