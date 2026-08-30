@@ -451,31 +451,26 @@ final class NotchPanelController: NSObject {
         guard isExpanded, let pair = activePair, !origins.isEmpty else { return }
         let resizedColumns = resized.map { ($0.placementID, $0.widthColumns) }
         let columnRange = layoutEngine.previewColumnRange(origins: origins, resized: resizedColumns)
-        let columnSpan = min(
-            max(columnRange.max - columnRange.min, 1),
-            layoutEngine.effectiveMaxColumns()
-        )
         let bottomRow = layoutEngine.previewBottomRow(
             origins: origins,
             resized: resized.map { ($0.placementID, $0.heightRows) }
         )
-        let size = drawerWindowSize(
-            for: pair,
-            previewRows: bottomRow,
-            previewColumns: layoutEngine.previewOccupiedColumns(origins: origins, resized: resizedColumns)
+        let metrics = DrawerLayoutMetricsResolver.pushed(
+            columnRange: columnRange,
+            bottomRow: bottomRow,
+            geometry: drawerGridGeometry(),
+            maxHeight: maxDrawerHeight(for: pair)
         )
         withAnimation(DrawerAnimation.spring) {
-            uiState.drawerGridLeftColumn = columnRange.min
+            // 块已被推挤，左列必须重算：左扩 = 全体块横移 + 面板重居中。
+            uiState.drawerGridLeftColumn = metrics.leftColumn ?? uiState.drawerGridLeftColumn
             // 容器高度随预览最低行同步更新（曾只更新宽度、高度钉在提交布局
             // 的旧行高）：缩小时网格内容比可视区高一截，ScrollView 反复亮起
             // 滚动条。与宽度一样按预览几何计，DrawerPanelView 的网格高度
             // 只读这个值。
-            uiState.drawerContentSize = CGSize(
-                width: NotchGridMetrics.contentWidth(columns: columnSpan),
-                height: NotchGridMetrics.contentHeight(rows: max(bottomRow, 1))
-            )
-            guard uiState.drawerWindowSize != size else { return }
-            uiState.drawerWindowSize = size
+            uiState.drawerContentSize = metrics.contentSize
+            guard uiState.drawerWindowSize != metrics.windowSize else { return }
+            uiState.drawerWindowSize = metrics.windowSize
         }
     }
 
@@ -502,25 +497,23 @@ final class NotchPanelController: NSObject {
             rows = max(rows, row + blockRows)
             right = max(right, column + columns)
         }
-        let columnSpan = min(max(right - left, 1), layoutEngine.effectiveMaxColumns())
-        let size = drawerWindowSize(
-            for: pair,
-            previewRows: rows,
-            previewColumns: columnSpan
-        )
-        let content = CGSize(
-            width: NotchGridMetrics.contentWidth(columns: columnSpan),
-            height: NotchGridMetrics.contentHeight(rows: max(rows, 1))
+        let metrics = DrawerLayoutMetricsResolver.dropZone(
+            leftColumn: left,
+            rightEdge: right,
+            rows: rows,
+            geometry: drawerGridGeometry(),
+            maxHeight: maxDrawerHeight(for: pair)
         )
         // 值未变直接返回：拖动中每帧都调用，重复赋值会不断重启 spring
         // （表现为面板尺寸抖动）。
-        guard uiState.drawerWindowSize != size || uiState.drawerContentSize != content else {
-            return
-        }
+        guard uiState.drawerWindowSize != metrics.windowSize
+                || uiState.drawerContentSize != metrics.contentSize else { return }
         // 内容尺寸与窗口尺寸必须同相同帧，否则 ScrollView 会反复亮灭滚动条。
+        // 注意这里**不写** `drawerGridLeftColumn`——`metrics.leftColumn`
+        // 为 nil 正是这个约束的类型化表达。
         withAnimation(DrawerAnimation.spring) {
-            uiState.drawerContentSize = content
-            uiState.drawerWindowSize = size
+            uiState.drawerContentSize = metrics.contentSize
+            uiState.drawerWindowSize = metrics.windowSize
         }
     }
 
@@ -535,12 +528,22 @@ final class NotchPanelController: NSObject {
             visibleFrame: visibleDrawerFrame(for: pair),
             // 网格内容顶缘：自可见面板顶缘向下让出紧凑带与顶栏。
             topInset: pair.layout.compactHeight + NotchGridMetrics.drawerTopBarHeight,
-            geometry: DrawerGridGeometry(
-                metrics: .current,
-                leftColumn: layoutEngine.gridLeftColumn(),
-                capacity: layoutEngine.effectiveMaxColumns()
-            )
+            geometry: drawerGridGeometry()
         )
+    }
+
+    /// 网格几何（渲染基准列 + 列容量），随取随算——网格指标与布局都会变。
+    func drawerGridGeometry() -> DrawerGridGeometry {
+        DrawerGridGeometry(
+            metrics: .current,
+            leftColumn: layoutEngine.gridLeftColumn(),
+            capacity: layoutEngine.effectiveMaxColumns()
+        )
+    }
+
+    /// 抽屉可见高度上限：屏幕高度扣掉顶部留白与岛顶紧凑带。
+    func maxDrawerHeight(for pair: ScreenPanelPair) -> CGFloat {
+        pair.screenFrame.height - 8 - pair.layout.compactHeight
     }
 
     /// 屏幕横坐标 → 紧凑带内容坐标（各屏的槽位布局一致，热区窗口与抽屉

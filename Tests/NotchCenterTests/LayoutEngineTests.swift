@@ -494,6 +494,12 @@ final class LayoutEngineTests: XCTestCase {
         // 预览期间面板按最低占用行临时增高。
         XCTAssertEqual(engine.previewBottomRow(origins: preview), 3)
 
+        // 预览必须覆盖全体块：漏一块，那一块就会在缩放期间停在旧位置。
+        XCTAssertEqual(
+            Set(preview.keys),
+            Set(engine.drawerBlocks.map(\.placementID))
+        )
+
         // 所见即所得：提交结果与预览一致。
         XCTAssertTrue(engine.resizeDrawerBlock(placementID: "a", toColumns: 2, toRows: 2))
         for block in engine.drawerBlocks {
