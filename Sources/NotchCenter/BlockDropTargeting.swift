@@ -10,71 +10,42 @@ extension NotchPanelController {
     ///
     /// 判定顺序：先快速区（岛顶紧凑带），再抽屉网格——抽屉展开时两者在屏幕
     /// 上上下相邻、互不重叠（紧凑带位于可见面板顶部），先判上层的紧凑带。
+    /// 区域判定见 `DrawerDropPolicy`，网格换算见 `DrawerScreenMapper`。
     func dropZone(
         at point: NSPoint,
         for payload: BlockDragCoordinator.Payload
     ) -> BlockDragCoordinator.DropZone? {
         guard isExpanded, let pair = activePair else { return nil }
+        let mapper = drawerScreenMapper(for: pair)
+        let policy = DrawerDropPolicy(mapper: mapper, compactHeight: pair.layout.compactHeight)
 
-        let visible = visibleDrawerFrame(for: pair)
-        guard visible.contains(point) else { return nil }
-
-        // 快速区（岛顶紧凑带）：命中区取**整个可见面板顶部的紧凑带高度**，
-        // 而不是 `pair.hotFrame`——后者宽度只够绕刘海的紧凑带本体（无图标时
-        // 约等于刘海宽），而用户看到的“快捷按钮区域”是抽屉岛顶整条黑带
-        // （宽度 = 可见面板宽）。用窄矩形判定会让拖到岛顶两侧的落点被判成
-        // 网格区，快捷按钮因此“放不进快速区”。
-        if point.y >= visible.maxY - pair.layout.compactHeight {
+        switch policy.region(of: point) {
+        case .outside, .topBar:
+            return nil
+        case .compact:
+            // 只有紧凑块能进快速区。
             guard payload.isCompact else { return nil }
             return .compact(index: compactScreenInsertionIndex(atX: point.x, pair: pair))
+        case .grid:
+            // 快捷按钮（紧凑块）拖到抽屉区域：宽松处理为追加到快速区末尾
+            // （紧凑块无法放进抽屉网格，但“往面板上放”的意图应当被接住）。
+            if payload.isCompact {
+                return .compact(index: layoutEngine.compactSlots.count)
+            }
+            guard let cell = mapper.cell(atScreen: point, span: payload.span) else { return nil }
+            return .drawer(
+                column: cell.column,
+                row: cell.row,
+                columns: cell.columnSpan,
+                rows: cell.rowSpan
+            )
         }
-
-        // 快捷按钮（紧凑块）拖到抽屉区域：宽松处理为追加到快速区末尾
-        // （紧凑块无法放进抽屉网格，但“往面板上放”的意图应当被接住）。
-        if payload.isCompact {
-            return .compact(index: layoutEngine.compactSlots.count)
-        }
-        return drawerDropZone(at: point, pair: pair, visible: visible, payload: payload)
-    }
-
-    /// 抽屉网格落点：把屏幕坐标换算成格子坐标。
-    /// 列基准为格网最左列（`gridLeftColumn`，左扩时可为负），行自网格
-    /// 内容顶缘向下（顶缘 = 紧凑带 + 顶栏）。
-    private func drawerDropZone(
-        at point: NSPoint,
-        pair: ScreenPanelPair,
-        visible: NSRect,
-        payload: BlockDragCoordinator.Payload
-    ) -> BlockDragCoordinator.DropZone? {
-        let stepWidth = NotchGridMetrics.cellWidth + NotchGridMetrics.spacing
-        let stepHeight = NotchGridMetrics.cellHeight + NotchGridMetrics.spacing
-        guard stepWidth > 0, stepHeight > 0 else { return nil }
-
-        let topInset = pair.layout.compactHeight
-            + NotchGridMetrics.drawerTopBarHeight
-        // 屏幕坐标 y 轴向上；转成自面板顶缘向下的距离。
-        let offsetFromTop = visible.maxY - point.y
-        guard offsetFromTop >= topInset else { return nil }
-
-        let row = max(Int(floor((offsetFromTop - topInset) / stepHeight)), 0)
-        let leftColumn = layoutEngine.gridLeftColumn()
-        let rawColumn = Int(floor((point.x - visible.minX - NotchGridMetrics.contentPadding) / stepWidth)) + leftColumn
-        // 跨度不得超出容量：列上限按“左缘 + 容量 − 跨度”收紧。
-        let upperColumn = leftColumn + layoutEngine.effectiveMaxColumns() - payload.span.columns
-        let column = min(max(rawColumn, leftColumn), max(upperColumn, leftColumn))
-
-        return .drawer(
-            column: column,
-            row: row,
-            columns: payload.span.columns,
-            rows: payload.span.rows
-        )
     }
 
     /// 快速区落点：屏幕坐标先转成紧凑带内容坐标（各屏的槽位布局一致），
     /// 再取**屏幕插入位置**（0...count）。
     private func compactScreenInsertionIndex(atX x: CGFloat, pair: ScreenPanelPair) -> Int {
-        compactStrip(for: pair).screenInsertionIndex(atContentX: x - pair.hotFrame.minX)
+        compactStrip(for: pair).screenInsertionIndex(atContentX: compactContentX(x, pair: pair))
     }
 
     // MARK: 快捷按钮重排（编辑模式）
@@ -142,7 +113,7 @@ extension NotchPanelController {
         }
         var pointerX: CGFloat?
         if case .compact = zone, let pointer, let pair = activePair {
-            pointerX = pointer.x - pair.hotFrame.minX
+            pointerX = compactContentX(pointer.x, pair: pair)
         }
         uiState.dropPreview = PanelUIState.DropPreview(
             zone: zone,

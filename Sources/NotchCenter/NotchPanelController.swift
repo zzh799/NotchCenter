@@ -524,11 +524,32 @@ final class NotchPanelController: NSObject {
         }
     }
 
-    /// 网格格坐标 → 屏幕矩形（Cocoa 坐标，左下原点）。
+    /// 网格内容 ↔ 屏幕的换算桥：格 → 屏幕（`drawerScreenRect`）与
+    /// 屏幕 → 格（`BlockDropTargeting.dropZone`）**共用同一份**，互逆性由
+    /// `DrawerScreenMapper` 的结构保证（同一表达式的正逆），不再靠
+    /// "两处改同一套常量"的注释约定。
     ///
-    /// 与 `BlockDropTargeting.drawerDropZone` 的「屏幕 → 格坐标」换算
-    /// **严格互逆**（同一套常量、同一套偏移）：跟手浮窗的落位终点若与
-    /// 占位框差一格，飞行结束时会看到一次明显跳动。
+    /// 跟手浮窗的落位终点若与占位框差一格，飞行结束时会看到一次明显跳动。
+    func drawerScreenMapper(for pair: ScreenPanelPair) -> DrawerScreenMapper {
+        DrawerScreenMapper(
+            visibleFrame: visibleDrawerFrame(for: pair),
+            // 网格内容顶缘：自可见面板顶缘向下让出紧凑带与顶栏。
+            topInset: pair.layout.compactHeight + NotchGridMetrics.drawerTopBarHeight,
+            geometry: DrawerGridGeometry(
+                metrics: .current,
+                leftColumn: layoutEngine.gridLeftColumn(),
+                capacity: layoutEngine.effectiveMaxColumns()
+            )
+        )
+    }
+
+    /// 屏幕横坐标 → 紧凑带内容坐标（各屏的槽位布局一致，热区窗口与抽屉
+    /// 可见面板共用这条换算）。
+    func compactContentX(_ screenX: CGFloat, pair: ScreenPanelPair) -> CGFloat {
+        screenX - pair.hotFrame.minX
+    }
+
+    /// 网格格坐标 → 屏幕矩形（Cocoa 坐标，左下原点）。
     ///
     /// 面板布局链（见 `DrawerPanelView.content` / `body`）：
     /// 可见面板 = 紧凑带(`compactHeight`) + 顶栏(`drawerTopBarHeight`) +
@@ -540,27 +561,8 @@ final class NotchPanelController: NSObject {
         rows: Int
     ) -> CGRect? {
         guard let pair = activePair else { return nil }
-        let visible = visibleDrawerFrame(for: pair)
-        let stepWidth = NotchGridMetrics.cellWidth + NotchGridMetrics.spacing
-        let stepHeight = NotchGridMetrics.cellHeight + NotchGridMetrics.spacing
-        let x = visible.minX
-            + NotchGridMetrics.contentPadding
-            + CGFloat(column - layoutEngine.gridLeftColumn()) * stepWidth
-        // 网格内容顶缘：自可见面板顶缘向下让出紧凑带与顶栏。
-        let topEdgeY = visible.maxY
-            - pair.layout.compactHeight
-            - NotchGridMetrics.drawerTopBarHeight
-            - CGFloat(row) * stepHeight
-        let size = CGSize(
-            width: NotchGridMetrics.contentWidth(columns: columns),
-            height: NotchGridMetrics.contentHeight(rows: rows)
-        )
-        // Cocoa 原点在左下：顶缘减高度即底边。
-        return CGRect(
-            x: x,
-            y: topEdgeY - size.height,
-            width: size.width,
-            height: size.height
+        return drawerScreenMapper(for: pair).screenRect(
+            for: GridCell(column: column, row: row, columnSpan: columns, rowSpan: rows)
         )
     }
 

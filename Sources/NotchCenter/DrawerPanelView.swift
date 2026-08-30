@@ -248,8 +248,8 @@ struct DrawerPanelView: View {
     /// 格子坐标算，与块容器同一套 gridX / gridY 公式（所见即所得）。
     @ViewBuilder
     private var dropPlaceholder: some View {
-        if case let .drawer(column, row, columns, rows)? = ui.dropPreview?.zone,
-           ui.dropPreview?.isCompact == false {
+        if let cell = dropPlaceholderCell {
+            let frame = geometry.frame(cell)
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(.white.opacity(0.055))
                 .overlay(
@@ -257,23 +257,46 @@ struct DrawerPanelView: View {
                         .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
                         .foregroundStyle(.white.opacity(0.5))
                 )
-                .frame(
-                    width: gridWidth(columns: columns),
-                    height: gridHeight(rows: rows)
-                )
-                .position(
-                    x: gridX(column: column - ui.drawerGridLeftColumn)
-                        + gridWidth(columns: columns) / 2,
-                    y: gridY(row: row) + gridHeight(rows: rows) / 2
-                )
+                .frame(width: frame.width, height: frame.height)
+                .position(x: frame.midX, y: frame.midY)
                 .allowsHitTesting(false)
         }
+    }
+
+    /// 从设置面板拖入时的落点格（无落点为 nil）：位置与尺寸都用格坐标算，
+    /// 与块容器同一套换算（所见即所得）。
+    private var dropPlaceholderCell: GridCell? {
+        guard let preview = ui.dropPreview, !preview.isCompact,
+              case let .drawer(column, row, columns, rows) = preview.zone else { return nil }
+        return GridCell(column: column, row: row, columnSpan: columns, rowSpan: rows)
+    }
+
+    /// 网格渲染几何：列基准取 `drawerGridLeftColumn`（左扩时为负）。
+    ///
+    /// `capacity` 传 `.max`——视图只做渲染换算，落点夹紧由控制器侧的
+    /// `drawerScreenMapper(for:)` 负责（那里能拿到 `effectiveMaxColumns`）。
+    private var geometry: DrawerGridGeometry {
+        DrawerGridGeometry(
+            metrics: GridMetrics.current,
+            leftColumn: ui.drawerGridLeftColumn,
+            capacity: .max
+        )
     }
 
     /// 单个抽屉块容器（含定位修饰）：独立成方法拆开类型检查表达式——
     /// 全部内联在 grid 里会超出编译器合理检查时间。
     private func blockContainer(for element: DrawerElement) -> some View {
         let origin = resolveOrigin(for: element)
+        // 遗留布局数据的跨度可能为 0 或负：`max(_, 0)` 让 frame 退化为零
+        // 尺寸（与改动前 `> 0 ? ... : 0` 的三元判断等价）。
+        let blockFrame = geometry.frame(
+            GridCell(
+                column: origin.column,
+                row: origin.row,
+                columnSpan: max(element.placement.widthColumns, 0),
+                rowSpan: max(element.placement.heightRows, 0)
+            )
+        )
         return DrawerBlockContainer(
             element: element,
             isEditing: ui.isEditing,
@@ -331,20 +354,8 @@ struct DrawerPanelView: View {
                 actions.onCommitDrag(element.id, target.0, target.1)
             }
         )
-        .frame(
-            width: element.placement.widthColumns > 0
-                ? gridWidth(columns: element.placement.widthColumns)
-                : 0,
-            height: element.placement.heightRows > 0
-                ? gridHeight(rows: element.placement.heightRows)
-                : 0
-        )
-        .position(
-            x: gridX(column: origin.column - ui.drawerGridLeftColumn)
-                + gridWidth(columns: element.placement.widthColumns) / 2,
-            y: gridY(row: origin.row)
-                + gridHeight(rows: element.placement.heightRows) / 2
-        )
+        .frame(width: blockFrame.width, height: blockFrame.height)
+        .position(x: blockFrame.midX, y: blockFrame.midY)
         // 落位飞行：新块先隐形，让跟手浮窗独占画面（避免一明一暗的重影）；
         // 飞行结束时同一次更新里清空，交接不留空帧。
         // 独立于方法之外、不内联回 grid —— 内联会让 SwiftUI 类型检查
@@ -363,26 +374,26 @@ struct DrawerPanelView: View {
     /// 窗口高度（同源行数、同一 spring）同相收缩：内容 ≡ 可视区，滚动条
     /// 只在屏幕封顶截断内容（真正可滚）时出现。
     private var gridFrameHeight: CGFloat {
-        let previewRows = ui.drawerElements
-            .map { element -> Int in
-                let origin = resolveOrigin(for: element)
-                let rows = resizingPlacementID == element.id
-                    ? (resizePreviewRows ?? element.placement.heightRows)
-                    : element.placement.heightRows
-                return origin.row + rows
-            }
-            .max() ?? 1
+        var cells: [GridCell] = ui.drawerElements.map { element in
+            let origin = resolveOrigin(for: element)
+            // 正在缩放的块以预览行数计——模型里的 heightRows 还是旧值，
+            // 底层块长高时它是唯一增高来源。
+            let rows = resizingPlacementID == element.id
+                ? (resizePreviewRows ?? element.placement.heightRows)
+                : element.placement.heightRows
+            return GridCell(
+                column: origin.column,
+                row: origin.row,
+                columnSpan: element.placement.widthColumns,
+                rowSpan: rows
+            )
+        }
         // 落点在末尾新行时也要撑开：否则占位框被 ScrollView 裁掉
         // （网格内容高度是滚动区的唯一来源）。
-        let dropRows = dropPlaceholderBottomRow
-        return NotchGridMetrics.contentHeight(rows: max(previewRows, dropRows, 1))
-    }
-
-    /// 拖入落点的最低占用行（无落点为 0）。
-    private var dropPlaceholderBottomRow: Int {
-        guard let preview = ui.dropPreview, !preview.isCompact,
-              case let .drawer(_, row, _, rows) = preview.zone else { return 0 }
-        return row + rows
+        if let drop = dropPlaceholderCell {
+            cells.append(drop)
+        }
+        return geometry.contentHeight(covering: cells)
     }
 
     @State private var previewPositions: [String: LayoutEngine.GridOrigin] = [:]
@@ -487,21 +498,6 @@ struct DrawerPanelView: View {
         return (target.column, target.row)
     }
 
-    private func gridX(column: Int) -> CGFloat {
-        CGFloat(column) * (NotchGridMetrics.cellWidth + NotchGridMetrics.spacing)
-    }
-
-    private func gridY(row: Int) -> CGFloat {
-        CGFloat(row) * (NotchGridMetrics.cellHeight + NotchGridMetrics.spacing)
-    }
-
-    private func gridWidth(columns: Int) -> CGFloat {
-        NotchGridMetrics.contentWidth(columns: columns)
-    }
-
-    private func gridHeight(rows: Int) -> CGFloat {
-        NotchGridMetrics.contentHeight(rows: rows)
-    }
 }
 
 /// 抽屉顶栏按钮：24×24 圆角矩形底衬，悬停高亮 + 激活态常驻高亮。

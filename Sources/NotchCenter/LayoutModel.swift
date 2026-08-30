@@ -25,12 +25,13 @@ enum NotchGridMetrics {
     /// 抽屉窗口顶部栏（钉住 / 编辑等按钮）高度。
     static let drawerTopBarHeight: CGFloat = 36
 
+    /// 内容宽度公式转发 `GridMetrics`，保证全项目只有一份定义。
     static func contentWidth(columns: Int) -> CGFloat {
-        CGFloat(columns) * cellWidth + CGFloat(max(columns - 1, 0)) * spacing
+        GridMetrics.current.width(columns: columns)
     }
 
     static func contentHeight(rows: Int) -> CGFloat {
-        CGFloat(rows) * cellHeight + CGFloat(max(rows - 1, 0)) * spacing
+        GridMetrics.current.height(rows: rows)
     }
 }
 

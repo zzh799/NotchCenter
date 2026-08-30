@@ -10,14 +10,18 @@ extension LayoutEngine {
     }
 
     /// 抽屉块在网格内容坐标系（grid 左上角为原点）中的 frame。
+    ///
+    /// ⚠️ 这是**绝对列**坐标系（`originColumn × step`，不减渲染左列），
+    /// 与 `DrawerGridGeometry`（渲染用，`(column − leftColumn) × step`）
+    /// 不是同一个坐标系。本 frame 喂给插件的 `layoutInfo.frame`，插件只读
+    /// `.size`，所以两套并存是安全的——不要"顺手统一"。
     func frame(for placement: PlacedBlock) -> CGRect {
-        CGRect(
-            x: CGFloat(placement.originColumn) * (NotchGridMetrics.cellWidth + NotchGridMetrics.spacing),
-            y: CGFloat(placement.originRow) * (NotchGridMetrics.cellHeight + NotchGridMetrics.spacing),
-            width: CGFloat(placement.widthColumns) * NotchGridMetrics.cellWidth
-                + CGFloat(max(placement.widthColumns - 1, 0)) * NotchGridMetrics.spacing,
-            height: CGFloat(placement.heightRows) * NotchGridMetrics.cellHeight
-                + CGFloat(max(placement.heightRows - 1, 0)) * NotchGridMetrics.spacing
+        let metrics = GridMetrics.current
+        return CGRect(
+            x: CGFloat(placement.originColumn) * metrics.stepWidth,
+            y: CGFloat(placement.originRow) * metrics.stepHeight,
+            width: metrics.width(columns: placement.widthColumns),
+            height: metrics.height(rows: placement.heightRows)
         )
     }
 
