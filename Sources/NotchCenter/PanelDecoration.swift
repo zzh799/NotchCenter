@@ -116,3 +116,27 @@ struct EditCircleButton: View {
         .help(helpText)
     }
 }
+
+// MARK: - 无底衬按钮悬停提亮
+
+/// 无底衬按钮（图标裸露，如紧凑区编辑角标）的悬停提亮：内容 brightness
+/// 提升一档。与激活态高亮（如 TopBarButton 的底衬增亮）相比刻意更暗，
+/// 保持「悬停 < 激活」的层级惯例；动画沿用项目统一的 easeOut 0.12。
+private struct HoverBrightenModifier: ViewModifier {
+    @State private var isHovering = false
+    let amount: Double
+
+    func body(content: Content) -> some View {
+        content
+            .brightness(isHovering ? amount : 0)
+            .animation(.easeOut(duration: 0.12), value: isHovering)
+            .onHover { isHovering = $0 }
+    }
+}
+
+extension View {
+    /// 悬停时内容提亮 `amount`（默认 0.12，比激活态高亮暗一档）。
+    func hoverBrighten(amount: Double = 0.12) -> some View {
+        modifier(HoverBrightenModifier(amount: amount))
+    }
+}

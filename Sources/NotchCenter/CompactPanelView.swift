@@ -240,14 +240,24 @@ private struct CompactBlockContainer: View {
     /// 位移可直接叠加在基座上，渲染位置恒等于指针落点，不会漂移。
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging = false
+    /// 悬停高亮：槽位底衬微亮（白 0.08，低于顶栏激活态高亮档）。
+    @State private var isHovering = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             group
                 .frame(width: NotchGeometry.compactSlotSize.width, height: NotchGeometry.compactSlotSize.height)
                 .background {
-                    GlobalFrameReader { globalFrame = $0 }
+                    ZStack {
+                        // 悬停高亮底衬：28×28 槽位圆角矩形。
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(.white.opacity(isHovering ? 0.08 : 0))
+                        GlobalFrameReader { globalFrame = $0 }
+                    }
                 }
+                // 悬浮提示：插件块的用户可见名称（block 为 nil 时不提示）。
+                .help(element.block?.displayName ?? "")
+                .animation(.easeOut(duration: 0.12), value: isHovering)
 
             if isEditing {
                 // 编辑模式角标簇：右上角移除 + （插件有设置界面时）设置按钮，
@@ -260,6 +270,7 @@ private struct CompactBlockContainer: View {
                                 .foregroundStyle(.white.opacity(0.85))
                         }
                         .buttonStyle(.plain)
+                        .hoverBrighten()
                         .help(L("panel.help.pluginSettings"))
                     }
 
@@ -269,12 +280,14 @@ private struct CompactBlockContainer: View {
                             .foregroundStyle(.white.opacity(0.85))
                     }
                     .buttonStyle(.plain)
+                    .hoverBrighten()
                     .help(L("panel.help.removeBlock"))
                 }
                 .shadow(color: .black.opacity(0.55), radius: 2)
                 .offset(x: 3, y: -2)
             }
         }
+        .onHover { isHovering = $0 }
         // 拖动中整体跟手（角标一起走），并轻微放大表示“已拿起”。
         .offset(x: dragOffset)
         .scaleEffect(isDragging ? 1.08 : 1)

@@ -367,6 +367,11 @@ extension NotchPanelController {
             onShowSettings: { [weak self] in
                 self?.showSettings()
             },
+            onAddComponent: { [weak self] in
+                // 直入「组件」页：非编辑态由 setComponentsPageActive 联动
+                // 进入编辑模式；编辑态下传 .components 无强制退出编辑副作用。
+                self?.showSettings(page: .components)
+            },
             onTogglePin: { [weak self] in
                 guard let self else { return }
                 self.isPinned.toggle()

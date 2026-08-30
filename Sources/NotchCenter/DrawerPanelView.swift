@@ -20,6 +20,8 @@ struct DrawerElement: Identifiable {
 
 struct DrawerActions {
     let onShowSettings: () -> Void
+    /// 打开设置并直入「组件」页（非编辑态由 setComponentsPageActive 联动进入编辑模式）。
+    let onAddComponent: () -> Void
     let onTogglePin: () -> Void
     let onToggleEdit: () -> Void
     let onCollapse: () -> Void
@@ -155,27 +157,18 @@ struct DrawerPanelView: View {
                 tint: .white.opacity(0.65)
             )
 
-            // 编辑模式且设置窗口未打开时，齿轮旁常驻提示「前往设置页添加组件」
-            // （点击齿轮即打开设置并直入组件页）。Spacer(minLength: 0) 保证
-            // 标签出现只压缩弹性空隙，齿轮与右侧按钮组位置均不跳动。
-            if ui.isEditing && !ui.isSettingsPresented {
-                Text(L("panel.hint.goToSettings"))
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .padding(.horizontal, 6)
-                    .frame(height: 18)
-                    .background(Capsule().fill(.white.opacity(0.06)))
-                    .transition(.opacity)
-                    .onTapGesture {
-                        actions.onShowSettings()
-                    }
-            }
-
             Spacer(minLength: 0)
 
-            // 编辑模式隐藏钉住按钮，其槽位让给一键重排（编辑按钮左边）；
+            // 添加组件（常驻）：打开设置并直入「组件」页，替代原编辑模式
+            // 提示胶囊「前往设置页添加组件」。
+            topBarButton(
+                systemImage: "plus.rectangle.on.rectangle",
+                help: L("panel.help.addComponent"),
+                action: actions.onAddComponent,
+                tint: .white.opacity(0.65)
+            )
+
+            // 编辑模式隐藏钉住按钮，其槽位让给一键重排（添加组件按钮右边）；
             // 钉住状态保留，退出编辑后恢复显示——槽位固定，编辑/关闭按钮不跳动。
             if ui.isEditing {
                 topBarButton(
@@ -190,7 +183,9 @@ struct DrawerPanelView: View {
                     systemImage: ui.isPinned ? "pin.fill" : "pin",
                     help: ui.isPinned ? L("panel.help.unpin") : L("panel.help.pin"),
                     action: actions.onTogglePin,
-                    tint: ui.isPinned ? .white.opacity(0.9) : .white.opacity(0.65)
+                    tint: .white.opacity(0.65),
+                    // 固定态常驻高亮（比悬停高亮亮一档，见 TopBarButton）。
+                    isActive: ui.isPinned
                 )
                 .transition(.opacity)
             }
@@ -199,7 +194,9 @@ struct DrawerPanelView: View {
                 systemImage: ui.isEditing ? "pencil.slash" : "pencil",
                 help: ui.isEditing ? L("panel.help.doneEditing") : L("panel.help.editLayout"),
                 action: actions.onToggleEdit,
-                tint: ui.isEditing ? .white.opacity(0.9) : .white.opacity(0.65)
+                tint: .white.opacity(0.65),
+                // 编辑态常驻高亮。
+                isActive: ui.isEditing
             )
 
             topBarButton(
@@ -212,25 +209,21 @@ struct DrawerPanelView: View {
         .padding(.horizontal, 4)
     }
 
+    /// 独立结构体而非视图方法：悬停高亮需要 `@State`，方法无法持有。
     private func topBarButton(
         systemImage: String,
         help: String,
         action: @escaping () -> Void,
-        tint: Color
+        tint: Color,
+        isActive: Bool = false
     ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 24, height: 24)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(.white.opacity(0.055))
-                )
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
+        TopBarButton(
+            systemImage: systemImage,
+            help: help,
+            tint: tint,
+            isActive: isActive,
+            action: action
+        )
     }
 
     private var grid: some View {
@@ -516,5 +509,44 @@ struct DrawerPanelView: View {
 
     private func gridHeight(rows: Int) -> CGFloat {
         NotchGridMetrics.contentHeight(rows: rows)
+    }
+}
+
+/// 抽屉顶栏按钮：24×24 圆角矩形底衬，悬停高亮 + 激活态常驻高亮。
+/// 亮度分层（悬停比激活态暗一档）：常态 0.055 → 悬停 0.10 →
+/// 激活 0.16 → 激活+悬停 0.20。
+private struct TopBarButton: View {
+    let systemImage: String
+    let help: String
+    let tint: Color
+    var isActive = false
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    /// 背景填充不透明度：激活态优先于悬停态，二者叠加再亮一档。
+    private var fillOpacity: Double {
+        if isActive { return isHovering ? 0.20 : 0.16 }
+        return isHovering ? 0.10 : 0.055
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 24, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(.white.opacity(fillOpacity))
+                )
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovering)
+        .animation(.easeOut(duration: 0.12), value: isActive)
+        .help(help)
+        .accessibilityLabel(help)
     }
 }

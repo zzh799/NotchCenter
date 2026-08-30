@@ -81,9 +81,9 @@
 "panel.help.editLayout" = "Edit layout";
 "panel.help.doneEditing" = "Done editing layout";
 "panel.help.closeDrawer" = "Close drawer";
+"panel.help.addComponent" = "Add component";
 
 /* 面板交互提示标签 */
-"panel.hint.goToSettings" = "Go to Settings to add components";
 
 /* 隐藏主菜单（accessory 应用不可见，仅承载标准快捷键的 nil-target 动作） */
 "menu.app.hide" = "Hide NotchCenter";
