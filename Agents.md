@@ -27,16 +27,22 @@ NotchCenter/
 │   ├── EditMenuInstaller.swift      # 隐藏主菜单（accessory 无菜单栏）：承载 ⌘C/⌘V 等标准编辑快捷键的 nil-target 动作
 │   ├── NotchPanelController.swift   # 核心控制器（hostController 实现）：状态中枢 + 每屏一对面板 + 展开/收起 + 几何
 │   ├── NotchPanelContent.swift      # 控制器 extension：视图构建（rebuildContent/build*）+ 编辑模式两段式进入
-│   ├── NotchPanelInteraction.swift  # 控制器 extension：事件监听 + 鼠标轮询 + 收起协调（handleMouseLocation/scheduleCollapse）
-│   ├── NotchPanelDebugSupport.swift # 控制器 extension：调试（debugTogglePin/capturePanelsForDebug/captureSettingsWindowForDebug）+ 插件管理窗口 + 设置面板探针（NOTCHCENTER_SETTINGS_PROBE）
+│   ├── NotchPanelInteraction.swift  # 控制器 extension：事件监听 + 鼠标轮询 + 收起协调（shouldKeepExpanded 守卫）
+│   ├── NotchPanelController+DrawerEdit.swift # 控制器 extension：applyDrawerDrag / applyDrawerResize（抽屉内拖拽/缩放预览与提交的唯一出口）
 │   ├── PanelWindows.swift           # 窗口类型：NotchPanel + 3 个 HostingView + ScreenPanelPair + configurePanel
 │   ├── PanelUIState.swift           # 面板 UI 状态（ObservableObject，@Published 驱动 SwiftUI 刷新）
 │   ├── CompactPanelView.swift       # 刘海两侧紧凑带视图（含槽位容器）
 │   ├── ActivityIslandPanel.swift    # 活动岛面板（文档 §4.10）：固定尺寸窗口 + IslandHostingView 双机制穿透 + 多岛堆叠渲染 + HostController 活动岛实现
-│   ├── DrawerPanelView.swift        # 抽屉面板主体（drawerWindowSize 绑定 + 顶缘钉死 + 拖拽/缩放手势状态机）
+│   ├── DrawerPanelView.swift        # 抽屉面板主体（drawerWindowSize 绑定 + 顶缘钉死 + 拖拽/缩放）
 │   ├── DrawerBlockContainer.swift   # 抽屉块容器（预览尺寸补偿 + 编辑 overlay + 缩放握把 .global 手势）
-│   ├── HorizontalDragScroll.swift    # 横向拖动滚动容器（ScrollView 内嵌 NSScrollView 探针，滚轮之外支持按住拖动）
-│   ├── ResizeHysteresis.swift        # 缩放跨度死区量化（纯函数，ResizeHysteresisTests 覆盖）
+│   ├── DrawerInteractionState.swift # 拖拽/缩放手势状态机（phase + previewOrigins + 可注入 Bridge）
+│   ├── DrawerGestureMath.swift      # 手势数学纯函数（DragTargetResolver / ResizeSpanResolver / ResizeCompensation / DrawerResizeLimits）
+│   ├── DrawerGridGeometry.swift     # 坐标换算三层（GridMetrics / GridCell / DrawerGridGeometry 格↔内容px / DrawerScreenMapper 内容↔屏幕，互逆由结构保证）
+│   ├── DrawerDropPolicy.swift       # 落点区域判定（紧凑带/顶栏/网格/面板外，纯几何）
+│   ├── DrawerLayoutMetrics.swift    # 面板尺寸指标（contentSize / windowSize / leftColumn: Int?，纯计算）
+│   ├── DrawerStayConditions.swift   # 收起守卫（展开态保持条件的值快照 + 纯函数判定）
+│   ├── GridMetrics.swift            # 网格指标值快照（NotchGridMetrics 转发源，步长/内容尺寸唯一公式）
+│   ├── ResizeHysteresis.swift       # 缩放跨度死区量化（纯函数，ResizeHysteresisTests 覆盖）
 │   ├── NotchGeometry.swift          # 刘海/回退几何与紧凑带布局（左右面板绕刘海对称，图标按添加顺序左右均衡交替排布，带宽随图标数动态伸缩，28×28）
 │   ├── PluginManager.swift          # 插件发现/加载/启用禁用/安装卸载（双目录）
 │   ├── PluginMetadata.swift         # Info.plist 元数据（文档 §3.2）
@@ -48,7 +54,7 @@ NotchCenter/
 │   ├── LayoutEngineCompaction.swift # 布局引擎 extension：compactEmptyRows / compactEmptyColumns 空洞压实
 │   ├── LayoutEngineGeometry.swift   # 布局引擎只读 extension：frame/内容尺寸/窗口尺寸/previewBottomRow
 │   ├── LayoutEngineValidation.swift # 布局引擎只读 extension：validate() 全量健康检查
-│   ├── PluginManagerWindow.swift    # 插件管理窗口（详情区展示各插件 bundle 内 README.md）
+│   ├── PluginManagerWindow.swift    # 插件管理窗口（详情区展示各插件 bundle 内 README.md）+ showPluginManager 入口
 │   ├── SettingsWindow.swift / SettingsPages.swift  # 设置面板（侧边栏多页：通用/组件/布局/插件）+ 各页面（拖拽到抽屉/快速区、网格指标可调）
 │   ├── GridMetricsStore.swift       # 抽屉网格指标存储（单元宽/高/间距/内边距，UserDefaults 持久化 + 变更通知）
 │   ├── BlockDragCoordinator.swift   # 跨窗口拖拽协调器：设置面板 → 抽屉/快速区（跟随光标的预览浮窗 + 落点命中 + 落位）
@@ -58,13 +64,6 @@ NotchCenter/
 │   ├── LaunchAtLogin.swift          # 开机自启（SMAppService，幂等设置 + 状态同步）
 │   ├── Localization.swift           # 宿主 L()/LF() 本地化辅助（资源打进 NotchCenter_NotchCenter.bundle）
 │   ├── CorePaths.swift / FileDragDetection.swift / PanelDecoration.swift
-│   ├── SettingsSwitchProbe.swift    # 设置面板切页诊断（仅 DEBUG）：NOTCHCENTER_SETTINGS_SWITCH_LOG=1 输出编辑模式进出/内容重建/网格指标通知耗时；NOTCHCENTER_SETTINGS_SWITCH_AUTO=1 自动复现切页路径（驱动脚本在 AppDelegate）
-│   ├── ResizeProbeLog.swift         # 诊断日志开关（仅 DEBUG）：NOTCHCENTER_RESIZE_LOG 缩放管线事件
-│   ├── ResizeProbeWindow.swift      # 复刻管线对照页（仅 DEBUG）：ResizeProbeWindowController + ResizeProbeView（NOTCHCENTER_RESIZE_PROBE）
-│   ├── SizeLabWindow.swift         # 块尺寸对照实验室（仅 DEBUG）：同一块组件在全部跨度档（1×1…上限可调）下的批量并排对比 + 可调最小单元格；插件管理窗口网格按钮或 NOTCHCENTER_SIZE_LAB 打开（NOTCHCENTER_SIZE_LAB_CAPTURE 自动截图）
-│   ├── NotchPanelController+CollapseProbe.swift    # 控制器 extension（仅 DEBUG）：收起动画 layer 树 dump + 逐帧自拍 + 合成鼠标取屏共享辅助
-│   ├── NotchPanelController+ResizeAutoProbe.swift  # 控制器 extension（仅 DEBUG）：缩放自动化复现探针（NOTCHCENTER_RESIZE_AUTO）
-│   ├── NotchPanelController+ShrinkScrollProbe.swift # 控制器 extension（仅 DEBUG）：缩小场景滚动条逐帧诊断（NOTCHCENTER_SHRINKSCROLL_PROBE）
 ├── Sources/NotchCenterKit/       # 共享 API 动态库（**独立本地包**，宿主与插件以产品方式链接同一份代码）
 │   ├── Package.swift             # 产物：NotchCenterKit 动态库
 │   ├── NotchCenterPlugin.swift   # 协议：static blocks + init()；可选 settingsView / menuItems / 服务注入
@@ -130,11 +129,11 @@ open dist.noindex/NotchCenter.app
 - **面板内容刷新走 `PanelUIState`**：透明无边框 `NSPanel` 上重新赋值 `NSHostingView.rootView` 不能保证立即重绘；宿主视图只在创建时设置一次 root，之后一律通过 `PanelUIState` 的 `@Published` 属性驱动 SwiftUI 刷新。新增面板状态时加到 `PanelUIState`，不要绕过它直接操作视图。
 - **紧凑区宽度动态、不固定槽位（文档 §5.2）**：`compactSlots` 数组长度即当前紧凑图标数（元素无 `null` 占位；移除即删元素闭合空隙，旧版固定 3 槽文件加载时经 `normalizedCompactSlots` 剥除空槽）。带宽 = `CompactStripLayout(slotCount:)`：图标按添加顺序**左右均衡交替**排布（偶数索引在左、奇数在右，均从靠刘海一侧排起），两面板等宽（按较大一侧实际槽数）保证黑色带绕刘海左右对称、刘海中心恒为带宽中心。视图侧必须从 `PanelUIState.compactCount` 取数量（`layout.compactStrip(slotCount: ui.compactCount)`），不得硬编码槽位数——宿主视图只在创建时设置一次 root，`layout` 是被捕获的旧值。**几何状态同步集中在 `refreshCompactGeometry()`**：把引擎计数推到各 pair 镜像（`pair.compactCount`/`pair.compactStrip`）与 `uiState.compactCount`，并按新带宽重摆热区窗口；任何增删紧凑图标（`onAddBlock`/`onRemoveBlock`）与换屏（`syncScreens` 后）的路径必须先调它、再调 `rebuildContent`（后者保持纯内容重建、无窗口副作用）。引擎计数只能经 `compactIconCount` / `compactStrip(for:)` 访问，不要在各消费点直接读 `layoutEngine.compactSlots.count`。增删紧凑块没有“槽满”概念（紧凑块从设置组件页拖入，不设数量上限）。
 - **抽屉动画是单一尺寸真源（参考 codex-island 的 model.size 模式）**：`PanelUIState.drawerWindowSize` 是可见面板尺寸的唯一 @Published 真源（收起 = 紧凑带尺寸），一切尺寸变化（展开/收起/编辑增高/增删块/缩放预览）必须在 `withAnimation` 里改变它；容器视图 frame 直接绑定它做 spring 变形。抽屉窗口固定满高、永不参与动画；穿透命中 = hitTest 限定可见矩形 + `window.ignoresMouseEvents` 光标跟踪双机制（缺一不可，仅 hitTest 窗口仍会抢焦点）。不要恢复 revealProgress 遮罩插值或任何“窗口跟随内容”的桥（NSAnimationContext/preference/解析 spring 均已试错，均有时钟偏差）。
-- **动画容器必须顶缘钉死、收起不得无动画贴起点**：`DrawerPanelView` 绑定 `drawerWindowSize` 的容器 frame 必须 `alignment: .top`——收起过渡中抽屉内容退出布局（快照仍挂在树里淡出），VStack 与仍在收缩的容器高度不一致，默认 `.center` 会把只剩紧凑带的 VStack 顶出容器，图标随之下坠（展开方向靠 ScrollView 伸缩掩盖了同一问题）。`setDrawerRevealed` 里“无动画贴起点”只属于展开分支（贴紧凑带再 spring 长出）；收起的起点就是当前尺寸，若也无动画写成目标，收起会瞬跳且 easeOut(0.16) 动画丢失。诊断：`NOTCHCENTER_COLLAPSE_PROBE=1`（配 `NOTCHCENTER_SMOKE_TEST=1`）展开/收起各逐帧自拍抽屉窗口——注意 `cacheDisplay` 只能渲染布局终态，动画中帧必须用 `CGWindowListCreateImage` 自拍本进程窗口（免屏幕录制权限）；`NOTCHCENTER_COLLAPSE_LAYERS=1` 追加 layer 树 model/presentation 对照 dump。
+- **动画容器必须顶缘钉死、收起不得无动画贴起点**：`DrawerPanelView` 绑定 `drawerWindowSize` 的容器 frame 必须 `alignment: .top`——收起过渡中抽屉内容退出布局（快照仍挂在树里淡出），VStack 与仍在收缩的容器高度不一致，默认 `.center` 会把只剩紧凑带的 VStack 顶出容器，图标随之下坠（展开方向靠 ScrollView 伸缩掩盖了同一问题）。`setDrawerRevealed` 里“无动画贴起点”只属于展开分支（贴紧凑带再 spring 长出）；收起的起点就是当前尺寸，若也无动画写成目标，收起会瞬跳且 easeOut(0.16) 动画丢失。
 - **块尺寸用 GridSpan 表达**：`BlockSize` 只是预设，真实约束是块的 `supportedSpans`（由 `supportedSizes` 派生 + `supportedGridSpans` 自由跨度）。编辑模式缩放走 `LayoutEngine.resizeBlock` 的任意跨度路径；新增尺寸能力时扩展 `supportedGridSpans` 而不是堆预设。
-- **抽屉窗口单例不变量：任一时刻至多一个屏的抽屉在屏**：`collapse()` 的完成回调存在 0.43s 窗口（0.25s 延迟 + 0.18s 等收起动画），期间鼠标移到另一块屏触发跨屏展开会以“已重新展开”为由跳过旧屏的 `orderOut`，旧屏抽屉窗口永久残留——它与活动屏共享同一份 `uiState`，每次展开都渲染出一份一模一样的活抽屉（用户报告“新建笔记多出一块面板”的根因）。因此 `expand()`（含已展开分支）必须清扫 `hideOtherDrawers(keeping:)`，收起完成回调只保留“当前展开屏”而不是整体跳过，`syncScreens()` 移除 stale pair（NSScreen 身份在显示重配后更换，同一物理屏也会命中）时必须显式 orderOut 其两个窗口。不要把完成回调改回“捕获 pair + isExpanded 短路”。诊断：`NOTCHCENTER_GHOST_PROBE=1` 打印 expand/collapse/清扫决策。
-- **插件块内不得让隐藏窗口复活（共享状态 × 每屏一份视图树）**：宿主把同一份 block view 塞进每块屏的抽屉树，插件里按 placementID 共享的交互状态（如 NotesPlugin 的 `EditorInteractionState`）会被**所有屏的实例并发 bind**，谁最后落地谁占有 `textView`/`containerView` 引用——隐藏屏实例赢得竞态后，任何 `makeKeyAndOrderFront`（焦点、激活）都会把已收起的抽屉窗口重新拉上屏，表现为“新建笔记时另一块屏多出一块一模一样的面板”。约束：绑定入口必须拒绝“隐藏窗口候选覆盖可见现任”（可见候选永远放行）；任何聚焦/激活调用前必须 `window.isVisible` 防护。诊断：`NOTCHCENTER_GHOST_PROBE=1` 同时打印 `[focus]` bind/focus 决策。
-- **缩放握把的量化必须带死区、平移量必须在稳定坐标系度量**：`ResizeHysteresis.quantized` 只在连续位移越过当前档位半格边界 ± band 之外才换档；`DrawerBlockContainer.resizeGesture` 必须用 `coordinateSpace: .global`。不要改回朴素 `round()`、整数距离迟滞（无实际死区，边界抖动闪烁），也不要改回默认 `.local`——握把随预览增长平移一格时 local 平移量瞬间反跳一整格，死区吸收不了，形成逐像素自激振荡。诊断：`NOTCHCENTER_RESIZE_PROBE=1` 打开复刻管线对照页，`NOTCHCENTER_RESIZE_LOG=1` 打印真实管线事件（见 `ResizeHysteresisTests` / `ResizeProbeLog.swift`、`ResizeProbeWindow.swift`）。
+- **抽屉窗口单例不变量：任一时刻至多一个屏的抽屉在屏**：`collapse()` 的完成回调存在 0.43s 窗口（0.25s 延迟 + 0.18s 等收起动画），期间鼠标移到另一块屏触发跨屏展开会以“已重新展开”为由跳过旧屏的 `orderOut`，旧屏抽屉窗口永久残留——它与活动屏共享同一份 `uiState`，每次展开都渲染出一份一模一样的活抽屉（用户报告“新建笔记多出一块面板”的根因）。因此 `expand()`（含已展开分支）必须清扫 `hideOtherDrawers(keeping:)`，收起完成回调只保留“当前展开屏”而不是整体跳过，`syncScreens()` 移除 stale pair（NSScreen 身份在显示重配后更换，同一物理屏也会命中）时必须显式 orderOut 其两个窗口。不要把完成回调改回“捕获 pair + isExpanded 短路”。
+- **插件块内不得让隐藏窗口复活（共享状态 × 每屏一份视图树）**：宿主把同一份 block view 塞进每块屏的抽屉树，插件里按 placementID 共享的交互状态（如 NotesPlugin 的 `EditorInteractionState`）会被**所有屏的实例并发 bind**，谁最后落地谁占有 `textView`/`containerView` 引用——隐藏屏实例赢得竞态后，任何 `makeKeyAndOrderFront`（焦点、激活）都会把已收起的抽屉窗口重新拉上屏，表现为“新建笔记时另一块屏多出一块一模一样的面板”。约束：绑定入口必须拒绝“隐藏窗口候选覆盖可见现任”（可见候选永远放行）；任何聚焦/激活调用前必须 `window.isVisible` 防护。
+- **缩放握把的量化必须带死区、平移量必须在稳定坐标系度量**：`ResizeHysteresis.quantized` 只在连续位移越过当前档位半格边界 ± band 之外才换档；`DrawerBlockContainer.resizeGesture` 必须用 `coordinateSpace: .global`。不要改回朴素 `round()`、整数距离迟滞（无实际死区，边界抖动闪烁），也不要改回默认 `.local`——握把随预览增长平移一格时 local 平移量瞬间反跳一整格，死区吸收不了，形成逐像素自激振荡。
 - **拖拽推挤算法不能改回“同步 +1 行”**：`pushDownOrigins`（`previewArrangement` 的核心，缩放推挤复用同一实现）的逐块安放语义是历史 bug 的修复——旧实现让所有重叠块同步下移，相对位置不变、永不分离，靠次数上限退出并把残留重叠写盘，导致粘连块对与失控行号。改动推挤逻辑前先读 `DragReorderReproTests`；`LayoutEngine` 加载时会自动净化含重叠的损坏 layout.json，勿删除该路径。
 - **编辑模式契约：不留空行 + 缩放推挤 + 面板贴合**：所有变更（移动/移除/缩放/提交）后 `compactEmptyRows` 会闭合整行空洞（下方整体上移；行内部分留白保留，加载净化的留白保护不受影响）；`resizeDrawerBlock` 扩大遇下方块不再回退而是推挤下移，预览与提交走同一算法（所见即所得）；窗口高度经 `previewBottomRow`/`refreshAfterEdit` 随内容行数按需增减。回归见 `LayoutEngineTests` 的“编辑模式契约”一节。
 - **列双向扩大、行仅向下（originColumn 可为负）**：行始终顶边锚定只向下扩大（originRow 不变、非负）；列支持左右双向——块被拖出左侧时格网向左扩大（originColumn 变负，`validColumnRange` 保证合并后跨度 ≤ 容量），单右下握把只向右下扩大（无左右双握把）。渲染横坐标 = `(originColumn − gridLeft) × 步长`、宽高按占列跨度（`occupiedColumnRange`），面板绕刘海居中所以列扩大视觉上左右对称。预览期 `applyPreviewWindowSize` 必须把 `drawerWindowSize`/`drawerContentSize`/`drawerGridLeftColumn` 放进**同一次 withAnimation（与块推挤同帧，不等松手）**；`compactEmptyColumns` 会闭合负列空洞（左侧块向 0 右移，与右移对称）。回归见 `LayoutEngineTests` 的“编辑模式契约：列双向扩大（左扩）”一节与 `DragReorderReproTests` 的列跨度不变量。
@@ -151,7 +150,7 @@ open dist.noindex/NotchCenter.app
 ## 测试
 
 - 运行：`swift test`；单文件调试可 `swift test --filter <Name>`。
-- 覆盖：`APIVersionTests`、`StateStoreTests`（含 placementScope 实例作用域隔离）、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`OpenCodeUsageTests`（cookie 归一化 / SSR HTML 解析 / 时长短语；另有 `OpenCodeUsageAppearanceTests`：每实例外观默认值 / 容错解码 / placementStore 持久化与实例隔离，均不发真实网络请求）、`PluginServicesHookTests`（服务钩子经存在类型分发到遵守类重写的回归）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）、`EditMenuInstallerTests`（隐藏主菜单接线：标准编辑快捷键的 nil-target 条目与键等价物）、`ReadmeMarkdownTests`（插件管理窗口插件文档：Markdown 块级解析 / bundle 内 README 读取与缺失兜底）、`BlockCardTriggerTests`（浮窗触发器手势分类阈值）、`BlockPopoverTests`（浮窗几何：同心叠加窗口定位 + 屏幕可见区钳制）、`DrawerHitTestingTests`（抽屉窗口穿透 hitTest）、`IslandHitTestingTests`（活动岛窗口穿透 hitTest）、`HorizontalDragScrollTests`（横向拖动滚动钳制）、`PeakClockLogicTests`（OpenCodeUsage 峰谷倒计时逻辑）、`PomodoroEngineTests`（番茄钟状态机：阶段转移 / 随机提醒微休息 / 专注剩余冻结恢复 / 暂停跳过 / 倒计时格式）、`PomodoroConfigLogicTests`（设置净化：越界钳制 / min ≤ max / 未知音效回退）。
+- 覆盖：`APIVersionTests`、`StateStoreTests`（含 placementScope 实例作用域隔离）、`LayoutEngineTests`、`PluginManagerTests`（用纯 Info.plist fixture bundle，不加载真实代码）、`NotchGeometryTests`、`NoteStoreTests`、`FileShelfStoreTests`、`SystemSleepGuardTests`、`FileDragPasteboardTests`、`FileDropPasteboardReaderTests`、`FileDropPayloadTests`、`FileShelfSelectionTests`、`TransparentHitHostingViewTests`、`DragReorderReproTests`（随机拖拽不变量重放 / 粘连对回归 / 损坏布局自愈 / 留白保护）、`DragUnificationTests`（占位框落点 == 提交落点 / 预览 == 提交逐块严格相等）、`ResizeHysteresisTests`（缩放量化死区 / 边界抖动不翻转 / 跨档跳转 / 按下不缩小）、`DrawerGestureMathTests`（拖拽位移→格 / 缩放位移→候选跨度 / 补偿偏移）、`DrawerGridGeometryTests`（坐标互逆往返 / 容量夹紧 / 分数步长容差）、`DrawerDropPolicyTests`（落点区域判定）、`DrawerLayoutMetricsTests`（尺寸指标 / 左列约束 / 屏幕封顶）、`DrawerInteractionStateTests`（阶段迁移 / 松手顺序 / 真引擎 200 步随机拖拽预览==提交）、`DrawerStayConditionsTests`（收起守卫逐字段）、`DshPluginTests` / `CalibrePluginTests`（服务配置与 plist 模板，不触碰真实 LaunchAgent）、`OpenCodeUsageTests`（cookie 归一化 / SSR HTML 解析 / 时长短语；另有 `OpenCodeUsageAppearanceTests`：每实例外观默认值 / 容错解码 / placementStore 持久化与实例隔离，均不发真实网络请求）、`PluginServicesHookTests`（服务钩子经存在类型分发到遵守类重写的回归）、`LaunchdControlKitTests`（命令字符串构造与 plist 读写生成，不真跑 launchctl）、`EditMenuInstallerTests`（隐藏主菜单接线：标准编辑快捷键的 nil-target 条目与键等价物）、`ReadmeMarkdownTests`（插件管理窗口插件文档：Markdown 块级解析 / bundle 内 README 读取与缺失兜底）、`BlockCardTriggerTests`（浮窗触发器手势分类阈值）、`BlockPopoverTests`（浮窗几何：同心叠加窗口定位 + 屏幕可见区钳制）、`DrawerHitTestingTests`（抽屉窗口穿透 hitTest）、`IslandHitTestingTests`（活动岛窗口穿透 hitTest）、`PeakClockLogicTests`（OpenCodeUsage 峰谷倒计时逻辑）、`PomodoroEngineTests`（番茄钟状态机：阶段转移 / 随机提醒微休息 / 专注剩余冻结恢复 / 暂停跳过 / 倒计时格式）、`PomodoroConfigLogicTests`（设置净化：越界钳制 / min ≤ max / 未知音效回退）。
 - 涉及 `pmset` / 休眠的逻辑测试应确保**不真正改变系统睡眠状态**。
 - 涉及 AppKit 窗口/事件的逻辑依赖 App 运行环境，注意保持 `@MainActor` 测试隔离（`setUp`/`tearDown` 是非隔离上下文，不要在里面改 @MainActor 属性）。
 
