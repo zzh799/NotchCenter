@@ -10,6 +10,8 @@ struct MarkdownEditorPanel: View {
     let editorInteractionState: EditorInteractionState
     let activeTabID: UUID
     let size: CGSize
+    /// 只读预览副本（宿主的滑动切页过渡）：不得认领编辑器交互状态。
+    var isPreview: Bool = false
 
     private let toolbarHeight: CGFloat = 38
     private let separatorHeight: CGFloat = 1
@@ -20,7 +22,8 @@ struct MarkdownEditorPanel: View {
                 store: store,
                 imageStore: imageStore,
                 editorInteractionState: editorInteractionState,
-                activeTabID: activeTabID
+                activeTabID: activeTabID,
+                isPreview: isPreview
             )
             .frame(maxWidth: .infinity, minHeight: editorHeight, maxHeight: .infinity)
 
@@ -99,6 +102,7 @@ struct MarkdownNoteEditor: View {
     let imageStore: NotesImageStore
     let editorInteractionState: EditorInteractionState
     let activeTabID: UUID
+    var isPreview: Bool = false
     @State private var isWikiLinkActive = false
     @State private var pendingInlineReplacement: InlineReplacementRequest?
 
@@ -119,7 +123,7 @@ struct MarkdownNoteEditor: View {
                 onPasteImage: savePastedImage
             )
             .background {
-                EditorFocusBinder(state: editorInteractionState)
+                EditorFocusBinder(state: editorInteractionState, isPreview: isPreview)
             }
 
             if store.text(for: activeTabID).isEmpty {

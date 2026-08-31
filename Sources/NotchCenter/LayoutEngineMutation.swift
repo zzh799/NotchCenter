@@ -131,18 +131,91 @@ extension LayoutEngine {
         return true
     }
 
+    // MARK: 抽屉页面
+
+    /// 是否还能新增页面（封顶见 `LayoutModel.maxDrawerPageCount`）。
+    func canAddDrawerPage() -> Bool {
+        model.drawerPages.count < LayoutModel.maxDrawerPageCount
+    }
+
+    /// 在显示序列的左/右外侧新增一个空页面并返回其索引（调用方负责切换激活页）。
+    ///
+    /// 新索引按既有**权值**外侧生成（min−1 / max+1）而不是 `first`/`last`：
+    /// 数组顺序是显示次序不是升序，乱序下会撞出重复索引、把块挂到错的页上。
+    @discardableResult
+    func addDrawerPage(_ side: DrawerPageSide) -> Int {
+        let pages = model.drawerPages
+        let newPage: Int
+        var updated = pages
+        switch side {
+        case .left:
+            newPage = (pages.min() ?? 1) - 1
+            updated.insert(newPage, at: 0)
+        case .right:
+            newPage = (pages.max() ?? -1) + 1
+            updated.append(newPage)
+        }
+        model.drawerPages = LayoutModel.normalizedPages(updated)
+        saveToDisk()
+        return newPage
+    }
+
+    /// 拖动排序：把页面 `from` 放到显示序列的第 `targetIndex` 位（胶囊行里的目标
+    /// 槽位，夹紧到 0...count−1）。只改次序，块上的 `page` 一律不动。
+    @discardableResult
+    func moveDrawerPage(from: Int, to targetIndex: Int) -> Bool {
+        var pages = model.drawerPages
+        guard let source = pages.firstIndex(of: from) else { return false }
+        let target = min(max(targetIndex, 0), pages.count - 1)
+        guard target != source else { return false }
+        pages.remove(at: source)
+        pages.insert(from, at: target)
+        model.drawerPages = pages
+        saveToDisk()
+        return true
+    }
+
+    func drawerPageTitle(_ page: Int) -> String? {
+        model.drawerPageTitles[String(page)]
+    }
+
+    /// 设置页面标题；空串（或纯空白）= 清除，回落为序号。
+    func setDrawerPageTitle(page: Int, title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        model.drawerPageTitles[String(page)] = trimmed.isEmpty ? nil : trimmed
+        saveToDisk()
+    }
+
+    /// 删除页面，连页内的块一起移除并返回被删块（调用方逐个补
+    /// `placementWasRemoved`）；主页不可删。
+    ///
+    /// 块与页必须在**同一次写盘**里消失：`normalizedPages` 会收编"块引用的散页"，
+    /// 先摘页再删块会让刚删的页原样复活。
+    @discardableResult
+    func removeDrawerPage(page: Int) -> [PlacedBlock]? {
+        guard page != LayoutModel.homePage, model.drawerPages.contains(page) else {
+            return nil
+        }
+        let removed = drawerBlocks(onPage: page)
+        model.drawerBlocks.removeAll { $0.page == page }
+        model.drawerPages.removeAll { $0 == page }
+        model.drawerPageTitles[String(page)] = nil
+        saveToDisk()
+        return removed
+    }
+
     // MARK: 抽屉网格（文档 §5.3）
 
     /// 自动放置到第一个可用位置；超出最大列数后自动换行。
     /// 落位后压实空行/空列（左扩布局可能存在负列空洞）。
     @discardableResult
-    func autoPlaceDrawerBlock(pluginID: String, blockID: String) -> PlacedBlock? {
+    func autoPlaceDrawerBlock(pluginID: String, blockID: String, page: Int = 0) -> PlacedBlock? {
         guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
             return nil
         }
         let span = (block.defaultSize ?? .small).gridSpan
         let columns = effectiveMaxColumns()
-        let occupied = occupiedRects(excluding: nil)
+        let occupied = occupiedRects(page: page, excluding: nil)
 
         // 在既有行内寻找首个可用位置。
         let maxRow = occupied.map(\.maxRow).max() ?? -1
@@ -152,6 +225,7 @@ extension LayoutEngine {
                     pluginID: pluginID,
                     blockID: blockID,
                     placementID: UUID().uuidString,
+                    page: page,
                     originColumn: col,
                     originRow: row,
                     widthColumns: span.columns,
@@ -172,6 +246,7 @@ extension LayoutEngine {
             pluginID: pluginID,
             blockID: blockID,
             placementID: UUID().uuidString,
+            page: page,
             originColumn: 0,
             originRow: maxRow + 1,
             widthColumns: span.columns,
@@ -188,7 +263,13 @@ extension LayoutEngine {
     /// 落点被占/越界时按行优先扫描最近可用位置（与 `moveDrawerBlock`
     /// 同一语义）；无处可放返回 nil。行仅向下增长（row < 0 一律按 0 计）。
     @discardableResult
-    func placeDrawerBlock(pluginID: String, blockID: String, column: Int, row: Int) -> PlacedBlock? {
+    func placeDrawerBlock(
+        pluginID: String,
+        blockID: String,
+        column: Int,
+        row: Int,
+        page: Int = 0
+    ) -> PlacedBlock? {
         guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
             return nil
         }
@@ -197,6 +278,7 @@ extension LayoutEngine {
             for: span,
             preferredColumn: column,
             preferredRow: row,
+            page: page,
             excluding: nil
         ) else { return nil }
 
@@ -204,6 +286,7 @@ extension LayoutEngine {
             pluginID: pluginID,
             blockID: blockID,
             placementID: UUID().uuidString,
+            page: page,
             originColumn: origin.column,
             originRow: origin.row,
             widthColumns: span.columns,
@@ -228,11 +311,12 @@ extension LayoutEngine {
         for span: (columns: Int, rows: Int),
         preferredColumn: Int,
         preferredRow: Int,
+        page: Int,
         excluding placementID: String?
     ) -> (column: Int, row: Int)? {
-        let others = model.drawerBlocks.filter { $0.placementID != placementID }
+        let others = siblings(onPage: page, excluding: placementID)
         let bounds = validColumnRange(others: others, width: span.columns)
-        let occupied = occupiedRects(excluding: placementID)
+        let occupied = others.map(rectKey)
 
         let clampedColumn = min(max(preferredColumn, bounds.lower), bounds.upper)
         let clampedRow = max(preferredRow, 0)
@@ -289,15 +373,16 @@ extension LayoutEngine {
         saveToDisk()
     }
 
-    /// 一键重排（编辑模式）：按“从上到下、从左到右”的阅读顺序紧密排布所有抽屉块。
-    /// 以当前布局的阅读顺序为优先级，逐块放到首个不重叠位置（行优先扫描），
-    /// 消除移动/缩放留下的空洞；块身份与跨度保持不变，仅调整原点。
-    func reorderDrawerBlocks() {
-        guard !model.drawerBlocks.isEmpty else { return }
+    /// 一键重排（编辑模式）：按“从上到下、从左到右”的阅读顺序紧密排布抽屉块。
+    /// 以当前布局的阅读顺序为优先级，逐块放到首个不重叠位置（行优先
+    /// 扫描），消除移动/缩放留下的空洞；块身份与跨度保持不变，仅调整原点。
+    func reorderDrawerBlocks(page: Int = 0) {
+        let pageBlocks = drawerBlocks(onPage: page)
+        guard !pageBlocks.isEmpty else { return }
         let columns = effectiveMaxColumns()
 
         // 阅读顺序即优先级：先看行再看列（元组比较）。
-        let ordered = model.drawerBlocks.sorted {
+        let ordered = pageBlocks.sorted {
             ($0.originRow, $0.originColumn) < ($1.originRow, $1.originColumn)
         }
 
@@ -323,21 +408,27 @@ extension LayoutEngine {
             result.append(candidate)
         }
 
-        model.drawerBlocks = result
+        // 仅写回本页块，其他页块留在原数组位置。
+        let resultByID = Dictionary(uniqueKeysWithValues: result.map { ($0.placementID, $0) })
+        for index in model.drawerBlocks.indices {
+            if let replacement = resultByID[model.drawerBlocks[index].placementID] {
+                model.drawerBlocks[index] = replacement
+            }
+        }
         saveToDisk()
     }
 
-    /// 移动抽屉块到目标位置；目标被占用时移动到最近可用位置。失败（无处可放或块不存在）返回 false。
+    /// 移动抽屉块到目标位置（块只在其所在页内移动）；目标被占用时移动到最近
+    /// 可用位置。无处可放或块不存在返回 false。
     @discardableResult
     func moveDrawerBlock(placementID: String, toColumn: Int, toRow: Int) -> Bool {
         guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
             return false
         }
         let block = model.drawerBlocks[index]
-        let bounds = validColumnRange(
-            others: model.drawerBlocks.filter { $0.placementID != placementID },
-            width: block.widthColumns
-        )
+        let others = siblings(of: block)
+        let occupied = others.map(rectKey)
+        let bounds = validColumnRange(others: others, width: block.widthColumns)
         var bestTarget: PlacedBlock?
 
         // 优先目标位置（clamp 到合法列区间，左侧可为负——左扩）。
@@ -346,19 +437,19 @@ extension LayoutEngine {
         var candidate = block
         candidate.originColumn = clampedColumn
         candidate.originRow = clampedRow
-        if !overlaps(candidate, with: occupiedRects(excluding: placementID)) {
+        if !overlaps(candidate, with: occupied) {
             bestTarget = candidate
         }
 
         // 否则按行优先扫描最近可用位置。
         if bestTarget == nil {
-            let maxRow = max(model.drawerBlocks.map(\.maxRow).max() ?? 0, clampedRow)
+            let maxRow = max(others.map(\.maxRow).max() ?? 0, clampedRow)
             scan: for row in 0...maxRow + 1 {
                 for col in bounds.lower...bounds.upper {
                     var probe = block
                     probe.originColumn = col
                     probe.originRow = row
-                    if !overlaps(probe, with: occupiedRects(excluding: placementID)) {
+                    if !overlaps(probe, with: occupied) {
                         bestTarget = probe
                         break scan
                     }
@@ -405,10 +496,7 @@ extension LayoutEngine {
         resized.widthColumns = toColumns
         resized.heightRows = toRows
 
-        let bounds = validColumnRange(
-            others: model.drawerBlocks.filter { $0.placementID != placementID },
-            width: toColumns
-        )
+        let bounds = validColumnRange(others: siblings(of: block), width: toColumns)
         resized.originColumn = min(max(resized.originColumn, bounds.lower), bounds.upper)
         resized.originRow = max(resized.originRow, 0)
 

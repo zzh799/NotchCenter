@@ -78,6 +78,14 @@
 "panel.help.tidy" = "整理布局（自上而下、自左向右）";
 "panel.help.pin" = "固定抽屉常开";
 "panel.help.unpin" = "取消固定抽屉";
+"panel.help.page.addLeft" = "在左侧新增页面";
+"panel.help.page.addRight" = "在右侧新增页面";
+"panel.help.page.rename" = "重命名页面";
+"panel.help.page.delete" = "删除页面（连同页内块）";
+"panel.page.untitled" = "页面 %d";
+"panel.page.delete" = "删除页面";
+"panel.page.delete.confirmTitle" = "删除页面「%@」？";
+"panel.page.delete.confirmBody" = "该页上的 %d 个块将一并移除。";
 
 /* 面板交互提示标签 */
 

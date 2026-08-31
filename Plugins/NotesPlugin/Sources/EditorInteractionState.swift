@@ -488,6 +488,10 @@ private func describeWindow(of view: NSView?) -> String {
 
 struct EditorFocusBinder: NSViewRepresentable {
     let state: EditorInteractionState
+    /// 只读预览副本：完全不参与 bind。必须挡在 binder 侧而不是 `state.bind` 里——
+    /// bind 由 `makeNSView`/`updateNSView` 无条件异步触发，而预览层随时整层消失；
+    /// 它的 bind 一旦后落地，在屏实例的 weak `textView`/`containerView` 就成了悬空引用。
+    var isPreview: Bool = false
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
@@ -500,6 +504,7 @@ struct EditorFocusBinder: NSViewRepresentable {
     }
 
     private func bind(from view: NSView) {
+        guard !isPreview else { return }
         DispatchQueue.main.async {
             let container = view.superview
             let textView = container?.firstDescendant(ofType: NSTextView.self)

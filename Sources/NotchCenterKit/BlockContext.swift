@@ -31,6 +31,13 @@ public struct BlockLayoutInfo {
     public let isEditing: Bool
     /// 紧凑槽位下标（0/1/2）；非紧凑块为 nil。
     public let compactSlotIndex: Int?
+    /// 本实例是否只是**只读预览副本**（宿主为滑动切页等过渡临时渲染的非激活页视图）。
+    ///
+    /// 契约：为真时插件**不得**认领任何跨实例共享的交互状态或生命周期副作用——
+    /// 不绑定 textView / 不抢第一响应者 / 不写共享注册表 / 不发"我消失了"的清理
+    /// 通知。预览副本随时会整层消失，而它引用的对象可能正被屏上另一个实例使用。
+    /// 只读展示与纯本地 `@State` 不受此约束。
+    public let isPreview: Bool
 
     public init(
         region: BlockRegion,
@@ -42,7 +49,8 @@ public struct BlockLayoutInfo {
         widthColumns: Int? = nil,
         heightRows: Int? = nil,
         isEditing: Bool = false,
-        compactSlotIndex: Int? = nil
+        compactSlotIndex: Int? = nil,
+        isPreview: Bool = false
     ) {
         self.region = region
         self.placementID = placementID
@@ -54,6 +62,7 @@ public struct BlockLayoutInfo {
         self.heightRows = heightRows
         self.isEditing = isEditing
         self.compactSlotIndex = compactSlotIndex
+        self.isPreview = isPreview
     }
 }
 

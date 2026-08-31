@@ -260,6 +260,14 @@ private struct CompactBlockContainer: View {
                 .animation(.easeOut(duration: 0.12), value: isHovering)
 
             if isEditing {
+                // 手势屏蔽层：图标自身（点击展开、插件自定义手势）在编辑模式下不响应，
+                // 只保留角标按钮与容器的拖动重排——与抽屉块的压暗遮罩同一语义。
+                Color.black.opacity(0.001)
+                    .frame(width: NotchGeometry.compactSlotSize.width, height: NotchGeometry.compactSlotSize.height)
+                    .contentShape(Rectangle())
+            }
+
+            if isEditing {
                 // 编辑模式角标簇：右上角移除 + （插件有设置界面时）设置按钮，
                 // 悬在槽位外沿；先设置后移除，保持移除按钮贴最外侧角落。
                 HStack(spacing: 3) {
@@ -292,8 +300,10 @@ private struct CompactBlockContainer: View {
         .offset(x: dragOffset)
         .scaleEffect(isDragging ? 1.08 : 1)
         .shadow(color: .black.opacity(isDragging ? 0.45 : 0), radius: 6, y: 2)
-        // 仅编辑模式挂手势：`.subviews` 等价于不添加（保留子视图自身的点击）。
-        .gesture(reorderGesture, including: isEditing ? .gesture : .subviews)
+        // 编辑模式挂拖动手势：mask 必须是 `.all`——`.gesture` 会连带排除子视图手势，
+        // 角标按钮就点不动了（图标自身内容由上面的屏蔽层挡，不靠 mask）。
+        // 非编辑模式 `.subviews` 等价于不添加（保留子视图自身的点击）。
+        .gesture(reorderGesture, including: isEditing ? .all : .subviews)
     }
 
     /// 编辑模式拖动重排：位移换算成带内内容坐标 → 屏幕插入位置 → 实时让位

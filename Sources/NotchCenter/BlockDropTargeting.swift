@@ -195,7 +195,11 @@ extension NotchPanelController {
             _ = layoutEngine.addCompactBlock(pluginID: pluginID, blockID: blockID)
             refreshCompactGeometry()
         } else {
-            _ = layoutEngine.autoPlaceDrawerBlock(pluginID: pluginID, blockID: blockID)
+            _ = layoutEngine.autoPlaceDrawerBlock(
+                pluginID: pluginID,
+                blockID: blockID,
+                page: uiState.drawerActivePage
+            )
         }
         refreshAfterEdit()
     }
@@ -230,7 +234,8 @@ extension NotchPanelController {
                 pluginID: payload.pluginID,
                 blockID: payload.blockID,
                 column: column,
-                row: row
+                row: row,
+                page: uiState.drawerActivePage
             ) else { return }
             beforeRefresh?(placed.placementID)
             refreshAfterEdit()

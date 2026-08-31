@@ -9,3 +9,4 @@ dist.noindex/
 .swiftpm/
 *.xcuserdatad
 .vscode/settings.json
+nohup.out

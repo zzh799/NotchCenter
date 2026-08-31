@@ -63,6 +63,7 @@ final class NotchPanelController: NSObject {
     /// （`DrawerStayConditions`）——漏判会让揭示在中途被收起。
     var isEditEntryPending = false
     var activeMenuTrackingCount = 0
+    var drawerScrollTracker = DrawerPageScrollTracker()
     var collapseTask: DispatchWorkItem?
     /// 网格指标变化的重建合并任务（滑杆拖动逐格通知 → 停顿后重建一次）。
     var metricsRebuildTask: Task<Void, Never>?
@@ -402,7 +403,8 @@ final class NotchPanelController: NSObject {
     ) -> CGSize {
         var size = layoutEngine.drawerWindowSize(
             contentRows: previewRows,
-            contentColumns: previewColumns
+            contentColumns: previewColumns,
+            page: uiState.drawerActivePage
         )
         if let pair {
             let maxHeight = pair.screenFrame.height - 8 - pair.layout.compactHeight
@@ -450,11 +452,19 @@ final class NotchPanelController: NSObject {
         resized: (placementID: String, heightRows: Int, widthColumns: Int)? = nil
     ) {
         guard isExpanded, let pair = activePair, !origins.isEmpty else { return }
+        // 预览 origins 里的块同属一页，任取一个即可确定页面。
+        let page = origins.keys.first.flatMap { layoutEngine.page(ofPlacementID: $0) }
+            ?? uiState.drawerActivePage
         let resizedColumns = resized.map { ($0.placementID, $0.widthColumns) }
-        let columnRange = layoutEngine.previewColumnRange(origins: origins, resized: resizedColumns)
+        let columnRange = layoutEngine.previewColumnRange(
+            origins: origins,
+            resized: resizedColumns,
+            page: page
+        )
         let bottomRow = layoutEngine.previewBottomRow(
             origins: origins,
-            resized: resized.map { ($0.placementID, $0.heightRows) }
+            resized: resized.map { ($0.placementID, $0.heightRows) },
+            page: page
         )
         let metrics = DrawerLayoutMetricsResolver.pushed(
             columnRange: columnRange,
@@ -489,9 +499,10 @@ final class NotchPanelController: NSObject {
     /// `zone` 为 nil 表示回到提交布局的尺寸（拖拽取消或落位后）。
     func applyDropPreviewWindowSize(_ zone: BlockDragCoordinator.DropZone?) {
         guard isExpanded, let pair = activePair else { return }
-        let left = layoutEngine.gridLeftColumn()
-        var rows = layoutEngine.drawerContentRows()
-        var right = left + layoutEngine.occupiedColumns()
+        let activePage = uiState.drawerActivePage
+        let left = layoutEngine.gridLeftColumn(page: activePage)
+        var rows = layoutEngine.drawerContentRows(page: activePage)
+        var right = left + layoutEngine.occupiedColumns(page: activePage)
         if case let .drawer(column, row, columns, blockRows)? = zone {
             rows = max(rows, row + blockRows)
             right = max(right, column + columns)
@@ -535,9 +546,20 @@ final class NotchPanelController: NSObject {
     func drawerGridGeometry() -> DrawerGridGeometry {
         DrawerGridGeometry(
             metrics: .current,
-            leftColumn: layoutEngine.gridLeftColumn(),
+            leftColumn: layoutEngine.gridLeftColumn(page: uiState.drawerActivePage),
             capacity: layoutEngine.effectiveMaxColumns()
         )
+    }
+
+    /// 屏幕坐标是否落在**当前激活页**的任一抽屉块上：触控板横向轻扫用它让路
+    /// （块上的横向增量属于块自己——文件架滚动、编辑器选字）。
+    /// 格 → 屏幕走 `drawerScreenMapper`，与占位框、落点判定同一份换算。
+    func isPointOverDrawerBlock(_ screenPoint: NSPoint) -> Bool {
+        guard isExpanded, let pair = activePair else { return false }
+        let mapper = drawerScreenMapper(for: pair)
+        return uiState.drawerElements.contains { element in
+            mapper.screenRect(for: GridCell(element.placement)).contains(screenPoint)
+        }
     }
 
     /// 抽屉可见高度上限：屏幕高度扣掉顶部留白与岛顶紧凑带。

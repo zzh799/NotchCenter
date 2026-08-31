@@ -28,10 +28,10 @@ extension LayoutEngine {
     /// 提交布局的占用列区间：(min = 最左占用列，max = 最右占用列的右缘，
     /// exclusive)。列支持左右双向扩大——块被拖出左侧时 originColumn 可为负，
     /// 区间随内容向左/右扩展；空布局返回 (0, 0)。
-    func occupiedColumnRange() -> (min: Int, max: Int) {
+    func occupiedColumnRange(page: Int = 0) -> (min: Int, max: Int) {
         var minColumn = Int.max
         var maxColumn = Int.min
-        for block in model.drawerBlocks {
+        for block in model.drawerBlocks where block.page == page {
             minColumn = min(minColumn, block.originColumn)
             maxColumn = max(maxColumn, block.originColumn + block.widthColumns)
         }
@@ -42,22 +42,22 @@ extension LayoutEngine {
     /// 实际占用的列跨度（右缘 − 左缘，下限 1，封顶容量）：面板绕刘海居中，
     /// 宽度随跨度左右双向自适应；行仅向下增长。换行上限仍由用户设置
     /// （effectiveMaxColumns）决定。
-    func occupiedColumns() -> Int {
-        let range = occupiedColumnRange()
+    func occupiedColumns(page: Int = 0) -> Int {
+        let range = occupiedColumnRange(page: page)
         return min(max(range.max - range.min, 1), effectiveMaxColumns())
     }
 
     /// 提交布局的格网最左列（渲染偏移）：左扩为负时内容整体右移，
     /// 使块的原点从面板左缘起算仍保持连续。
-    func gridLeftColumn() -> Int {
-        occupiedColumnRange().min
+    func gridLeftColumn(page: Int = 0) -> Int {
+        occupiedColumnRange(page: page).min
     }
 
     /// 网格内容尺寸（行列都随内容自适应）。
-    func drawerContentSize() -> CGSize {
-        let rows = max(drawerContentRows(), 1)
+    func drawerContentSize(page: Int = 0) -> CGSize {
+        let rows = max(drawerContentRows(page: page), 1)
         return CGSize(
-            width: NotchGridMetrics.contentWidth(columns: occupiedColumns()),
+            width: NotchGridMetrics.contentWidth(columns: occupiedColumns(page: page)),
             height: NotchGridMetrics.contentHeight(rows: rows)
         )
     }
@@ -70,9 +70,9 @@ extension LayoutEngine {
     /// 约为左右两倍”的不一致（截图反馈修复）。
     /// `contentRows` / `contentColumns` 用于拖拽/缩放预览（按预览布局的
     /// 最低行/实际占用列临时调整）。
-    func drawerWindowSize(contentRows: Int? = nil, contentColumns: Int? = nil) -> CGSize {
-        let rows = max(contentRows ?? drawerContentRows(), 1)
-        let columns = max(contentColumns ?? occupiedColumns(), 1)
+    func drawerWindowSize(contentRows: Int? = nil, contentColumns: Int? = nil, page: Int = 0) -> CGSize {
+        let rows = max(contentRows ?? drawerContentRows(page: page), 1)
+        let columns = max(contentColumns ?? occupiedColumns(page: page), 1)
         return CGSize(
             width: NotchGridMetrics.contentWidth(columns: columns)
                 + NotchGridMetrics.contentPadding * 2,
@@ -89,10 +89,11 @@ extension LayoutEngine {
     /// 拖拽/缩放预览中块的临时位置/跨度也计入实际占用列数。
     func previewBottomRow(
         origins: [String: GridOrigin],
-        resized: (placementID: String, heightRows: Int)? = nil
+        resized: (placementID: String, heightRows: Int)? = nil,
+        page: Int = 0
     ) -> Int {
-        let committed = drawerContentRows()
-        let preview = model.drawerBlocks
+        let committed = drawerContentRows(page: page)
+        let preview = drawerBlocks(onPage: page)
             .map { block -> Int in
                 let row = origins[block.placementID]?.row ?? block.originRow
                 let height = block.placementID == resized?.placementID
@@ -104,10 +105,12 @@ extension LayoutEngine {
         return max(committed, preview, 1)
     }
 
-    /// 提交布局的占用行数（拖入落点预览要据此算「占位框 ∪ 提交布局」的
-    /// 并集行数，故放开访问控制）。
-    func drawerContentRows() -> Int {
-        let occupiedRows = model.drawerBlocks.map { $0.originRow + $0.heightRows }.max() ?? 0
+    /// 提交布局的占用行数（拖入落点预览要据此算「占位框 ∪ 提交布局」的并集
+    /// 行数，故放开访问控制）。
+    func drawerContentRows(page: Int = 0) -> Int {
+        let occupiedRows = drawerBlocks(onPage: page)
+            .map { $0.originRow + $0.heightRows }
+            .max() ?? 0
         return max(occupiedRows, 1)
     }
 
@@ -117,11 +120,12 @@ extension LayoutEngine {
     /// 向左拖出时的负列由此计入区间。
     func previewColumnRange(
         origins: [String: GridOrigin],
-        resized: (placementID: String, widthColumns: Int)? = nil
+        resized: (placementID: String, widthColumns: Int)? = nil,
+        page: Int = 0
     ) -> (min: Int, max: Int) {
         var minColumn = Int.max
         var maxColumn = Int.min
-        for block in model.drawerBlocks {
+        for block in model.drawerBlocks where block.page == page {
             let column = origins[block.placementID]?.column ?? block.originColumn
             let width = block.placementID == resized?.placementID
                 ? resized!.widthColumns
@@ -137,9 +141,10 @@ extension LayoutEngine {
     /// 取并集后按跨度计——向左扩大同样增加跨度，面板随之左右对称增宽。
     func previewOccupiedColumns(
         origins: [String: GridOrigin],
-        resized: (placementID: String, widthColumns: Int)? = nil
+        resized: (placementID: String, widthColumns: Int)? = nil,
+        page: Int = 0
     ) -> Int {
-        let range = previewColumnRange(origins: origins, resized: resized)
+        let range = previewColumnRange(origins: origins, resized: resized, page: page)
         return min(max(range.max - range.min, 1), effectiveMaxColumns())
     }
 }

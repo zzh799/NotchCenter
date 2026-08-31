@@ -22,13 +22,15 @@ extension LayoutEngine {
             return [:]
         }
         var changed = model.drawerBlocks[index]
-        let bounds = validColumnRange(
-            others: model.drawerBlocks.filter { $0.placementID != placementID },
-            width: changed.widthColumns
-        )
+        let siblings = siblings(of: changed)
+        let bounds = validColumnRange(others: siblings, width: changed.widthColumns)
         changed.originColumn = min(max(toColumn, bounds.lower), bounds.upper)
         changed.originRow = max(toRow, 0)
-        let ordered = orderedPlacementsForMove(changed, sourceRow: model.drawerBlocks[index].originRow)
+        let ordered = orderedPlacementsForMove(
+            changed,
+            sourceRow: model.drawerBlocks[index].originRow,
+            others: siblings
+        )
         return Self.placeInOrder(ordered)
     }
 
@@ -40,17 +42,16 @@ extension LayoutEngine {
     ///   大组件要拖到跨过下方块顶缘（紧邻时即自身高度的格数）才交换，而上移 1 格就换——方向偏置。
     /// - **上移/水平**：被拖块首位（抢占语义，与旧 `pushDownOrigins(changed:)`
     ///   逐位一致——上移交换与水平交换手感不变）。
+    /// `others` 必须是**被拖块所在页**的其余块。
     private func orderedPlacementsForMove(
-        _ changed: PlacedBlock, sourceRow: Int
+        _ changed: PlacedBlock, sourceRow: Int, others: [PlacedBlock]
     ) -> [PlacedBlock] {
-        let others = model.drawerBlocks
-            .filter { $0.placementID != changed.placementID }
-            .sorted(by: Self.inReadingOrder)
+        let sorted = others.sorted(by: Self.inReadingOrder)
         guard changed.originRow > sourceRow else {
-            return [changed] + others
+            return [changed] + sorted
         }
-        let before = others.filter { Self.rectsOverlap($0, changed) }
-        let after = others.filter { !Self.rectsOverlap($0, changed) }
+        let before = sorted.filter { Self.rectsOverlap($0, changed) }
+        let after = sorted.filter { !Self.rectsOverlap($0, changed) }
         return before + [changed] + after
     }
 
@@ -64,8 +65,9 @@ extension LayoutEngine {
         moving placementID: String, toColumn: Int, toRow: Int
     ) -> [String: GridOrigin] {
         let origins = previewArrangement(moving: placementID, toColumn: toColumn, toRow: toRow)
-        guard !origins.isEmpty else { return origins }
-        var blocks = model.drawerBlocks
+        // 离线压实只在本页副本上跑，否则会改到其他页块的行号。
+        guard let moved = drawerBlock(placementID: placementID) else { return origins }
+        var blocks = drawerBlocks(onPage: moved.page)
         for index in blocks.indices {
             guard let target = origins[blocks[index].placementID] else { continue }
             blocks[index].originColumn = target.column
@@ -84,31 +86,22 @@ extension LayoutEngine {
     /// ——左扩内建（向左拖出时格网随内容向左扩大），容量约束内建。供
     /// 控制器层在预览与提交前夹紧目标列，两条路径共用（所见即所得）。
     func dropTargetColumnBounds(placementID: String) -> (lower: Int, upper: Int) {
-        guard let block = model.drawerBlocks.first(where: { $0.placementID == placementID }) else {
+        guard let block = drawerBlock(placementID: placementID) else {
             return (0, 0)
         }
-        return validColumnRange(
-            others: model.drawerBlocks.filter { $0.placementID != placementID },
-            width: block.widthColumns
-        )
+        return validColumnRange(others: siblings(of: block), width: block.widthColumns)
     }
 
     /// 缩放实时预览（不落盘）：把 `placementID` 视为已改到目标跨度（原点不动，
     /// 仅按列跨度 clamp 到容量内），其余块推挤下移——上方块扩大时下方整块下移、
     /// 面板随之增高的实时依据。跨度不在 supportedSpans 内返回空。
     func previewArrangement(resizing placementID: String, toColumns: Int, toRows: Int) -> [String: GridOrigin] {
-        guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
-            return [:]
-        }
-        var changed = model.drawerBlocks[index]
-        guard let definition = blockResolver(changed.pluginID, changed.blockID),
+        guard var changed = drawerBlock(placementID: placementID),
+              let definition = blockResolver(changed.pluginID, changed.blockID),
               definition.supportedSpans.contains(GridSpan(columns: toColumns, rows: toRows)) else {
             return [:]
         }
-        let bounds = validColumnRange(
-            others: model.drawerBlocks.filter { $0.placementID != placementID },
-            width: toColumns
-        )
+        let bounds = validColumnRange(others: siblings(of: changed), width: toColumns)
         changed.widthColumns = toColumns
         changed.heightRows = toRows
         changed.originColumn = min(max(changed.originColumn, bounds.lower), bounds.upper)
@@ -142,9 +135,7 @@ extension LayoutEngine {
     /// （模块内私有：拆分后供修改路径与预览算法跨文件协作，勿对外使用；
     /// 上方语义说明受 AGENTS.md 保护，改动推挤逻辑前先读 DragReorderReproTests。）
     func pushDownOrigins(changed: PlacedBlock) -> [String: GridOrigin] {
-        let orderedOthers = model.drawerBlocks
-            .filter { $0.placementID != changed.placementID }
-            .sorted(by: Self.inReadingOrder)
+        let orderedOthers = siblings(of: changed).sorted(by: Self.inReadingOrder)
         return Self.placeInOrder([changed] + orderedOthers)
     }
 
@@ -189,10 +180,7 @@ extension LayoutEngine {
         for index in model.drawerBlocks.indices {
             let block = model.drawerBlocks[index]
             guard let target = origins[block.placementID] else { continue }
-            let bounds = validColumnRange(
-                others: model.drawerBlocks.filter { $0.placementID != block.placementID },
-                width: block.widthColumns
-            )
+            let bounds = validColumnRange(others: siblings(of: block), width: block.widthColumns)
             model.drawerBlocks[index].originColumn = min(max(target.column, bounds.lower), bounds.upper)
             model.drawerBlocks[index].originRow = max(target.row, 0)
         }

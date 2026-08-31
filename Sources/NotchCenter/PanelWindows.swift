@@ -7,6 +7,9 @@ import SwiftUI
 class NotchPanel: NSPanel {
     var onMouseEvent: ((NSEvent) -> Void)?
     var onEscape: (() -> Void)?
+    /// 滚轮/触控板事件转发（只有抽屉面板会接，见 `wirePairEvents`）。
+    /// 窗口只负责送达，判定与切页都在控制器里——它才知道页宽、块矩形与守卫。
+    var onScrollEvent: ((NSEvent) -> Void)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -26,6 +29,10 @@ class NotchPanel: NSPanel {
 
         if event.type == .leftMouseDown || event.type == .leftMouseDragged || event.type == .leftMouseUp {
             onMouseEvent?(event)
+        }
+        // 只观察不消费：块浮窗、笔记编辑器、文件架都要靠这些事件。
+        if event.type == .scrollWheel {
+            onScrollEvent?(event)
         }
 
         super.sendEvent(event)

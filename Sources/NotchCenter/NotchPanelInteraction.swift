@@ -21,6 +21,10 @@ extension NotchPanelController {
             pair?.drawerPanel.makeKeyAndOrderFront(nil)
         }
 
+        pair.drawerPanel.onScrollEvent = { [weak self] event in
+            self?.handleDrawerScroll(event)
+        }
+
         pair.hotPanel.onEscape = { [weak self] in self?.collapse(animated: true) }
         pair.drawerPanel.onEscape = { [weak self] in self?.collapse(animated: true) }
     }

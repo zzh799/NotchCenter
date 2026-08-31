@@ -40,7 +40,8 @@ import SwiftUI
                     editorInteractionState: NotesModel.shared.editorState(for: context.placementID),
                     placementID: context.placementID,
                     gridRow: context.layoutInfo.originRow ?? 0,
-                    gridHeightRows: context.layoutInfo.heightRows ?? 1
+                    gridHeightRows: context.layoutInfo.heightRows ?? 1,
+                    isPreview: context.layoutInfo.isPreview
                 ))
             }
         )

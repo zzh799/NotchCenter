@@ -114,10 +114,17 @@ extension NotchPanelController {
             self.uiState.showsClickModeHint = self.settingsStore.triggerMode == .click
             self.uiState.compactElements = self.buildCompactElements(layout: contextLayout)
 
-            self.uiState.drawerContentSize = self.layoutEngine.drawerContentSize()
-            self.uiState.drawerGridLeftColumn = self.layoutEngine.gridLeftColumn()
+            // 页面集合/几何/块元素一律按激活页计算。
+            let activePage = self.uiState.drawerActivePage
+            self.uiState.drawerPages = self.layoutEngine.drawerPages
+            self.uiState.drawerPageTitles = self.layoutEngine.drawerPageTitles
+            self.uiState.drawerContentSize = self.layoutEngine.drawerContentSize(page: activePage)
+            self.uiState.drawerGridLeftColumn = self.layoutEngine.gridLeftColumn(page: activePage)
             self.uiState.drawerWindowSize = self.drawerWindowSize(for: self.activePair ?? self.pairs.first)
             self.uiState.drawerElements = self.buildDrawerElements()
+            // 内容重建即几何已变，半截滑入层不得残留（收起 / 进入编辑 /
+            // 增删块等路径共用这一处兜底；提交切页时它本就先被清掉）。
+            self.uiState.drawerSwipe = nil
         }
         if animated {
             withAnimation(DrawerAnimation.spring) {
@@ -255,8 +262,13 @@ extension NotchPanelController {
         }
     }
 
-    private func buildDrawerElements() -> [DrawerElement] {
-        layoutEngine.drawerBlocks.compactMap { placement in
+    /// 构建某页的抽屉块元素；`isPreview` 原样透传给插件（契约见 `BlockLayoutInfo.isPreview`）。
+    private func buildDrawerElements(
+        page: Int? = nil,
+        isPreview: Bool = false
+    ) -> [DrawerElement] {
+        let targetPage = page ?? uiState.drawerActivePage
+        return layoutEngine.drawerBlocks(onPage: targetPage).compactMap { placement in
             guard let entry = pluginManager.entry(for: placement.pluginID),
                   entry.isEnabled,
                   let block = pluginManager.block(pluginID: placement.pluginID, blockID: placement.blockID),
@@ -281,7 +293,8 @@ extension NotchPanelController {
                     originRow: placement.originRow,
                     widthColumns: placement.widthColumns,
                     heightRows: placement.heightRows,
-                    isEditing: isEditing
+                    isEditing: isEditing,
+                    isPreview: isPreview
                 )
             )
             return DrawerElement(
@@ -387,10 +400,269 @@ extension NotchPanelController {
                 )
             },
             onReorderBlocks: { [weak self] in
-                self?.layoutEngine.reorderDrawerBlocks()
+                self?.layoutEngine.reorderDrawerBlocks(page: self?.uiState.drawerActivePage ?? 0)
                 self?.refreshAfterEdit()
+            },
+            onSelectPage: { [weak self] page in
+                self?.selectDrawerPage(page)
+            },
+            onAddPage: { [weak self] side in
+                self?.addDrawerPage(side)
+            },
+            onMovePage: { [weak self] page, targetIndex in
+                self?.moveDrawerPage(from: page, to: targetIndex)
+            },
+            onRenamePage: { [weak self] page, title in
+                self?.renameDrawerPage(page, title: title)
+            },
+            onRemovePage: { [weak self] page in
+                self?.removeDrawerPage(page)
+            },
+            onSwipeDrag: { [weak self] translation in
+                self?.drawerSwipeDrag(translation: translation)
+            },
+            onSwipeDragEnded: { [weak self] translation in
+                self?.drawerSwipeDragEnded(translation: translation)
             }
         )
+    }
+
+    // MARK: 抽屉页面
+
+    /// 切页是否安全（分页胶囊与左右滑动共用）：切页会整屏换掉抽屉内容，
+    /// 而落位飞行、跨窗口拖拽与设置面板的落点预览都按**当前页**计算，
+    /// 中途换页会让它们把结果写到错的页上。
+    private var canSwitchDrawerPage: Bool {
+        isExpanded
+            && !isEditEntryPending
+            && uiState.dropPreview == nil
+            && !BlockDragCoordinator.shared.isDragging
+            && activeMenuTrackingCount == 0
+    }
+
+    /// 切换激活页（带 spring 重建，面板尺寸随新页内容自适应）。
+    func selectDrawerPage(_ page: Int) {
+        guard canSwitchDrawerPage,
+              page != uiState.drawerActivePage,
+              layoutEngine.drawerPages.contains(page) else { return }
+        uiState.drawerActivePage = page
+        rebuildContent(animated: true)
+    }
+
+    /// 滑动切页是否可用：`canSwitchDrawerPage` 之外再排除编辑模式（块的
+    /// 拖拽/缩放预览按激活页计算，中途切页会把预览提交到错的页上，编辑期
+    /// 仍以分页胶囊切页）与落位拍（滑到位动画只有唯一一个 offset 可写）。
+    private var canSwipeDrawerPage: Bool {
+        !uiState.isEditing && canSwitchDrawerPage && uiState.drawerSwipe?.isLanding != true
+    }
+
+    /// 位移上限 = 当前页宽（滑到刚好覆盖整页）。
+    private var drawerSwipeLimit: CGFloat { max(uiState.drawerContentSize.width, 1) }
+
+    func handleDrawerScroll(_ event: NSEvent) {
+        let phase = event.phase
+        // 过滤：非精确增量是鼠标滚轮（只有纵向）；惯性尾巴足以再翻一页；
+        // `.mayBegin` 试探事件不喂（随后的 `.began` 会重置，喂了能一次翻两页）。
+        // 坑：`momentumPhase.isEmpty` 不能写成 `== .none`——`NSEvent.MomentumPhase`
+        // 没有 `none` 成员，`.none` 会被解析成 `Optional.none` 再隐式提升比较，
+        // 恒为 false（真机上表现为横向轻扫全部失效）。
+        guard event.hasPreciseScrollingDeltas, event.momentumPhase.isEmpty,
+              !phase.contains(.mayBegin), canSwipeDrawerPage else { return }
+
+        let limit = drawerSwipeLimit
+        // 光标落在块上时让路：横向增量属于块自己（文件架横向滚动、编辑器选字）。
+        // 判据走格网几何——实测 SwiftUI 的 ScrollView 在 AppKit 命中链上拿不到
+        // `NSScrollView`，"文档视图宽于视口"那条例外从未命中。
+        if let window = event.window,
+           isPointOverDrawerBlock(window.convertPoint(toScreen: event.locationInWindow)) {
+            drawerScrollTracker.reset()
+            endDrawerSwipe(commit: false)
+            return
+        }
+        if let frame = drawerScrollTracker.feed(
+            deltaX: event.scrollingDeltaX,
+            deltaY: event.scrollingDeltaY,
+            phase: phase,
+            at: event.timestamp,
+            limit: limit
+        ) {
+            beginDrawerSwipe(frame.side)
+            updateDrawerSwipe(offset: frame.offset)
+            if frame.commits { endDrawerSwipe(commit: true) }
+        }
+        if phase.contains(.ended) || phase.contains(.cancelled) {
+            endDrawerSwipe(commit: drawerScrollTracker.finish(at: event.timestamp, limit: limit) != nil)
+        }
+    }
+
+    /// 拖拽通路（视图侧背景手势）的跟手帧。
+    func drawerSwipeDrag(translation: CGSize) {
+        guard let side = DrawerPageSwipe.side(
+            for: translation,
+            threshold: DrawerPageSwipe.dragMinDistance
+        ) else { return }
+        beginDrawerSwipe(side)
+        updateDrawerSwipe(offset: DrawerPageSwipe.offset(
+            translation: translation.width,
+            limit: drawerSwipeLimit
+        ))
+    }
+
+    /// 拖拽通路：松手定夺（过阈值落位，否则弹回）。
+    func drawerSwipeDragEnded(translation: CGSize) {
+        let offset = DrawerPageSwipe.offset(translation: translation.width, limit: drawerSwipeLimit)
+        endDrawerSwipe(commit: DrawerPageSwipe.shouldCommit(offset: offset, limit: drawerSwipeLimit))
+    }
+
+    /// 开始／维持一次滑动会话。目标页的只读预览副本（`isPreview` = true）只在
+    /// 首次进入时构建并缓存进会话——每帧重建会让插件视图反复出现消失，
+    /// 编辑器与选区状态首帧就废。
+    func beginDrawerSwipe(_ side: DrawerPageSide) {
+        guard uiState.drawerSwipe?.side != side else { return }
+        // 上一次提交的滑到位动画还在跑：本次手势整个忽略（不能走下面的
+        // else 分支，那会把正在滑入的会话层清掉，表现为半路凭空消失）。
+        guard uiState.drawerSwipe?.isLanding != true else { return }
+        guard canSwipeDrawerPage,
+              let target = LayoutModel.neighborPage(
+                  in: uiState.drawerPages,
+                  active: uiState.drawerActivePage,
+                  side: side
+              ) else {
+            uiState.drawerSwipe = nil
+            return
+        }
+        let targetSize = layoutEngine.drawerContentSize(page: target)
+        uiState.drawerSwipe = PanelUIState.DrawerSwipe(
+            side: side,
+            targetPage: target,
+            elements: buildDrawerElements(page: target, isPreview: true),
+            contentSize: targetSize,
+            leftColumn: layoutEngine.gridLeftColumn(page: target),
+            gap: DrawerPageSwipe.gap(
+                side: side,
+                gridWidth: uiState.drawerContentSize.width,
+                targetWidth: targetSize.width
+            ),
+            offset: 0
+        )
+    }
+
+    /// 跟手位移（**不加动画**：加了就变成"追赶手指"）。
+    func updateDrawerSwipe(offset: CGFloat) {
+        guard var swipe = uiState.drawerSwipe, !swipe.isLanding, swipe.offset != offset else { return }
+        swipe.offset = offset
+        uiState.drawerSwipe = swipe
+    }
+
+    /// 结束会话。不提交：位移弹回，回弹动画结束后再撤层。
+    /// 提交：**分两拍**——先把两层刚性滑到位（预览层落到 x=0 全覆盖）才换页。
+    /// 绝不能在松手那一帧就撤层 + `selectDrawerPage`：那会把撤层、位移归零与
+    /// 换页全挤进同一条 spring，真机上表现为目标页原地淡出、新页再反向滑一遍。
+    func endDrawerSwipe(commit: Bool) {
+        guard let swipe = uiState.drawerSwipe, !swipe.isLanding else { return }
+        guard commit else {
+            withAnimation(DrawerAnimation.spring, completionCriteria: .logicallyComplete) {
+                updateDrawerSwipe(offset: 0)
+            } completion: { [weak self] in
+                // 期间可能已经开始下一次手势或整层被重建清掉——只清属于本次会话、
+                // 且位移确实已归零的那份（否则会把刚被重新推开的滑动凭空撤掉）。
+                guard self?.uiState.drawerSwipe?.targetPage == swipe.targetPage,
+                      self?.uiState.drawerSwipe?.offset == 0 else { return }
+                self?.uiState.drawerSwipe = nil
+            }
+            return
+        }
+        var landing = swipe
+        landing.isLanding = true
+        withAnimation(DrawerAnimation.spring, completionCriteria: .logicallyComplete) {
+            landing.offset = DrawerPageSwipe.arrivalOffset(gap: swipe.gap)
+            self.uiState.drawerSwipe = landing
+        } completion: { [weak self] in
+            self?.landDrawerSwipe(landing)
+        }
+    }
+
+    /// 落位第二拍：换页与撤层**都不加动画**，靠像素重合藏住交接（网格已是目标页
+    /// 真实例，预览层恰好落在 x=0）。视图侧据此在会话挂载期关掉换页淡入（见
+    /// `DrawerPanelView.grid`）。尺寸必须留到下一拍：这一帧动它会把整帧变成动画帧。
+    private func landDrawerSwipe(_ session: PanelUIState.DrawerSwipe) {
+        guard uiState.drawerSwipe?.isLanding == true,
+              uiState.drawerSwipe?.targetPage == session.targetPage else { return }
+        guard session.targetPage != uiState.drawerActivePage else {
+            uiState.drawerSwipe = nil
+            return
+        }
+        uiState.drawerActivePage = session.targetPage
+        uiState.drawerGridLeftColumn = session.leftColumn
+        uiState.drawerElements = buildDrawerElements(page: session.targetPage)
+        var landed = session
+        landed.offset = 0
+        uiState.drawerSwipe = landed
+        DispatchQueue.main.async { [weak self] in
+            // 尺寸换成新页（同一条 spring）并撤掉预览层——此时它已在屏外，撤层不可见。
+            self?.rebuildContent(animated: true)
+        }
+    }
+
+    /// 新增页面并切换过去（胶囊行首/行尾的加号）。
+    func addDrawerPage(_ side: DrawerPageSide) {
+        guard layoutEngine.canAddDrawerPage() else { return }
+        let page = layoutEngine.addDrawerPage(side)
+        uiState.drawerActivePage = page
+        rebuildContent(animated: true)
+    }
+
+    /// 拖动排序：把页面移到显示序列的目标槽位。只改次序，块上的 `page` 不动。
+    func moveDrawerPage(from page: Int, to targetIndex: Int) {
+        guard layoutEngine.moveDrawerPage(from: page, to: targetIndex) else { return }
+        rebuildContent(animated: true)
+    }
+
+    /// 重命名页面（空串 = 清除自定义名，回落为序号）。
+    func renameDrawerPage(_ page: Int, title: String) {
+        layoutEngine.setDrawerPageTitle(page: page, title: title)
+        rebuildContent()
+    }
+
+    /// 删除页面：连同页内的块一起移除。块里可能装着用户的笔记内容，
+    /// 因此非空页先二次确认（与插件卸载同一套确认样式）。
+    func removeDrawerPage(_ page: Int) {
+        let pages = layoutEngine.drawerPages
+        guard page != LayoutModel.homePage, pages.contains(page) else { return }
+        let blocks = layoutEngine.drawerBlocks(onPage: page)
+        // 锚定在该页某块上的设置浮窗先收场（与删单个块同一路径）。
+        SettingPopover.shared.dismiss()
+        if !blocks.isEmpty, !confirmDeletePage(page, blockCount: blocks.count) { return }
+
+        for block in blocks {
+            notifyPlacementRemoved(
+                pluginID: block.pluginID,
+                blockID: block.blockID,
+                placementID: block.placementID
+            )
+        }
+        // 删页前的相邻页即回落脚：右邻优先，最右页则回落左邻。
+        let fallback = LayoutModel.neighborPage(in: pages, active: page, side: .right)
+            ?? LayoutModel.neighborPage(in: pages, active: page, side: .left)
+            ?? LayoutModel.homePage
+        guard layoutEngine.removeDrawerPage(page: page) != nil else { return }
+        if uiState.drawerActivePage == page {
+            uiState.drawerActivePage = fallback
+        }
+        rebuildContent(animated: true)
+    }
+
+    private func confirmDeletePage(_ page: Int, blockCount: Int) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = LF(
+            "panel.page.delete.confirmTitle",
+            LayoutModel.pageDisplayName(in: layoutEngine.drawerPages, page: page, titles: layoutEngine.drawerPageTitles)
+        )
+        alert.informativeText = LF("panel.page.delete.confirmBody", blockCount)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L("panel.page.delete"))
+        alert.addButton(withTitle: L("common.cancel"))
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     /// 抽屉拖拽 / 缩放与引擎之间的接口（由 `DrawerInteractionState` 驱动）。

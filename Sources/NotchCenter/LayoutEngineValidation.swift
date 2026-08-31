@@ -11,12 +11,17 @@ extension LayoutEngine {
             issues.append(.schemaVersionMismatch(model.schemaVersion))
         }
 
-        let gridMinColumn = model.drawerBlocks.map(\.originColumn).min() ?? 0
+        // 重叠与越界只按同页块判定。
+        let gridMinColumnByPage = Dictionary(
+            grouping: model.drawerBlocks, by: \.page
+        ).mapValues { $0.map(\.originColumn).min() ?? 0 }
         for (index, block) in model.drawerBlocks.enumerated() {
-            for other in model.drawerBlocks.dropFirst(index + 1) where Self.rectsOverlap(block, other) {
+            for other in model.drawerBlocks.dropFirst(index + 1)
+            where other.page == block.page && Self.rectsOverlap(block, other) {
                 issues.append(.overlap(first: block.placementID, second: other.placementID))
             }
             let columns = effectiveMaxColumns()
+            let gridMinColumn = gridMinColumnByPage[block.page] ?? 0
             // 列双向扩大：originColumn 可以为负（左侧拖出自动左扩），
             // 越界只看合并后的列跨度是否超过容量；行仍仅向下（非负）。
             if block.originRow < 0

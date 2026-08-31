@@ -10,24 +10,24 @@ extension LayoutEngine {
     /// （含用户刻意留白）不受影响。块顺序与列位置保持不变。
     /// （原为类内 `private static`，拆分后供 init 跨文件调用，模块内可见。）
     static func sanitized(_ model: LayoutModel) -> LayoutModel {
-        var blocks = model.drawerBlocks
+        let result = perPage(model.drawerBlocks) { sanitizedPage($0) }
+        guard result.changed else { return model }
+        var updated = model
+        updated.drawerBlocks = result.blocks
+        return updated
+    }
+
+    /// 单页净化：仅在检出重叠时去重叠并向上压实，否则原样返回。
+    private static func sanitizedPage(_ blocks: [PlacedBlock]) -> (blocks: [PlacedBlock], changed: Bool) {
         let hasOverlap = blocks.indices.contains { i in
             blocks[(i + 1)...].contains { rectsOverlap(blocks[i], $0) }
         }
-        guard hasOverlap else { return model }
+        guard hasOverlap else { return (blocks, false) }
 
         // 去重叠：按（行,列）顺序逐块安放，重叠则下移（与拖拽推挤同语义）。
         // 附 placementID 决胜保证同格粘连对的相对顺序跨启动稳定。
-        func ordered(_ list: [PlacedBlock]) -> [PlacedBlock] {
-            list.sorted { lhs, rhs in
-                if lhs.originRow != rhs.originRow { return lhs.originRow < rhs.originRow }
-                if lhs.originColumn != rhs.originColumn { return lhs.originColumn < rhs.originColumn }
-                return lhs.placementID < rhs.placementID
-            }
-        }
-
         var placed: [PlacedBlock] = []
-        for var block in ordered(blocks) {
+        for var block in blocks.sorted(by: inReadingOrder) {
             while placed.contains(where: { rectsOverlap(block, $0) }) {
                 block.originRow += 1
             }
@@ -37,7 +37,7 @@ extension LayoutEngine {
         // 向上压实：仍按（行,列）顺序，把每块上移到列不变且不与已放置块重叠的
         // 最高位置，消除历史失控行号造成的巨大空洞。
         var settled: [PlacedBlock] = []
-        for block in ordered(placed) {
+        for block in placed.sorted(by: inReadingOrder) {
             var candidate = block
             while candidate.originRow > 0 {
                 var probe = candidate
@@ -50,8 +50,6 @@ extension LayoutEngine {
 
         // 恢复原始数组顺序（placementID 不变，仅修正坐标）。
         let originByID = Dictionary(uniqueKeysWithValues: settled.map { ($0.placementID, $0) })
-        var result = model
-        result.drawerBlocks = blocks.map { originByID[$0.placementID] ?? $0 }
-        return result
+        return (blocks.map { originByID[$0.placementID] ?? $0 }, true)
     }
 }

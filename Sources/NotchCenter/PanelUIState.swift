@@ -41,6 +41,34 @@ final class PanelUIState: ObservableObject {
     @Published var drawerGridLeftColumn = 0
     @Published var drawerElements: [DrawerElement] = []
 
+    /// 页面显示序列 / 自定义标题：layout.json 的镜像，经 `rebuildContent` 同步。
+    /// 激活页是运行时状态，不落盘。
+    @Published var drawerPages: [Int] = [0]
+    @Published var drawerActivePage = 0
+    @Published var drawerPageTitles: [String: String] = [:]
+
+    /// 一次左右滑动会话（非空 = 正在滑动，目标页正从侧面滑入）。
+    /// 跟手期间只有 `offset` 在动，**不得**改 `drawerWindowSize`/`drawerElements`
+    /// ——尺寸真源仍然只有 `rebuildContent` 一条通道。
+    @Published var drawerSwipe: DrawerSwipe?
+
+    /// 滑动会话快照：`elements` 是目标页的只读预览副本（`BlockLayoutInfo.isPreview`）。
+    struct DrawerSwipe {
+        let side: DrawerPageSide
+        let targetPage: Int
+        let elements: [DrawerElement]
+        let contentSize: CGSize
+        /// 目标页格网最左列，与 `drawerGridLeftColumn` 同义。
+        let leftColumn: Int
+        /// 预览层与网格层的带符号相邻间距（`DrawerPageSwipe.gap`，会话期冻结）。
+        let gap: CGFloat
+        /// 已进入落位拍（滑到位动画进行中，预览层即将全覆盖）：位移由动画驱动，
+        /// 不得再接新手势/拖拽帧，否则落位与跟手会抢同一个 offset。
+        var isLanding = false
+        /// 当前位移（pt，带符号；与手指同向）。
+        var offset: CGFloat
+    }
+
     /// 从设置面板拖拽组件时的落点预览（抽屉网格虚线占位 / 快速区插入指示）。
     /// 仅在拖拽会话期间非空，由 `BlockDragCoordinator` 经控制器写入。
     @Published var dropPreview: DropPreview?

@@ -66,6 +66,11 @@ final class LayoutEngine: ObservableObject {
             // 归一化只在这里兜底）：剥除空槽、闭合空隙——数组长度即
             // 图标数，宽度随其伸缩。
             loaded.compactSlots = LayoutModel.normalizedCompactSlots(loaded.compactSlots)
+            // 页面集合兜底：收编块引用的散页（手改 JSON）。
+            loaded.drawerPages = LayoutModel.normalizedPages(
+                loaded.drawerPages,
+                blockPages: loaded.drawerBlocks.map(\.page)
+            )
             model = loaded
             didLoadFromDisk = true
         } else {
@@ -87,6 +92,32 @@ final class LayoutEngine: ObservableObject {
 
     var drawerBlocks: [PlacedBlock] {
         model.drawerBlocks
+    }
+
+    func drawerBlocks(onPage page: Int) -> [PlacedBlock] {
+        model.drawerBlocks.filter { $0.page == page }
+    }
+
+    /// 抽屉页面显示序列（顺序即顶栏胶囊次序，见 `LayoutModel.drawerPages`）。
+    var drawerPages: [Int] {
+        model.drawerPages
+    }
+
+    var drawerPageTitles: [String: String] {
+        model.drawerPageTitles
+    }
+
+    func page(ofPlacementID placementID: String) -> Int? {
+        model.drawerBlocks.first { $0.placementID == placementID }?.page
+    }
+
+    /// 页内隔离的统一取法：`page` 页内、排除 `placementID` 的其余块。
+    func siblings(onPage page: Int, excluding placementID: String?) -> [PlacedBlock] {
+        model.drawerBlocks.filter { $0.page == page && $0.placementID != placementID }
+    }
+
+    func siblings(of block: PlacedBlock) -> [PlacedBlock] {
+        siblings(onPage: block.page, excluding: block.placementID)
     }
 
     var userMaxColumns: Int {
@@ -129,10 +160,8 @@ final class LayoutEngine: ObservableObject {
         let maxRow: Int
     }
 
-    func occupiedRects(excluding placementID: String?) -> [RectKey] {
-        model.drawerBlocks
-            .filter { $0.placementID != placementID }
-            .map(rectKey)
+    func occupiedRects(page: Int, excluding placementID: String?) -> [RectKey] {
+        siblings(onPage: page, excluding: placementID).map(rectKey)
     }
 
     func rectKey(_ block: PlacedBlock) -> RectKey {

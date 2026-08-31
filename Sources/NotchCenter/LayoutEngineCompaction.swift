@@ -72,19 +72,38 @@ extension LayoutEngine {
         return (blocks, changed)
     }
 
-    /// 垂直压实（实例转发）：压实 `model.drawerBlocks` 并写回。
+    /// 垂直压实（实例转发）：按页分组闭合行空洞并写回。
     @discardableResult
     func compactEmptyRows() -> Bool {
-        let result = Self.compactEmptyRows(model.drawerBlocks)
+        let result = Self.perPage(model.drawerBlocks) { Self.compactEmptyRows($0) }
         model.drawerBlocks = result.blocks
         return result.changed
     }
 
-    /// 水平压实（实例转发）：压实 `model.drawerBlocks` 并写回。
+    /// 水平压实（实例转发）：按页分组闭合列空洞并写回。
     @discardableResult
     func compactEmptyColumns() -> Bool {
-        let result = Self.compactEmptyColumns(model.drawerBlocks)
+        let result = Self.perPage(model.drawerBlocks, Self.compactEmptyColumns(_:))
         model.drawerBlocks = result.blocks
         return result.changed
+    }
+
+    /// 按页分组套用纯函数（页内隔离的共用机制），结果按原数组位置写回——
+    /// 数组顺序影响视图 ForEach 稳定性，不得重排。
+    static func perPage(
+        _ blocks: [PlacedBlock],
+        _ transform: ([PlacedBlock]) -> (blocks: [PlacedBlock], changed: Bool)
+    ) -> (blocks: [PlacedBlock], changed: Bool) {
+        var result = blocks
+        var changed = false
+        for page in Set(blocks.map(\.page)) {
+            let indices = blocks.indices.filter { blocks[$0].page == page }
+            let pageResult = transform(indices.map { blocks[$0] })
+            changed = changed || pageResult.changed
+            for (offset, index) in indices.enumerated() {
+                result[index] = pageResult.blocks[offset]
+            }
+        }
+        return (result, changed)
     }
 }
