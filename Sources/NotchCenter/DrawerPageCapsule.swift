@@ -19,6 +19,8 @@ enum DrawerPagePillLayout {
     static let badgeSide: CGFloat = 12
     /// 就地重命名时编辑框宽度：34pt 装不下几个字，让它向两侧探出邻位。
     static let editorWidth: CGFloat = 68
+    /// 按压位移超过该值才认定是拖动（否则视同点击切页）。
+    static let dragPickupDistance: CGFloat = 4
 
     static var step: CGFloat { pillWidth + pillSpacing }
 
@@ -53,7 +55,8 @@ enum DrawerPagePillLayout {
 ///   主页无标题时画房子图标。
 /// - 编辑模式悬停胶囊：左上铅笔（就地重命名）、右上删除（连页内块，
 ///   非空页由控制器二次确认）；主页不给删除，横向可拖动排序。
-/// - 与紧凑带图标同一门禁：非编辑模式 `including: .subviews` 等价于不挂手势。
+/// - 点击与拖动共用一条按压机势（见 `DrawerPagePill.pressGesture`）：非编辑模式
+///   只认点击，越阈的横向位移不会被判成拖动。
 struct DrawerPageCapsule: View {
     let pages: [Int]
     let titles: [String: String]
@@ -82,8 +85,10 @@ struct DrawerPageCapsule: View {
             addButton(.right)
         }
         .frame(height: DrawerPagePillLayout.rowHeight)
-        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: draggedPage)
-        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: targetIndex)
+        // 行上不得挂 `.animation(value:)`：`targetIndex` 每越过半格边界变一次，
+        // 行级隐式动画会把同一帧里被拖胶囊的跟手位移一起 spring 化，胶囊就成了
+        // "追赶光标"（与 `updateDrawerSwipe` 的"跟手不加动画"同源）。让位动画
+        // 由各胶囊自己的 `.animation(value: shift)` 负责。
     }
 
     // MARK: 胶囊
@@ -119,8 +124,13 @@ struct DrawerPageCapsule: View {
                 // 先提交（内容重建到新顺序）再清预览：反了会先跳回旧顺序、
                 // 再动画到新位置，肉眼是一次回弹。
                 onMove(page, target)
-                draggedPage = nil
-                targetIndex = nil
+                // 清预览必须显式带上与换序同一条 spring：基座位移动画来自
+                // `rebuildContent(animated:)`，而 `shift → 0` 是这次写入触发的，
+                // 两者不同曲线就会在松手帧错开一整格。
+                withAnimation(DrawerAnimation.spring) {
+                    draggedPage = nil
+                    targetIndex = nil
+                }
             },
             onRename: { title in onRename(page, title) },
             onRemove: { onRemove(page) }
@@ -188,44 +198,56 @@ private struct DrawerPagePill: View {
     /// 编辑模式、且不在重命名中才允许拖动（重命名期手势要让位给文本选择）。
     private var canDrag: Bool { isEditing && !isRenaming }
 
+    // TEMP(拖动诊断)：渲染期把 offset 的实际取值打出来，判定 isDragging 是否逐事件翻转。
+    private var loggedOffset: CGFloat {
+        let x = CGFloat(shift) * DrawerPagePillLayout.step + (isDragging ? dragOffset : 0)
+        NSLog(
+            "[pillOffset] page=\(page) slot=\(slot) shift=\(shift) dragging=\(isDragging) drag=\(dragOffset) x=\(x)"
+        )
+        return x
+    }
+
     var body: some View {
         ZStack {
             if isRenaming {
                 editor
             } else {
-                button
+                pressSurface
             }
         }
+        // TEMP(拖动诊断)：身份若被重建，这里会在一次拖动里反复出现。
+        .onAppear { NSLog("[pillLife] appear page=\(page) slot=\(slot)") }
+        .onDisappear { NSLog("[pillLife] disappear page=\(page) slot=\(slot)") }
         .frame(width: DrawerPagePillLayout.pillWidth, height: DrawerPagePillLayout.rowHeight)
         .overlay(alignment: .top) { badgeCluster }
         // 让位平移 + 跟手位移都只作用在渲染层（布局槽位始终钉死在原位）。
-        .offset(
-            x: CGFloat(shift) * DrawerPagePillLayout.step
-                + (isDragging ? dragOffset : 0)
-        )
+        .offset(x: loggedOffset)
         .scaleEffect(isDragging ? 1.06 : 1)
         .shadow(color: .black.opacity(isDragging ? 0.45 : 0), radius: 6, y: 2)
         .animation(.easeOut(duration: 0.12), value: isHovering)
         .animation(.easeOut(duration: 0.12), value: isActive)
-        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: isDragging)
-        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: shift)
+        .animation(DrawerAnimation.spring, value: isDragging)
+        .animation(DrawerAnimation.spring, value: shift)
         .onHover { isHovering = $0 }
-        // mask 必须是 `.all`：`.gesture` 会连带排除子视图手势，角标按钮就点不动了
-        //（与紧凑带同一结论）。拖动仍由 DragGesture 超 4pt 位移后接管。
-        .gesture(reorderGesture, including: canDrag ? .all : .subviews)
     }
 
-    private var button: some View {
-        Button(action: onSelect) {
-            content
-                .frame(width: DrawerPagePillLayout.pillWidth, height: DrawerPagePillLayout.pillHeight)
-                .background(capsuleFill)
-                .overlay(capsuleStroke)
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .help(help)
-        .accessibilityLabel(help)
+    /// 胶囊的按压面：**不能是 `Button`**——按钮在 AppKit 层接管按下，鼠标拖动
+    /// 的中间事件直到松手才回流给祖先手势，真机上表现为整行只在松开那一瞬才动
+    ///（紧凑带图标能实时跟手，正因为它的图标不是按钮）。因此点击与拖动都由
+    /// `pressGesture` 这一条手势分类，与 Kit 的 `blockPopoverTrigger` 同一结论。
+    /// 手势挂在这一层（角标在更晚的 `overlay` 上）：落在角标上的按下归角标按钮。
+    private var pressSurface: some View {
+        content
+            .frame(width: DrawerPagePillLayout.pillWidth, height: DrawerPagePillLayout.pillHeight)
+            .background(capsuleFill)
+            .overlay(capsuleStroke)
+            .frame(height: DrawerPagePillLayout.rowHeight)
+            .contentShape(Rectangle())
+            .pointingHandCursor()
+            .help(help)
+            .accessibilityLabel(help)
+            .accessibilityAddTraits(.isButton)
+            .gesture(pressGesture)
     }
 
     @ViewBuilder
@@ -338,29 +360,58 @@ private struct DrawerPagePill: View {
         isEditorFocused = false
     }
 
-    // MARK: 拖动排序
+    // MARK: 按压：点击切页 / 拖动排序
 
-    private var reorderGesture: some Gesture {
-        DragGesture(minimumDistance: 4)
+    /// 一条手势管两种意图（`minimumDistance: 0` 才能从按下那一刻起持续收到事件）：
+    /// 横向位移越过 `dragPickupDistance` = 拖动，此后逐事件跟手 + 让位预览，松手
+    /// 提交；始终未越阈 = 点击，走 `onSelect` 切页（编辑期也靠胶囊切页，不能只
+    /// 剩拖动）。
+    private var pressGesture: some Gesture {
+        // **平移量必须在稳定坐标系度量**：默认 `.local` 空间挂在胶囊自己身上，
+        // 胶囊一旦被 `.offset` 推动，下一次事件的 `translation` 就被这份位移扣掉，
+        // 逐事件形成"前跳一整步 / 后退半格"的锯齿（实测 off 4.9→1.6→7.4→5.3→9.6，
+        // 相邻两值之和才单调递增），表现为不跟手 + 闪烁。`.global` 在 NSHostingView
+        // 里即宿主窗口坐标，抽屉窗口满尺寸固定、拖动期间不动（与缩放握把同一结论）。
+        DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onChanged { value in
+                // TEMP(拖动诊断)
+                NSLog("[drag] changed page=\(page) canDrag=\(canDrag) tx=\(value.translation.width) ty=\(value.translation.height) dragging=\(isDragging)")
                 if !isDragging {
+                    guard canDrag else {
+                        NSLog("[drag] blocked: canDrag=false page=\(page)")  // TEMP
+                        return
+                    }
+                    guard abs(value.translation.width) > DrawerPagePillLayout.dragPickupDistance else { return }
+                    NSLog("[drag] pickup page=\(page) tx=\(value.translation.width)")  // TEMP
                     isDragging = true
                     reportedTarget = nil
                 }
                 dragOffset = value.translation.width
                 let target = target(for: value.translation.width)
+                // TEMP(拖动诊断)
+                NSLog("[drag] follow page=\(page) slot=\(slot) count=\(count) off=\(dragOffset) target=\(target) reported=\(String(describing: reportedTarget))")
                 guard target != reportedTarget else { return }
                 reportedTarget = target
                 onDragTargetChanged(target)
             }
             .onEnded { value in
-                let target = target(for: value.translation.width)
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                    dragOffset = 0
-                    isDragging = false
+                // TEMP(拖动诊断)
+                NSLog("[drag] ended page=\(page) dragging=\(isDragging) tx=\(value.translation.width) off=\(dragOffset)")
+                if isDragging {
+                    let target = target(for: value.translation.width)
+                    withAnimation(DrawerAnimation.spring) {
+                        dragOffset = 0
+                        isDragging = false
+                    }
+                    reportedTarget = nil
+                    onDragCommit(target)
+                    return
                 }
-                reportedTarget = nil
-                onDragCommit(target)
+                // 未进拖动还要位移没越阈才算点击：非编辑模式压根不认拖动，
+                // 按下后拖一把再松手不该切页。
+                guard hypot(value.translation.width, value.translation.height)
+                        <= DrawerPagePillLayout.dragPickupDistance else { return }
+                onSelect()
             }
     }
 
