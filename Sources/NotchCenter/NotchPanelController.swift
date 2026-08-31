@@ -547,7 +547,9 @@ final class NotchPanelController: NSObject {
         DrawerGridGeometry(
             metrics: .current,
             leftColumn: layoutEngine.gridLeftColumn(page: uiState.drawerActivePage),
-            capacity: layoutEngine.effectiveMaxColumns()
+            capacity: layoutEngine.effectiveMaxColumns(),
+            minimumRows: layoutEngine.minimumRowCount(),
+            minimumColumns: layoutEngine.minimumColumnCount()
         )
     }
 

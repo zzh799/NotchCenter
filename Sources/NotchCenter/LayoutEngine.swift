@@ -124,6 +124,14 @@ final class LayoutEngine: ObservableObject {
         model.maxColumns
     }
 
+    var userMinRows: Int {
+        model.minRows
+    }
+
+    var userMinColumns: Int {
+        model.minColumns
+    }
+
     func compactSlot(at index: Int) -> CompactSlotReference? {
         guard model.compactSlots.indices.contains(index) else { return nil }
         return model.compactSlots[index]

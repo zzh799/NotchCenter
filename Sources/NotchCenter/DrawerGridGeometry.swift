@@ -50,6 +50,11 @@ struct DrawerGridGeometry: Equatable, Sendable {
     /// 列容量（= `LayoutEngine.effectiveMaxColumns()`）：落点夹紧用。
     /// 只做渲染换算、不涉及落点的调用点可传 `.max`。
     var capacity: Int
+    /// 行/列下限（= `LayoutEngine.minimumRowCount()` / `minimumColumnCount()`）。
+    /// 网格容器高度与窗口高度必须按**同一份**下限夹紧：只夹窗口会让容器比可视区
+    /// 矮，落在留白格里的块与占位框被 ScrollView 裁掉。不给默认值——各构造点显式传。
+    var minimumRows: Int
+    var minimumColumns: Int
 
     func x(column: Int) -> CGFloat { CGFloat(column - leftColumn) * metrics.stepWidth }
     func y(row: Int) -> CGFloat { CGFloat(row) * metrics.stepHeight }
@@ -96,9 +101,9 @@ struct DrawerGridGeometry: Equatable, Sendable {
         )
     }
 
-    /// 一组格的最低占用行（空集合为 1）。
+    /// 一组格的最低占用行（不低于 `minimumRows`）。
     func bottomRow(of cells: [GridCell]) -> Int {
-        cells.map(\.bottomRow).max() ?? 1
+        max(cells.map(\.bottomRow).max() ?? minimumRows, minimumRows)
     }
 
     /// 覆盖这组格所需的内容高度。
@@ -106,7 +111,7 @@ struct DrawerGridGeometry: Equatable, Sendable {
     /// 网格容器高度必须与窗口高度同相收缩：按已提交布局的旧行高算会让
     /// 内容比可视区高一截，ScrollView 随之反复亮灭滚动条。
     func contentHeight(covering cells: [GridCell]) -> CGFloat {
-        metrics.height(rows: max(bottomRow(of: cells), 1))
+        metrics.height(rows: bottomRow(of: cells))
     }
 }
 

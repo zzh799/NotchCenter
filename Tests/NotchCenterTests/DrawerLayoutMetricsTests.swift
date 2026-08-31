@@ -11,8 +11,19 @@ final class DrawerLayoutMetricsTests: XCTestCase {
         contentPadding: 16, topBarHeight: 36
     )
 
-    private func geometry(capacity: Int = 4, leftColumn: Int = 0) -> DrawerGridGeometry {
-        DrawerGridGeometry(metrics: metrics, leftColumn: leftColumn, capacity: capacity)
+    private func geometry(
+        capacity: Int = 4,
+        leftColumn: Int = 0,
+        minimumRows: Int = 1,
+        minimumColumns: Int = 1
+    ) -> DrawerGridGeometry {
+        DrawerGridGeometry(
+            metrics: metrics,
+            leftColumn: leftColumn,
+            capacity: capacity,
+            minimumRows: minimumRows,
+            minimumColumns: minimumColumns
+        )
     }
 
     // MARK: - pushed（块已被推挤）
@@ -121,5 +132,53 @@ final class DrawerLayoutMetricsTests: XCTestCase {
             maxHeight: 900
         )
         XCTAssertEqual(first, second)
+    }
+
+    // MARK: - 最小行/列数（配置项下限）
+
+    /// 留白下限同时进到 contentSize 与 windowSize：两者出自同一组数字。
+    func testMinimumsFloorContentSizeAndWindowSizeTogether() {
+        let result = DrawerLayoutMetricsResolver.pushed(
+            columnRange: (min: 0, max: 1),
+            bottomRow: 1,
+            geometry: geometry(capacity: 6, minimumRows: 4, minimumColumns: 5),
+            maxHeight: nil
+        )
+        XCTAssertEqual(result.contentSize.width, metrics.width(columns: 5), accuracy: 1e-9)
+        XCTAssertEqual(result.contentSize.height, metrics.height(rows: 4), accuracy: 1e-9)
+        XCTAssertEqual(
+            result.windowSize.width,
+            result.contentSize.width + metrics.contentPadding * 2,
+            accuracy: 1e-9
+        )
+        XCTAssertEqual(
+            result.windowSize.height,
+            metrics.topBarHeight + result.contentSize.height + metrics.contentPadding,
+            accuracy: 1e-9
+        )
+    }
+
+    func testMinimumColumnsClampToCapacity() {
+        let result = DrawerLayoutMetricsResolver.pushed(
+            columnRange: (min: 0, max: 1),
+            bottomRow: 1,
+            geometry: geometry(capacity: 2, minimumRows: 1, minimumColumns: 5),
+            maxHeight: nil
+        )
+        XCTAssertEqual(result.contentSize.width, metrics.width(columns: 2), accuracy: 1e-9)
+    }
+
+    /// 落点预览通路共用同一条列公式。
+    func testDropZoneHonorsMinimumColumns() {
+        let result = DrawerLayoutMetricsResolver.dropZone(
+            leftColumn: 0,
+            rightEdge: 1,
+            rows: 1,
+            geometry: geometry(capacity: 6, minimumRows: 2, minimumColumns: 4),
+            maxHeight: nil
+        )
+        XCTAssertEqual(result.contentSize.width, metrics.width(columns: 4), accuracy: 1e-9)
+        XCTAssertEqual(result.contentSize.height, metrics.height(rows: 2), accuracy: 1e-9)
+        XCTAssertNil(result.leftColumn, "落点预览不得写渲染基准列")
     }
 }

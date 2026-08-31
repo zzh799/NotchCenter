@@ -325,3 +325,96 @@ final class BlockPlacementTests: XCTestCase {
         XCTAssertTrue(engine.drawerBlocks.isEmpty)
     }
 }
+
+// MARK: - 最小行数 / 最小列数的持久化（layout.json）
+
+@MainActor
+final class MinimumGridSizePersistenceTests: XCTestCase {
+    private func makeFileURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("MinimumGridSize-\(UUID().uuidString).json")
+    }
+
+    private func makeEngine(fileURL: URL) -> LayoutEngine {
+        LayoutEngine(fileURL: fileURL, blockResolver: { _, _ in nil })
+    }
+
+    /// 编码必须真的带上这两个键：`CodingKeys` 漏加会被合成编码器静默丢弃，
+    /// 表现为「设置了但重启后回到默认」。
+    func testMinimumsAreEncodedAndRoundTrip() throws {
+        let url = makeFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let engine = makeEngine(fileURL: url)
+        engine.setUserMinRows(7)
+        engine.setUserMinColumns(4)
+
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        XCTAssertEqual(json?["minRows"] as? Int, 7)
+        XCTAssertEqual(json?["minColumns"] as? Int, 4)
+
+        let restored = makeEngine(fileURL: url)
+        XCTAssertEqual(restored.userMinRows, 7)
+        XCTAssertEqual(restored.userMinColumns, 4)
+        XCTAssertTrue(restored.didLoadFromDisk)
+    }
+
+    /// 老 layout.json 无这两个键 → 默认 1 行（高度行为不变）/ 3 列（抽屉至少 3 列宽）。
+    func testLegacyLayoutWithoutKeysFallsBackToDefaults() throws {
+        let url = makeFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let legacy = """
+        {
+          "schemaVersion": 1,
+          "maxColumns": 4,
+          "compactSlots": [],
+          "drawerBlocks": [],
+          "enabledPluginIDs": []
+        }
+        """
+        try legacy.write(to: url, atomically: true, encoding: .utf8)
+
+        let engine = makeEngine(fileURL: url)
+        XCTAssertEqual(engine.userMinRows, LayoutModel.defaultMinRows)
+        XCTAssertEqual(engine.userMinColumns, LayoutModel.defaultMinColumns)
+        XCTAssertEqual(engine.drawerContentRows(), 1)
+        XCTAssertEqual(engine.occupiedColumns(), 3)
+    }
+
+    /// 自定义 `init(from:)` 不跑成员式 init 的夹紧：越界存量值必须在解码处各自夹好。
+    /// 两段各用独立文件——引擎 init 末尾会写盘，复用同一文件第二次读到的是已夹紧结果。
+    func testOutOfRangeStoredValuesAreClampedOnDecode() throws {
+        let below = makeFileURL()
+        let above = makeFileURL()
+        defer {
+            try? FileManager.default.removeItem(at: below)
+            try? FileManager.default.removeItem(at: above)
+        }
+        try layoutJSON(minRows: 99, minColumns: 0).write(to: below, atomically: true, encoding: .utf8)
+        let lowEngine = makeEngine(fileURL: below)
+        XCTAssertEqual(lowEngine.userMinRows, LayoutModel.minRowsRange.upperBound)
+        XCTAssertEqual(lowEngine.userMinColumns, LayoutModel.minColumnsRange.lowerBound)
+
+        try layoutJSON(minRows: -5, minColumns: 99).write(to: above, atomically: true, encoding: .utf8)
+        let highEngine = makeEngine(fileURL: above)
+        XCTAssertEqual(highEngine.userMinRows, LayoutModel.minRowsRange.lowerBound)
+        XCTAssertEqual(highEngine.userMinColumns, LayoutModel.minColumnsRange.upperBound)
+        // 存量列下限大于最大列数 → 下限等于容量：面板恒为满宽，但不超出固定窗口。
+        highEngine.setUserMaxColumns(4)
+        XCTAssertEqual(highEngine.minimumColumnCount(), 4)
+        XCTAssertEqual(highEngine.occupiedColumns(), 4)
+    }
+
+    private func layoutJSON(minRows: Int, minColumns: Int) -> String {
+        """
+        {
+          "schemaVersion": 1,
+          "maxColumns": 8,
+          "minRows": \(minRows),
+          "minColumns": \(minColumns),
+          "compactSlots": [],
+          "drawerBlocks": [],
+          "enabledPluginIDs": []
+        }
+        """
+    }
+}

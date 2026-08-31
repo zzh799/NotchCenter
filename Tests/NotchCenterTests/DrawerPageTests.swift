@@ -11,6 +11,8 @@ final class DrawerPageTests: XCTestCase {
 
     private func makeEngine(
         userMaxColumns: Int = 4,
+        minRows: Int = 1,
+        minColumns: Int = 1,
         directory: URL? = nil
     ) throws -> (LayoutEngine, URL, URL) {
         let directory = directory
@@ -22,6 +24,12 @@ final class DrawerPageTests: XCTestCase {
             self?.registry["\(pluginID)|\(blockID)"]
         })
         engine.setUserMaxColumns(userMaxColumns)
+        // 默认关掉最小行/列下限：本文件断言的是各页**实占**跨度（含「两页尺寸不同」），
+        // 留白夹紧会抹平差异。下限 1 不在可选项范围内，只能经内部写入入口给。
+        var model = engine.modelForTesting
+        model.minRows = minRows
+        model.minColumns = minColumns
+        engine.modelForTesting = model
         return (engine, directory, fileURL)
     }
 

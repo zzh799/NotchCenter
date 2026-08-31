@@ -32,6 +32,8 @@ final class DrawerGridGeometryTests: XCTestCase {
         ),
         leftColumn: Int = 0,
         capacity: Int = 4,
+        minimumRows: Int = 1,
+        minimumColumns: Int = 1,
         compactHeight: CGFloat = 40
     ) -> DrawerScreenMapper {
         DrawerScreenMapper(
@@ -40,7 +42,9 @@ final class DrawerGridGeometryTests: XCTestCase {
             geometry: DrawerGridGeometry(
                 metrics: metrics,
                 leftColumn: leftColumn,
-                capacity: capacity
+                capacity: capacity,
+                minimumRows: minimumRows,
+                minimumColumns: minimumColumns
             )
         )
     }
@@ -85,7 +89,9 @@ final class DrawerGridGeometryTests: XCTestCase {
     }
 
     func testFrameAndCellAreInverses() {
-        let geometry = DrawerGridGeometry(metrics: metrics(), leftColumn: -2, capacity: 4)
+        let geometry = DrawerGridGeometry(
+            metrics: metrics(), leftColumn: -2, capacity: 4, minimumRows: 1, minimumColumns: 1
+        )
         for column in -2...4 {
             for row in 0...6 {
                 let cell = GridCell(column: column, row: row, columnSpan: 1, rowSpan: 1)
@@ -170,7 +176,9 @@ final class DrawerGridGeometryTests: XCTestCase {
     // MARK: - 指标边界
 
     func testZeroSpacing() {
-        let geometry = DrawerGridGeometry(metrics: metrics(spacing: 0), leftColumn: 0, capacity: 4)
+        let geometry = DrawerGridGeometry(
+            metrics: metrics(spacing: 0), leftColumn: 0, capacity: 4, minimumRows: 1, minimumColumns: 1
+        )
         let frame = geometry.frame(GridCell(column: 2, row: 1, columnSpan: 1, rowSpan: 1))
         XCTAssertEqual(frame.origin.x, 300, accuracy: 1e-9)
         XCTAssertEqual(frame.origin.y, 120, accuracy: 1e-9)
@@ -183,7 +191,9 @@ final class DrawerGridGeometryTests: XCTestCase {
         let geometry = DrawerGridGeometry(
             metrics: metrics(cellWidth: 150.33, cellHeight: 120.67, spacing: 11.77),
             leftColumn: 0,
-            capacity: 8
+            capacity: 8,
+            minimumRows: 1,
+            minimumColumns: 1
         )
         for column in 0...7 {
             for row in 0...7 {
@@ -226,5 +236,23 @@ final class DrawerGridGeometryTests: XCTestCase {
         store.set(.cellWidth, to: 200)
         XCTAssertEqual(GridMetrics.current.cellWidth, 200, accuracy: 1e-9)
         XCTAssertEqual(GridMetrics.current.stepWidth, 200 + GridMetrics.current.spacing, accuracy: 1e-9)
+    }
+
+    func testContentHeightFloorsAtMinimumRows() {
+        // 留白也算占用行。
+        let geometry = DrawerGridGeometry(
+            metrics: metrics(), leftColumn: 0, capacity: 4, minimumRows: 5, minimumColumns: 3
+        )
+        XCTAssertEqual(geometry.bottomRow(of: []), 5)
+        XCTAssertEqual(
+            geometry.contentHeight(covering: [GridCell(column: 0, row: 0, columnSpan: 1, rowSpan: 1)]),
+            metrics().height(rows: 5),
+            accuracy: 1e-9
+        )
+        // 超过下限仍按实占算（下限只兜底、不封顶）。
+        XCTAssertEqual(
+            geometry.bottomRow(of: [GridCell(column: 0, row: 6, columnSpan: 1, rowSpan: 2)]),
+            8
+        )
     }
 }

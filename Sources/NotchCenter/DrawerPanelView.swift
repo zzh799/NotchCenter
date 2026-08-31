@@ -264,7 +264,10 @@ struct DrawerPanelView: View {
         let previewGeometry = DrawerGridGeometry(
             metrics: GridMetrics.current,
             leftColumn: swipe.leftColumn,
-            capacity: .max
+            capacity: .max,
+            // 全局下限、所有页共用：两层留白高度一致，落位交接那一帧才完全重合。
+            minimumRows: ui.drawerGridMinRows,
+            minimumColumns: ui.drawerGridMinColumns
         )
         let cells = swipe.elements.map { GridCell($0.placement) }
         return ZStack(alignment: .topLeading) {
@@ -356,7 +359,9 @@ struct DrawerPanelView: View {
         DrawerGridGeometry(
             metrics: GridMetrics.current,
             leftColumn: ui.drawerGridLeftColumn,
-            capacity: .max
+            capacity: .max,
+            minimumRows: ui.drawerGridMinRows,
+            minimumColumns: ui.drawerGridMinColumns
         )
     }
 

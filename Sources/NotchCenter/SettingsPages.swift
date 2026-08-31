@@ -512,6 +512,7 @@ struct LayoutSettingsPage: View {
                 cellSection
                 spacingSection
                 columnsSection
+                minimumSection
                 previewSection
                 restoreSection
             }
@@ -559,6 +560,53 @@ struct LayoutSettingsPage: View {
         }
     }
 
+    private var minimumSection: some View {
+        SettingsSection(title: L("settings.layout.minSection")) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Text(L("settings.layout.minRows"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.72))
+                    Spacer(minLength: 0)
+                    Picker("", selection: minRowsBinding) {
+                        ForEach(Array(LayoutModel.minRowsRange), id: \.self) { rows in
+                            Text(LF("settings.layout.minRow.count", rows)).tag(rows)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 130)
+                }
+                HStack(spacing: 10) {
+                    Text(L("settings.layout.minColumns"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.72))
+                    Spacer(minLength: 0)
+                    // 别改成 ForEach(3...maxColumns)：最大列数小于下界时是空闭区间，运行时 trap。
+                    if minColumnOptions.isEmpty {
+                        Text(L("settings.layout.minColumnsUnavailable"))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("", selection: minColumnsBinding) {
+                            ForEach(minColumnOptions, id: \.self) { columns in
+                                Text(LF("settings.column.count", columns)).tag(columns)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 130)
+                    }
+                }
+                Text(L("settings.layout.minHint"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var minColumnOptions: [Int] {
+        Array(LayoutModel.minColumnsRange).filter { $0 <= layoutEngine.userMaxColumns }
+    }
+
     private var previewSection: some View {
         SettingsSection(title: L("settings.layout.previewSection")) {
             GridMetricsPreview()
@@ -584,6 +632,27 @@ struct LayoutSettingsPage: View {
             get: { layoutEngine.userMaxColumns },
             set: { newValue in
                 layoutEngine.setUserMaxColumns(newValue)
+                controller.refreshAfterLayoutChange()
+            }
+        )
+    }
+
+    private var minRowsBinding: Binding<Int> {
+        Binding(
+            get: { layoutEngine.userMinRows },
+            set: { newValue in
+                layoutEngine.setUserMinRows(newValue)
+                controller.refreshAfterLayoutChange()
+            }
+        )
+    }
+
+    /// get 要夹一次：手改 JSON 的存量值可能不在可选项里，直接回显会空选。
+    private var minColumnsBinding: Binding<Int> {
+        Binding(
+            get: { min(layoutEngine.userMinColumns, layoutEngine.userMaxColumns) },
+            set: { newValue in
+                layoutEngine.setUserMinColumns(newValue)
                 controller.refreshAfterLayoutChange()
             }
         )

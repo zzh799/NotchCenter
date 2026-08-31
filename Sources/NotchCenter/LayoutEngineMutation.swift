@@ -6,9 +6,28 @@ import NotchCenterKit
 
 extension LayoutEngine {
     func setUserMaxColumns(_ columns: Int) {
-        let clamped = min(max(columns, 2), 8)
+        let clamped = LayoutModel.clamped(columns, to: LayoutModel.maxColumnsRange)
         guard model.maxColumns != clamped else { return }
         model.maxColumns = clamped
+        saveToDisk()
+    }
+
+    func setUserMinRows(_ rows: Int) {
+        let clamped = LayoutModel.clamped(rows, to: LayoutModel.minRowsRange)
+        guard model.minRows != clamped else { return }
+        model.minRows = clamped
+        saveToDisk()
+    }
+
+    /// 最大列数小于可选项下界时忽略写入（不回改存量值，见 `LayoutModel.minColumnsRange`）。
+    func setUserMinColumns(_ columns: Int) {
+        guard model.maxColumns >= LayoutModel.minColumnsRange.lowerBound else { return }
+        let clamped = min(
+            LayoutModel.clamped(columns, to: LayoutModel.minColumnsRange),
+            model.maxColumns
+        )
+        guard model.minColumns != clamped else { return }
+        model.minColumns = clamped
         saveToDisk()
     }
 
@@ -27,6 +46,19 @@ extension LayoutEngine {
             )
         )
         return min(model.maxColumns, capacity)
+    }
+
+    /// 行/列下限（配置项「最小行数 / 最小列数」）的**唯一计算出口**从这里取：
+    /// 各面板与网格尺寸站点用它替代原先硬编码的 `1`。只夹尺寸，不改块原点——
+    /// 压实、推挤、落点夹紧与校验都看不到这个下限。
+    func minimumRowCount() -> Int {
+        model.minRows
+    }
+
+    /// 列下限还要夹一次**有效容量**：容量小于配置值时面板恒为满宽，但不会宽出
+    /// 按 effectiveMaxColumns 定宽的 `drawerFrame`（否则被裁切并丢失命中测试）。
+    func minimumColumnCount() -> Int {
+        min(model.minColumns, effectiveMaxColumns())
     }
 
     /// 同步启用插件列表（文档 §5.4：enabledPluginIDs 存于 layout.json）。

@@ -42,6 +42,12 @@
 "settings.layout.padding" = "Padding";
 "settings.layout.columnsSection" = "Columns";
 "settings.layout.effectiveColumns" = "Up to %d columns fit the current screen.";
+"settings.layout.minSection" = "Minimum size";
+"settings.layout.minRows" = "Minimum rows";
+"settings.layout.minColumns" = "Minimum columns";
+"settings.layout.minRow.count" = "%d Rows";
+"settings.layout.minHint" = "Blank cells pad the drawer up to these counts. The column floor never exceeds the maximum columns.";
+"settings.layout.minColumnsUnavailable" = "Maximum columns is below 3, so the column floor follows it.";
 "settings.layout.previewSection" = "Preview";
 "settings.layout.previewCaption" = "Cell %d×%d · spacing %d";
 "settings.layout.restoreDefault" = "Restore Defaults";

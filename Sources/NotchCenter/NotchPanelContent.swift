@@ -120,6 +120,9 @@ extension NotchPanelController {
             self.uiState.drawerPageTitles = self.layoutEngine.drawerPageTitles
             self.uiState.drawerContentSize = self.layoutEngine.drawerContentSize(page: activePage)
             self.uiState.drawerGridLeftColumn = self.layoutEngine.gridLeftColumn(page: activePage)
+            // 与上面的尺寸同批写入（分两批即一帧裁切，见 `DrawerGridGeometry.minimumRows`）。
+            self.uiState.drawerGridMinRows = self.layoutEngine.minimumRowCount()
+            self.uiState.drawerGridMinColumns = self.layoutEngine.minimumColumnCount()
             self.uiState.drawerWindowSize = self.drawerWindowSize(for: self.activePair ?? self.pairs.first)
             self.uiState.drawerElements = self.buildDrawerElements()
             // 内容重建即几何已变，半截滑入层不得残留（收起 / 进入编辑 /

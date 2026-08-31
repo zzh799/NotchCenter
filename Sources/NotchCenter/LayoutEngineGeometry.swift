@@ -39,12 +39,15 @@ extension LayoutEngine {
         return (minColumn, maxColumn)
     }
 
-    /// 实际占用的列跨度（右缘 − 左缘，下限 1，封顶容量）：面板绕刘海居中，
-    /// 宽度随跨度左右双向自适应；行仅向下增长。换行上限仍由用户设置
-    /// （effectiveMaxColumns）决定。
+    /// 实际占用的列跨度（右缘 − 左缘，下限见 `minimumColumnCount()`，封顶容量）：
+    /// 面板绕刘海居中，宽度随跨度左右双向自适应；行仅向下增长。换行上限仍由用户
+    /// 设置（effectiveMaxColumns）决定。
     func occupiedColumns(page: Int = 0) -> Int {
         let range = occupiedColumnRange(page: page)
-        return min(max(range.max - range.min, 1), effectiveMaxColumns())
+        return min(
+            max(range.max - range.min, minimumColumnCount()),
+            effectiveMaxColumns()
+        )
     }
 
     /// 提交布局的格网最左列（渲染偏移）：左扩为负时内容整体右移，
@@ -55,7 +58,7 @@ extension LayoutEngine {
 
     /// 网格内容尺寸（行列都随内容自适应）。
     func drawerContentSize(page: Int = 0) -> CGSize {
-        let rows = max(drawerContentRows(page: page), 1)
+        let rows = drawerContentRows(page: page)
         return CGSize(
             width: NotchGridMetrics.contentWidth(columns: occupiedColumns(page: page)),
             height: NotchGridMetrics.contentHeight(rows: rows)
@@ -71,8 +74,11 @@ extension LayoutEngine {
     /// `contentRows` / `contentColumns` 用于拖拽/缩放预览（按预览布局的
     /// 最低行/实际占用列临时调整）。
     func drawerWindowSize(contentRows: Int? = nil, contentColumns: Int? = nil, page: Int = 0) -> CGSize {
-        let rows = max(contentRows ?? drawerContentRows(page: page), 1)
-        let columns = max(contentColumns ?? occupiedColumns(page: page), 1)
+        let rows = max(contentRows ?? drawerContentRows(page: page), minimumRowCount())
+        let columns = min(
+            max(contentColumns ?? occupiedColumns(page: page), minimumColumnCount()),
+            effectiveMaxColumns()
+        )
         return CGSize(
             width: NotchGridMetrics.contentWidth(columns: columns)
                 + NotchGridMetrics.contentPadding * 2,
@@ -102,7 +108,7 @@ extension LayoutEngine {
                 return row + height
             }
             .max() ?? committed
-        return max(committed, preview, 1)
+        return max(committed, preview)
     }
 
     /// 提交布局的占用行数（拖入落点预览要据此算「占位框 ∪ 提交布局」的并集
@@ -111,7 +117,7 @@ extension LayoutEngine {
         let occupiedRows = drawerBlocks(onPage: page)
             .map { $0.originRow + $0.heightRows }
             .max() ?? 0
-        return max(occupiedRows, 1)
+        return max(occupiedRows, minimumRowCount())
     }
 
     /// 预览布局的列区间（min/max 同 `occupiedColumnRange`）：提交布局与
@@ -139,12 +145,16 @@ extension LayoutEngine {
 
     /// 预览布局的列跨度（右缘 − 左缘，封顶容量）：提交布局与预览 origins
     /// 取并集后按跨度计——向左扩大同样增加跨度，面板随之左右对称增宽。
+    /// 下限与 `occupiedColumns` 同一条公式（预览 == 提交）。
     func previewOccupiedColumns(
         origins: [String: GridOrigin],
         resized: (placementID: String, widthColumns: Int)? = nil,
         page: Int = 0
     ) -> Int {
         let range = previewColumnRange(origins: origins, resized: resized, page: page)
-        return min(max(range.max - range.min, 1), effectiveMaxColumns())
+        return min(
+            max(range.max - range.min, minimumColumnCount()),
+            effectiveMaxColumns()
+        )
     }
 }

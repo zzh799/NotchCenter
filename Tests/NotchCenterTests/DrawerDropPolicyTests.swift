@@ -60,7 +60,9 @@ final class DrawerDropPolicyTests: XCTestCase {
                     contentPadding: 16, topBarHeight: 36
                 ),
                 leftColumn: 0,
-                capacity: 4
+                capacity: 4,
+                minimumRows: 1,
+                minimumColumns: 1
             )
         )
         XCTAssertEqual(DrawerDropPolicy(mapper: mapper, compactHeight: 40), policy)

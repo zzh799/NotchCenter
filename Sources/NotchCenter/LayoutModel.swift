@@ -114,8 +114,25 @@ struct LayoutModel: Codable, Equatable {
     /// 主页索引：永远存在、不可删除（页面显示序列里可以排到任意位置）。
     static let homePage = 0
 
+    static let maxColumnsRange = 2...8
+    static let minRowsRange = 1...9
+    /// 最小列数可选项范围。存储值**不随最大列数回改**——生效下限由
+    /// `LayoutEngine.minimumColumnCount()` 夹容量，所以调小再调回最大列数不会抹掉设置。
+    static let minColumnsRange = 3...8
+    /// 默认值同时是旧 layout.json 缺这两个键时的回落值：行数保持现状，
+    /// 列数至少 3（抽屉不再塌成一列窄条）。
+    static let defaultMinRows = 1
+    static let defaultMinColumns = 3
+
+    /// 配置写入前的统一夹紧。
+    static func clamped(_ value: Int, to range: ClosedRange<Int>) -> Int {
+        min(max(value, range.lowerBound), range.upperBound)
+    }
+
     var schemaVersion: Int
     var maxColumns: Int
+    var minRows: Int
+    var minColumns: Int
     /// 紧凑块引用数组：**长度即当前紧凑图标数**（宽度随其动态伸缩，文档 §5.2）。
     /// 元素始终非空（移除即删除元素、闭合空隙）；旧版固定 3 槽文件里的
     /// `null` 在加载时被 `normalizedCompactSlots` 剥除。
@@ -134,6 +151,8 @@ struct LayoutModel: Codable, Equatable {
     init(
         schemaVersion: Int = LayoutModel.currentSchemaVersion,
         maxColumns: Int = 4,
+        minRows: Int = LayoutModel.defaultMinRows,
+        minColumns: Int = LayoutModel.defaultMinColumns,
         compactSlots: [CompactSlotReference?] = [],
         drawerBlocks: [PlacedBlock] = [],
         enabledPluginIDs: [String] = [],
@@ -141,7 +160,9 @@ struct LayoutModel: Codable, Equatable {
         drawerPageTitles: [String: String] = [:]
     ) {
         self.schemaVersion = schemaVersion
-        self.maxColumns = min(max(maxColumns, 2), 8)
+        self.maxColumns = Self.clamped(maxColumns, to: Self.maxColumnsRange)
+        self.minRows = Self.clamped(minRows, to: Self.minRowsRange)
+        self.minColumns = Self.clamped(minColumns, to: Self.minColumnsRange)
         self.compactSlots = Self.normalizedCompactSlots(compactSlots)
         self.drawerBlocks = drawerBlocks
         self.enabledPluginIDs = enabledPluginIDs
@@ -149,16 +170,28 @@ struct LayoutModel: Codable, Equatable {
         self.drawerPageTitles = drawerPageTitles
     }
 
-    // 旧版 layout.json 无 drawerPages / drawerPageTitles 键 → 只有主页、无自定义名。
+    // 旧版 layout.json 无 drawerPages / minRows / minColumns 键 → 只有主页、下限取默认值。
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, maxColumns, compactSlots, drawerBlocks, enabledPluginIDs
-        case drawerPages, drawerPageTitles
+        case schemaVersion, maxColumns, minRows, minColumns, compactSlots, drawerBlocks
+        case enabledPluginIDs, drawerPages, drawerPageTitles
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        maxColumns = try container.decode(Int.self, forKey: .maxColumns)
+        // 自定义解码不经过上面的 init，夹紧必须在每个字段各自补一遍。
+        maxColumns = Self.clamped(
+            try container.decode(Int.self, forKey: .maxColumns),
+            to: Self.maxColumnsRange
+        )
+        minRows = Self.clamped(
+            try container.decodeIfPresent(Int.self, forKey: .minRows) ?? Self.defaultMinRows,
+            to: Self.minRowsRange
+        )
+        minColumns = Self.clamped(
+            try container.decodeIfPresent(Int.self, forKey: .minColumns) ?? Self.defaultMinColumns,
+            to: Self.minColumnsRange
+        )
         compactSlots = try container.decode([CompactSlotReference?].self, forKey: .compactSlots)
         drawerBlocks = try container.decode([PlacedBlock].self, forKey: .drawerBlocks)
         enabledPluginIDs = try container.decode([String].self, forKey: .enabledPluginIDs)

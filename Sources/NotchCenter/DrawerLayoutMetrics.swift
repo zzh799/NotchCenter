@@ -27,7 +27,10 @@ enum DrawerLayoutMetricsResolver {
         geometry: DrawerGridGeometry,
         maxHeight: CGFloat?
     ) -> DrawerLayoutMetrics {
-        let span = min(max(columnRange.max - columnRange.min, 1), geometry.capacity)
+        let span = min(
+            max(columnRange.max - columnRange.min, geometry.minimumColumns),
+            geometry.capacity
+        )
         return make(
             columns: span,
             rows: bottomRow,
@@ -45,7 +48,10 @@ enum DrawerLayoutMetricsResolver {
         geometry: DrawerGridGeometry,
         maxHeight: CGFloat?
     ) -> DrawerLayoutMetrics {
-        let span = min(max(rightEdge - leftColumn, 1), geometry.capacity)
+        let span = min(
+            max(rightEdge - leftColumn, geometry.minimumColumns),
+            geometry.capacity
+        )
         return make(
             columns: span,
             rows: rows,
@@ -63,7 +69,8 @@ enum DrawerLayoutMetricsResolver {
         leftColumn: Int?
     ) -> DrawerLayoutMetrics {
         let metrics = geometry.metrics
-        let rowCount = max(rows, 1)
+        // 夹紧只在这里做一次：contentSize 与 windowSize 出自同一组数字。
+        let rowCount = max(rows, geometry.minimumRows)
         var windowSize = CGSize(
             width: metrics.width(columns: columns) + metrics.contentPadding * 2,
             // 顶部不再预留 padding：内容栈从顶栏直接开始，多加一项只会

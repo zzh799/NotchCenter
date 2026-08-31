@@ -9,6 +9,8 @@ final class LayoutEngineTests: XCTestCase {
 
     private func makeEngine(
         userMaxColumns: Int = 4,
+        minRows: Int = 1,
+        minColumns: Int = 1,
         directory: URL? = nil
     ) throws -> (LayoutEngine, URL, URL) {
         let directory = directory
@@ -20,6 +22,12 @@ final class LayoutEngineTests: XCTestCase {
             self?.registry["\(pluginID)|\(blockID)"]
         })
         engine.setUserMaxColumns(userMaxColumns)
+        // 默认关掉最小行/列下限：本文件多数用例断言的是**实占**跨度/行号，留白夹紧会抹平。
+        // 下限 1 不在可选项范围内（生产 setter 设不出来），只能经内部写入入口给。
+        var model = engine.modelForTesting
+        model.minRows = minRows
+        model.minColumns = minColumns
+        engine.modelForTesting = model
         return (engine, directory, fileURL)
     }
 
@@ -829,6 +837,103 @@ final class LayoutEngineTests: XCTestCase {
         _ = engine.commitArrangement(preview)
         XCTAssertEqual(engine.occupiedColumns(), 4)
         XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    // MARK: 配置项：最小行数 / 最小列数（面板留白下限）
+
+    /// 空布局也要撑到最小尺寸，且窗口高度与内容行数同源（顶栏 + 行高 + 底部内边距）。
+    func testMinimumsFloorEmptyLayoutSize() throws {
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 6, minRows: 4, minColumns: 5)
+        XCTAssertEqual(engine.drawerContentRows(), 4)
+        XCTAssertEqual(engine.occupiedColumns(), 5)
+        XCTAssertEqual(
+            engine.drawerContentSize(),
+            CGSize(
+                width: NotchGridMetrics.contentWidth(columns: 5),
+                height: NotchGridMetrics.contentHeight(rows: 4)
+            )
+        )
+        XCTAssertEqual(
+            engine.drawerWindowSize().height,
+            NotchGridMetrics.drawerTopBarHeight
+                + NotchGridMetrics.contentHeight(rows: 4)
+                + NotchGridMetrics.contentPadding,
+            accuracy: 1e-9
+        )
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 下限只兜底、不封顶：块超过时仍按实占算。
+    func testMinimumsAreFloorsNotCaps() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 6, minRows: 2, minColumns: 3)
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 1, height: 1)
+        placeRaw(engine, id: "b", column: 0, row: 4, width: 4, height: 2)
+        XCTAssertEqual(engine.drawerContentRows(), 6)
+        XCTAssertEqual(engine.occupiedColumns(), 4)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 删掉最后一个块：面板不塌回 1 行 1 列。
+    func testRemovingLastBlockKeepsMinimums() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 6, minRows: 3, minColumns: 4)
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 1, height: 1)
+        engine.removeDrawerBlock(placementID: "a")
+        XCTAssertTrue(engine.drawerBlocks.isEmpty)
+        XCTAssertEqual(engine.drawerContentRows(), 3)
+        XCTAssertEqual(engine.occupiedColumns(), 4)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 列下限永远不超过**有效容量**（最大列数、窄屏两条都算）。
+    func testMinimumColumnsNeverExceedCapacity() throws {
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 3, minRows: 1, minColumns: 8)
+        XCTAssertEqual(engine.minimumColumnCount(), 3)
+        XCTAssertEqual(engine.occupiedColumns(), 3)
+        engine.updateScreenConstraint(width: 400)   // 容量 2
+        XCTAssertEqual(engine.minimumColumnCount(), 2)
+        XCTAssertEqual(engine.occupiedColumns(), 2)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// setter 夹紧：行夹进 1...9；列封顶到最大列数，最大列数小于可选项下界时忽略写入。
+    func testMinimumSettersClampAndRespectMaxColumns() throws {
+        let (engine, directory, _) = try makeEngine()
+        engine.setUserMinRows(0)
+        XCTAssertEqual(engine.userMinRows, 1)
+        engine.setUserMinRows(99)
+        XCTAssertEqual(engine.userMinRows, 9)
+        engine.setUserMinColumns(99)
+        XCTAssertEqual(engine.userMinColumns, 4, "封顶到最大列数")
+        engine.setUserMaxColumns(2)
+        engine.setUserMinColumns(5)
+        XCTAssertEqual(engine.userMinColumns, 4, "最大列数 2 < 下界 3：该配置无从生效")
+        XCTAssertEqual(engine.minimumColumnCount(), 2, "以容量为准")
+        engine.setUserMaxColumns(6)
+        XCTAssertEqual(engine.userMinColumns, 4, "原设置未被抹掉")
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 编辑模式契约不破：留白下限不参与行压实，预览与提交同一条列公式。
+    func testCompactionAndPreviewContractHoldWithMinimums() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 6, minRows: 5, minColumns: 3)
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 1, height: 1)
+        placeRaw(engine, id: "b", column: 0, row: 3, width: 1, height: 1)
+
+        XCTAssertTrue(engine.compactEmptyRows())
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originRow, 1, "空行照样闭合")
+        XCTAssertEqual(engine.drawerContentRows(), 5, "压实后仍按最小行数留白")
+
+        let preview = engine.previewArrangement(moving: "a", toColumn: 2, toRow: 0)
+        XCTAssertEqual(
+            engine.previewOccupiedColumns(origins: preview),
+            engine.occupiedColumns(),
+            "预览 == 提交：同一条下限公式"
+        )
+        XCTAssertEqual(engine.previewBottomRow(origins: preview), 5)
         try? FileManager.default.removeItem(at: directory)
     }
 }

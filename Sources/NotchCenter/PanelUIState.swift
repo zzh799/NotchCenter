@@ -39,6 +39,10 @@ final class PanelUIState: ObservableObject {
     /// 格网内容最左列（列双向扩大：左侧拖出时可为负）：块渲染横坐标 =
     /// (originColumn − 该值) × 步长，使左扩时内容整体右移、面板绕刘海对称增宽。
     @Published var drawerGridLeftColumn = 0
+    /// 网格行/列下限的布局镜像：视图拿不到 `LayoutEngine`，只能经这里下发给
+    /// `DrawerGridGeometry` 构造点（夹紧语义见 `DrawerGridGeometry.minimumRows`）。
+    @Published var drawerGridMinRows = LayoutModel.defaultMinRows
+    @Published var drawerGridMinColumns = LayoutModel.defaultMinColumns
     @Published var drawerElements: [DrawerElement] = []
 
     /// 页面显示序列 / 自定义标题：layout.json 的镜像，经 `rebuildContent` 同步。
