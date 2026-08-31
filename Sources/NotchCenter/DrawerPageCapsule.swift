@@ -53,7 +53,7 @@ enum DrawerPagePillLayout {
 ///
 /// - 胶囊内容：自定义标题优先，否则显示它在显示序列里的 1-based 序号；
 ///   主页无标题时画房子图标。
-/// - 编辑模式悬停胶囊：左上铅笔（就地重命名）、右上删除（连页内块，
+/// - 编辑模式悬停胶囊：左上齿轮（就地重命名）、右上删除（连页内块，
 ///   非空页由控制器二次确认）；主页不给删除，横向可拖动排序。
 /// - 点击与拖动共用一条按压机势（见 `DrawerPagePill.pressGesture`）：非编辑模式
 ///   只认点击，越阈的横向位移不会被判成拖动。
@@ -281,37 +281,34 @@ private struct DrawerPagePill: View {
             .strokeBorder(.white.opacity(isActive ? 0.16 : 0.06), lineWidth: 1)
     }
 
-    // MARK: 编辑模式角标（铅笔重命名 / 删除页面）
+    // MARK: 编辑模式角标（齿轮重命名 / 删除页面）
 
-    /// 顶角两条角标，落在胶囊自身的命中框内（见 `rowHeight` 注释）。
+    /// 顶角两条角标，落在胶囊自身的命中框内（见 `rowHeight` 注释），外观与
+    /// 紧凑区角标同为 `EditGlyphButton`。齿轮是本页的命名入口（动作仍是
+    /// 就地重命名）。
     @ViewBuilder
     private var badgeCluster: some View {
         if isEditing && isHovering && !isRenaming {
             HStack(spacing: 0) {
-                badge(systemImage: "pencil", help: L("panel.help.page.rename")) {
+                EditGlyphButton(
+                    systemImage: "gearshape.fill",
+                    helpText: L("panel.help.page.rename"),
+                    side: DrawerPagePillLayout.badgeSide
+                ) {
                     beginRename()
                 }
                 Spacer(minLength: 0)
                 if !isHome {
-                    badge(systemImage: "xmark.circle.fill", help: L("panel.help.page.delete"), action: onRemove)
+                    EditGlyphButton(
+                        systemImage: "xmark.circle.fill",
+                        helpText: L("panel.help.page.delete"),
+                        side: DrawerPagePillLayout.badgeSide,
+                        action: onRemove
+                    )
                 }
             }
             .frame(width: DrawerPagePillLayout.pillWidth, height: DrawerPagePillLayout.badgeSide)
         }
-    }
-
-    private func badge(systemImage: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
-                .frame(width: DrawerPagePillLayout.badgeSide, height: DrawerPagePillLayout.badgeSide)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .hoverBrighten()
-        .help(help)
-        .accessibilityLabel(help)
     }
 
     // MARK: 就地重命名

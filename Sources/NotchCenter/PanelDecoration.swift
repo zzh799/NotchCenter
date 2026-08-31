@@ -117,6 +117,36 @@ struct EditCircleButton: View {
     }
 }
 
+// MARK: - 编辑模式符号按钮（小目标角标的组件默认样式）
+
+/// 贴在 22–28pt 小目标上的编辑角标：SF Symbols 实心白色符号（`gearshape.fill`
+/// / `xmark.circle.fill`），无圆形底衬，靠黑色投影与内容分离，悬停提亮。
+///
+/// 紧凑区图标与分页胶囊的角标共用这一份外观（两者样式必须一致，不要在调用方
+/// 各自重画）。`side` 是按钮边长（也是命中框），符号按 `fontSize` 居中。
+struct EditGlyphButton: View {
+    let systemImage: String
+    let helpText: String
+    var fontSize: CGFloat = 11
+    var side: CGFloat = 12
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: fontSize))
+                .foregroundStyle(.white.opacity(0.85))
+                .frame(width: side, height: side)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverBrighten()
+        .shadow(color: .black.opacity(0.55), radius: 2)
+        .help(helpText)
+        .accessibilityLabel(helpText)
+    }
+}
+
 // MARK: - 无底衬按钮悬停提亮
 
 /// 无底衬按钮（图标裸露，如紧凑区编辑角标）的悬停提亮：内容 brightness

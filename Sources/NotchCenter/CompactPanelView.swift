@@ -244,66 +244,60 @@ private struct CompactBlockContainer: View {
     @State private var isHovering = false
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            group
-                .frame(width: NotchGeometry.compactSlotSize.width, height: NotchGeometry.compactSlotSize.height)
-                .background {
-                    ZStack {
-                        // 悬停高亮底衬：28×28 槽位圆角矩形。
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(.white.opacity(isHovering ? 0.08 : 0))
-                        GlobalFrameReader { globalFrame = $0 }
-                    }
+        group
+            .frame(width: NotchGeometry.compactSlotSize.width, height: NotchGeometry.compactSlotSize.height)
+            .background {
+                ZStack {
+                    // 悬停高亮底衬：28×28 槽位圆角矩形。
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(.white.opacity(isHovering ? 0.08 : 0))
+                    GlobalFrameReader { globalFrame = $0 }
                 }
-                // 悬浮提示：插件块的用户可见名称（block 为 nil 时不提示）。
-                .help(element.block?.displayName ?? "")
-                .animation(.easeOut(duration: 0.12), value: isHovering)
-
-            if isEditing {
-                // 手势屏蔽层：图标自身（点击展开、插件自定义手势）在编辑模式下不响应，
-                // 只保留角标按钮与容器的拖动重排——与抽屉块的压暗遮罩同一语义。
-                Color.black.opacity(0.001)
-                    .frame(width: NotchGeometry.compactSlotSize.width, height: NotchGeometry.compactSlotSize.height)
-                    .contentShape(Rectangle())
             }
-
-            if isEditing {
-                // 编辑模式角标簇：右上角移除 + （插件有设置界面时）设置按钮，
-                // 悬在槽位外沿；先设置后移除，保持移除按钮贴最外侧角落。
-                HStack(spacing: 3) {
-                    if element.hasSettings {
-                        Button(action: { onShowSettings(globalFrame) }) {
-                            Image(systemName: "gearshape.fill")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.white.opacity(0.85))
+            // 悬浮提示：插件块的用户可见名称（block 为 nil 时不提示）。
+            .help(element.block?.displayName ?? "")
+            // 手势屏蔽层：图标自身（点击展开、插件自定义手势）在编辑模式下不响应，
+            // 只保留角标按钮与容器的拖动重排——与抽屉块的压暗遮罩同一语义。
+            .overlay {
+                if isEditing {
+                    Color.black.opacity(0.001)
+                        .contentShape(Rectangle())
+                }
+            }
+            // 角标悬停图标才显示（与分页胶囊同一交互）。两条子层都走 overlay：
+            // 挂在 ZStack 里两颗角标（25pt 宽）会把容器撑宽，角标一出现图标就横移。
+            // 角标恒落在槽位框内——悬停热区就是这个框，探出框外的后果见
+            // `DrawerPagePillLayout.rowHeight`。
+            .overlay(alignment: .topTrailing) {
+                if isEditing && isHovering {
+                    HStack(spacing: 1) {
+                        // 先设置后移除，保持移除按钮贴最外侧角落。
+                        if element.hasSettings {
+                            EditGlyphButton(
+                                systemImage: "gearshape.fill",
+                                helpText: L("panel.help.pluginSettings")
+                            ) {
+                                onShowSettings(globalFrame)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .hoverBrighten()
-                        .help(L("panel.help.pluginSettings"))
+                        EditGlyphButton(
+                            systemImage: "xmark.circle.fill",
+                            helpText: L("panel.help.removeBlock"),
+                            action: onRemove
+                        )
                     }
-
-                    Button(action: onRemove) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                    .buttonStyle(.plain)
-                    .hoverBrighten()
-                    .help(L("panel.help.removeBlock"))
                 }
-                .shadow(color: .black.opacity(0.55), radius: 2)
-                .offset(x: 3, y: -2)
             }
-        }
-        .onHover { isHovering = $0 }
-        // 拖动中整体跟手（角标一起走），并轻微放大表示“已拿起”。
-        .offset(x: dragOffset)
-        .scaleEffect(isDragging ? 1.08 : 1)
-        .shadow(color: .black.opacity(isDragging ? 0.45 : 0), radius: 6, y: 2)
-        // 编辑模式挂拖动手势：mask 必须是 `.all`——`.gesture` 会连带排除子视图手势，
-        // 角标按钮就点不动了（图标自身内容由上面的屏蔽层挡，不靠 mask）。
-        // 非编辑模式 `.subviews` 等价于不添加（保留子视图自身的点击）。
-        .gesture(reorderGesture, including: isEditing ? .all : .subviews)
+            .animation(.easeOut(duration: 0.12), value: isHovering)
+            .onHover { isHovering = $0 }
+            // 拖动中整体跟手（角标一起走），并轻微放大表示“已拿起”。
+            .offset(x: dragOffset)
+            .scaleEffect(isDragging ? 1.08 : 1)
+            .shadow(color: .black.opacity(isDragging ? 0.45 : 0), radius: 6, y: 2)
+            // 编辑模式挂拖动手势：mask 必须是 `.all`——`.gesture` 会连带排除子视图手势，
+            // 角标按钮就点不动了（图标自身内容由上面的屏蔽层挡，不靠 mask）。
+            // 非编辑模式 `.subviews` 等价于不添加（保留子视图自身的点击）。
+            .gesture(reorderGesture, including: isEditing ? .all : .subviews)
     }
 
     /// 编辑模式拖动重排：位移换算成带内内容坐标 → 屏幕插入位置 → 实时让位
