@@ -53,6 +53,7 @@ enum DrawerPagePillLayout {
 ///
 /// - 胶囊内容：自定义标题优先，否则显示它在显示序列里的 1-based 序号；
 ///   主页无标题时画房子图标。
+/// - 加号只在 `showsAddButtons`（编辑模式 + 指针悬停顶栏）时出现。
 /// - 编辑模式悬停胶囊：左上齿轮（就地重命名）、右上删除（连页内块，
 ///   非空页由控制器二次确认）；主页不给删除，横向可拖动排序。
 /// - 点击与拖动共用一条按压机势（见 `DrawerPagePill.pressGesture`）：非编辑模式
@@ -62,6 +63,8 @@ struct DrawerPageCapsule: View {
     let titles: [String: String]
     let activePage: Int
     let isEditing: Bool
+    /// 两颗加号的显隐（编辑模式且指针悬停在顶栏上）。
+    let showsAddButtons: Bool
     let onSelect: (Int) -> Void
     let onAdd: (DrawerPageSide) -> Void
     let onMove: (Int, Int) -> Void
@@ -145,9 +148,11 @@ struct DrawerPageCapsule: View {
 
     // MARK: 加号（胶囊外）
 
-    /// 行首/行尾常驻加号：在对应侧新增页面。封顶后隐形且不吞点击。
+    /// 行首/行尾加号：在对应侧新增页面。只在编辑模式且指针悬停顶栏时出现；
+    /// 隐藏时保留槽位（否则胶囊行会跟着位移）且不吞点击。封顶后同样隐形。
     private func addButton(_ side: DrawerPageSide) -> some View {
         let isEnabled = pages.count < LayoutModel.maxDrawerPageCount
+        let isVisible = showsAddButtons && isEnabled
         let help = side == .left
             ? L("panel.help.page.addLeft")
             : L("panel.help.page.addRight")
@@ -158,8 +163,10 @@ struct DrawerPageCapsule: View {
             action: { onAdd(side) }
         )
         .accessibilityLabel(help)
-        .opacity(isEnabled ? 1 : 0)
-        .allowsHitTesting(isEnabled)
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
+        // 动画只挂在加号自身：胶囊行整体不得挂 `.animation(value:)`（见 `body`）。
+        .animation(.easeOut(duration: 0.12), value: isVisible)
     }
 }
 

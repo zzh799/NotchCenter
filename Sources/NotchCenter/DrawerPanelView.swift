@@ -61,6 +61,9 @@ struct DrawerPanelView: View {
     /// 展开后段淡入、收起时先淡出再缩形）。
     @State private var contentVisible = false
 
+    /// 指针是否悬停在顶栏上：分页加号按钮的显示条件之一。
+    @State private var isTopBarHovering = false
+
     private let cornerRadius: CGFloat = 18
 
     init(
@@ -144,6 +147,9 @@ struct DrawerPanelView: View {
                 // 手势状态随面板存活（content 退出布局但状态对象不释放）：
                 // 不清的话残留的预览原点会让块在下次展开时停在旧预览位置。
                 interaction.reset()
+                // 顶栏悬停同理：收起那一刻指针可能还在顶栏内，视图直接退出
+                // 层级收不到 hover 结束事件，残留的 true 会让加号凭空挂着。
+                isTopBarHovering = false
             }
         }
     }
@@ -152,6 +158,10 @@ struct DrawerPanelView: View {
         VStack(spacing: 0) {
             topBar
                 .frame(height: NotchGridMetrics.drawerTopBarHeight)
+                // 整条顶栏都是加号的悬停带：按钮之间的空隙本身不参与命中，
+                // 不补 contentShape 的话指针落在空隙里加号就不出现。
+                .contentShape(Rectangle())
+                .onHover { isTopBarHovering = $0 }
 
             // 滚动指示条必须隐藏：抽屉是内容自适应面板，静止态内容 ≡ 可视区，
             // 滚动条没有存在意义；且内容高度与可视区高度是两个独立的 spring
@@ -194,6 +204,7 @@ struct DrawerPanelView: View {
                 titles: ui.drawerPageTitles,
                 activePage: ui.drawerActivePage,
                 isEditing: ui.isEditing,
+                showsAddButtons: ui.isEditing && isTopBarHovering,
                 onSelect: actions.onSelectPage,
                 onAdd: actions.onAddPage,
                 onMove: actions.onMovePage,

@@ -6,8 +6,10 @@ import SwiftUI
 /// - 拖动整块移动：拖动中实时预览（被占用块向下推挤自动重排），松手提交；
 /// - 右下角握把拖动调整尺寸，缩放过程中组件左上角保持不动；
 /// - 编辑模式角标：左上角设置按钮（插件提供设置界面时，经 SettingPopover
-///   弹出）+ 右上角移除按钮，均跟随块一起移动；设置 / 移除 / 缩放握把
-///   三者共用组件默认圆形按钮样式（`EditCircleBadge`）。
+///   弹出）+ 右上角移除按钮 + 右下角缩放握把，均跟随块一起移动；三者只在
+///   指针悬停于该块上时出现（与紧凑区图标、分页胶囊同一交互），压暗层与
+///   边缘描边恒在以标示可编辑态。设置 / 移除 / 缩放握把
+///   共用组件默认圆形按钮样式（`EditCircleBadge`）。
 struct DrawerBlockContainer: View {
     let element: DrawerElement
     let isEditing: Bool
@@ -29,6 +31,8 @@ struct DrawerBlockContainer: View {
     @State private var globalFrame: CGRect = .zero
 
     @State private var dragOffset: CGSize = .zero
+    /// 指针是否悬停在本块上：编辑角标的显示条件（角标恒落在块矩形内）。
+    @State private var isHovering = false
 
     private let cornerRadius: CGFloat = 12
 
@@ -84,7 +88,7 @@ struct DrawerBlockContainer: View {
                 }
             }
             .overlay(alignment: .topLeading) {
-                if isEditing && hasSettings {
+                if showsEditControls && hasSettings {
                     // 左上角设置按钮：经 SettingPopover 展示插件设置。
                     EditCircleButton(
                         systemImage: "gearshape",
@@ -93,10 +97,11 @@ struct DrawerBlockContainer: View {
                         onShowSettings(globalFrame)
                     }
                     .padding(6)
+                    .transition(.opacity)
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if isEditing {
+                if showsEditControls {
                     EditCircleButton(
                         systemImage: "xmark",
                         helpText: L("panel.help.removeBlock")
@@ -104,16 +109,20 @@ struct DrawerBlockContainer: View {
                         onRemove()
                     }
                     .padding(6)
+                    .transition(.opacity)
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                if isEditing {
+                if showsEditControls {
                     // 右下角缩放握把：唯一的调整尺寸入口，向右下拖动扩大、
                     // 左上角原点保持不动，松手在支持的尺寸等级间吸附。
                     resizeHandle
+                        .transition(.opacity)
                 }
             }
             .contentShape(Rectangle())
+            .onHover { isHovering = $0 }
+            .animation(.easeOut(duration: 0.12), value: showsEditControls)
             .offset(compensation)
             .offset(dragOffset)
             .gesture(
@@ -147,6 +156,15 @@ struct DrawerBlockContainer: View {
 
     private var isResizing: Bool {
         previewColumns != nil || previewRows != nil
+    }
+
+    /// 编辑角标（设置 / 移除 / 缩放握把）的显隐：编辑模式下随指针悬停。
+    /// 手势进行中强制保持：拖动时被拖块会落到相邻块之下（ZStack 次序不变、
+    /// 不抬升 z），相邻块抢走 hover；缩放时预览尺寸按格吸附、滞后于光标，
+    /// 向外拖的那一瞬指针会落在块矩形之外——任一情况都会让角标
+    /// 在手势半路凭空消失。
+    private var showsEditControls: Bool {
+        isEditing && (isHovering || isDragging || isResizing)
     }
 
     // MARK: 编辑控件（跟随块移动）
