@@ -198,15 +198,6 @@ private struct DrawerPagePill: View {
     /// 编辑模式、且不在重命名中才允许拖动（重命名期手势要让位给文本选择）。
     private var canDrag: Bool { isEditing && !isRenaming }
 
-    // TEMP(拖动诊断)：渲染期把 offset 的实际取值打出来，判定 isDragging 是否逐事件翻转。
-    private var loggedOffset: CGFloat {
-        let x = CGFloat(shift) * DrawerPagePillLayout.step + (isDragging ? dragOffset : 0)
-        NSLog(
-            "[pillOffset] page=\(page) slot=\(slot) shift=\(shift) dragging=\(isDragging) drag=\(dragOffset) x=\(x)"
-        )
-        return x
-    }
-
     var body: some View {
         ZStack {
             if isRenaming {
@@ -215,13 +206,10 @@ private struct DrawerPagePill: View {
                 pressSurface
             }
         }
-        // TEMP(拖动诊断)：身份若被重建，这里会在一次拖动里反复出现。
-        .onAppear { NSLog("[pillLife] appear page=\(page) slot=\(slot)") }
-        .onDisappear { NSLog("[pillLife] disappear page=\(page) slot=\(slot)") }
         .frame(width: DrawerPagePillLayout.pillWidth, height: DrawerPagePillLayout.rowHeight)
         .overlay(alignment: .top) { badgeCluster }
         // 让位平移 + 跟手位移都只作用在渲染层（布局槽位始终钉死在原位）。
-        .offset(x: loggedOffset)
+        .offset(x: CGFloat(shift) * DrawerPagePillLayout.step + (isDragging ? dragOffset : 0))
         .scaleEffect(isDragging ? 1.06 : 1)
         .shadow(color: .black.opacity(isDragging ? 0.45 : 0), radius: 6, y: 2)
         .animation(.easeOut(duration: 0.12), value: isHovering)
@@ -371,29 +359,19 @@ private struct DrawerPagePill: View {
         // 里即宿主窗口坐标，抽屉窗口满尺寸固定、拖动期间不动（与缩放握把同一结论）。
         DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onChanged { value in
-                // TEMP(拖动诊断)
-                NSLog("[drag] changed page=\(page) canDrag=\(canDrag) tx=\(value.translation.width) ty=\(value.translation.height) dragging=\(isDragging)")
                 if !isDragging {
-                    guard canDrag else {
-                        NSLog("[drag] blocked: canDrag=false page=\(page)")  // TEMP
-                        return
-                    }
+                    guard canDrag else { return }
                     guard abs(value.translation.width) > DrawerPagePillLayout.dragPickupDistance else { return }
-                    NSLog("[drag] pickup page=\(page) tx=\(value.translation.width)")  // TEMP
                     isDragging = true
                     reportedTarget = nil
                 }
                 dragOffset = value.translation.width
                 let target = target(for: value.translation.width)
-                // TEMP(拖动诊断)
-                NSLog("[drag] follow page=\(page) slot=\(slot) count=\(count) off=\(dragOffset) target=\(target) reported=\(String(describing: reportedTarget))")
                 guard target != reportedTarget else { return }
                 reportedTarget = target
                 onDragTargetChanged(target)
             }
             .onEnded { value in
-                // TEMP(拖动诊断)
-                NSLog("[drag] ended page=\(page) dragging=\(isDragging) tx=\(value.translation.width) off=\(dragOffset)")
                 if isDragging {
                     let target = target(for: value.translation.width)
                     withAnimation(DrawerAnimation.spring) {
