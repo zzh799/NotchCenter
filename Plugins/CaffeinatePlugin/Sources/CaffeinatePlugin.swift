@@ -102,6 +102,10 @@ private struct KeepAwakeCompactView: View {
             )
         }
         .buttonStyle(.plain)
+        // 紧凑面板是 canBecomeKey 的 NSPanel，点击后按钮成为 first responder 会画系统蓝色焦点环。
+        // （`.focusEffect(_:)` 是 iOS 专属；macOS 用 focusEffectDisabled。）
+        .focusable(false)
+        .focusEffectDisabled(true)
         .help(store.isKeepingAwake ? L("caffeinate.help.stop") : L("caffeinate.help.start"))
         .accessibilityLabel(L("caffeinate.a11y.keepAwake"))
         .accessibilityValue(store.isKeepingAwake ? L("caffeinate.a11y.on") : L("caffeinate.a11y.off"))

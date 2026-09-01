@@ -35,6 +35,10 @@ struct PomodoroCompactView: View {
                 )
         }
         .buttonStyle(.plain)
+        // 紧凑面板是 canBecomeKey 的 NSPanel，点击后按钮成为 first responder 会画系统蓝色焦点环。
+        // （`.focusEffect(_:)` 是 iOS 专属；macOS 用 focusEffectDisabled。）
+        .focusable(false)
+        .focusEffectDisabled(true)
         .help(isRunning ? L("compact.help.stop") : L("compact.help.start"))
         .accessibilityLabel(L("a11y.pomodoro"))
         .accessibilityValue(isRunning ? L("compact.help.stop") : L("compact.help.start"))
