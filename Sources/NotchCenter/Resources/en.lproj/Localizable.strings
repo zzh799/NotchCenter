@@ -16,7 +16,6 @@
 "trigger.click" = "Click to Expand";
 "settings.section.layout" = "Layout";
 "settings.columns" = "Drawer Columns";
-"settings.column.count" = "%d Columns";
 "settings.section.plugins" = "Plugins";
 "settings.pluginManager" = "Plugin Manager…";
 "settings.quit" = "Quit NotchCenter";
@@ -42,11 +41,13 @@
 "settings.layout.padding" = "Padding";
 "settings.layout.columnsSection" = "Columns";
 "settings.layout.effectiveColumns" = "Up to %d columns fit the current screen.";
+"settings.layout.columnMin" = "Min %d columns";
+"settings.layout.columnMax" = "Max %d columns";
+"settings.layout.columnRangeHelp" = "Drawer columns: minimum %d, maximum %d";
 "settings.layout.minSection" = "Minimum size";
 "settings.layout.minRows" = "Minimum rows";
-"settings.layout.minColumns" = "Minimum columns";
 "settings.layout.minRow.count" = "%d Rows";
-"settings.layout.minHint" = "Blank cells pad the drawer up to these counts. The column floor never exceeds the maximum columns.";
+"settings.layout.minHint" = "Blank cells pad the drawer up to the configured row count.";
 "settings.layout.minColumnsUnavailable" = "Maximum columns is below 3, so the column floor follows it.";
 "settings.layout.previewSection" = "Preview";
 "settings.layout.previewCaption" = "Cell %d×%d · spacing %d";

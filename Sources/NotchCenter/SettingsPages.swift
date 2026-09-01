@@ -540,22 +540,32 @@ struct LayoutSettingsPage: View {
     private var columnsSection: some View {
         SettingsSection(title: L("settings.layout.columnsSection")) {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
+                HStack(spacing: 12) {
                     Text(L("settings.columns"))
                         .font(.system(size: 12))
                         .foregroundStyle(.white.opacity(0.72))
-                    Spacer(minLength: 0)
-                    Picker("", selection: columnBinding) {
-                        ForEach(2...8, id: \.self) { columns in
-                            Text(LF("settings.column.count", columns)).tag(columns)
+                        .frame(width: 76, alignment: .leading)
+                    ColumnRangeSlider(
+                        minValue: min(layoutEngine.userMinColumns, layoutEngine.userMaxColumns),
+                        maxValue: layoutEngine.userMaxColumns,
+                        onMinChange: { newValue in
+                            layoutEngine.setUserMinColumns(newValue)
+                            controller.refreshAfterLayoutChange()
+                        },
+                        onMaxChange: { newValue in
+                            layoutEngine.setUserMaxColumns(newValue)
+                            controller.refreshAfterLayoutChange()
                         }
-                    }
-                    .labelsHidden()
-                    .frame(width: 130)
+                    )
                 }
                 Text(LF("settings.layout.effectiveColumns", layoutEngine.effectiveMaxColumns()))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                if layoutEngine.userMaxColumns < LayoutModel.minColumnsRange.lowerBound {
+                    Text(L("settings.layout.minColumnsUnavailable"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -576,35 +586,11 @@ struct LayoutSettingsPage: View {
                     .labelsHidden()
                     .frame(width: 130)
                 }
-                HStack(spacing: 10) {
-                    Text(L("settings.layout.minColumns"))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.72))
-                    Spacer(minLength: 0)
-                    // 别改成 ForEach(3...maxColumns)：最大列数小于下界时是空闭区间，运行时 trap。
-                    if minColumnOptions.isEmpty {
-                        Text(L("settings.layout.minColumnsUnavailable"))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Picker("", selection: minColumnsBinding) {
-                            ForEach(minColumnOptions, id: \.self) { columns in
-                                Text(LF("settings.column.count", columns)).tag(columns)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 130)
-                    }
-                }
                 Text(L("settings.layout.minHint"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
-    }
-
-    private var minColumnOptions: [Int] {
-        Array(LayoutModel.minColumnsRange).filter { $0 <= layoutEngine.userMaxColumns }
     }
 
     private var previewSection: some View {
@@ -642,17 +628,6 @@ struct LayoutSettingsPage: View {
             get: { layoutEngine.userMinRows },
             set: { newValue in
                 layoutEngine.setUserMinRows(newValue)
-                controller.refreshAfterLayoutChange()
-            }
-        )
-    }
-
-    /// get 要夹一次：手改 JSON 的存量值可能不在可选项里，直接回显会空选。
-    private var minColumnsBinding: Binding<Int> {
-        Binding(
-            get: { min(layoutEngine.userMinColumns, layoutEngine.userMaxColumns) },
-            set: { newValue in
-                layoutEngine.setUserMinColumns(newValue)
                 controller.refreshAfterLayoutChange()
             }
         )

@@ -16,7 +16,6 @@
 "trigger.click" = "点击展开";
 "settings.section.layout" = "布局";
 "settings.columns" = "抽屉列数";
-"settings.column.count" = "%d 列";
 "settings.section.plugins" = "插件";
 "settings.pluginManager" = "插件管理…";
 "settings.quit" = "退出 NotchCenter";
@@ -42,11 +41,13 @@
 "settings.layout.padding" = "内容边距";
 "settings.layout.columnsSection" = "列数";
 "settings.layout.effectiveColumns" = "当前屏幕最多容纳 %d 列。";
+"settings.layout.columnMin" = "最小 %d 列";
+"settings.layout.columnMax" = "最大 %d 列";
+"settings.layout.columnRangeHelp" = "抽屉列数：最小 %d 列，最大 %d 列";
 "settings.layout.minSection" = "最小尺寸";
 "settings.layout.minRows" = "最小行数";
-"settings.layout.minColumns" = "最小列数";
 "settings.layout.minRow.count" = "%d 行";
-"settings.layout.minHint" = "块不够时用空白格把抽屉补到该尺寸；最小列数不会超过最大列数。";
+"settings.layout.minHint" = "块不够时用空白格把抽屉补到设定的行数。";
 "settings.layout.minColumnsUnavailable" = "最大列数小于 3，列下限以最大列数为准。";
 "settings.layout.previewSection" = "示意";
 "settings.layout.previewCaption" = "单元 %d×%d · 间隔 %d";
