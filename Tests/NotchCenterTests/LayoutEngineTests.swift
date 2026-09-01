@@ -386,7 +386,8 @@ final class LayoutEngineTests: XCTestCase {
         column: Int,
         row: Int,
         width: Int,
-        height: Int
+        height: Int,
+        page: Int = 0
     ) {
         var model = engine.modelForTesting
         model.drawerBlocks.append(
@@ -394,6 +395,7 @@ final class LayoutEngineTests: XCTestCase {
                 pluginID: "com.test.plugin",
                 blockID: "cell",
                 placementID: id,
+                page: page,
                 originColumn: column,
                 originRow: row,
                 widthColumns: width,
@@ -934,6 +936,174 @@ final class LayoutEngineTests: XCTestCase {
             "预览 == 提交：同一条下限公式"
         )
         XCTAssertEqual(engine.previewBottomRow(origins: preview), 5)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    // MARK: 容量缩小修复（setUserMaxColumns 越界重排）
+    //
+    // 渲染可见列窗口 = [gridLeft, gridLeft + capacity)：合并跨度超容量的页，
+    // 右缘块被面板裁掉。修复保持该页左缘锚定，越界块就近折回（贴窗口右缘），
+    // 撞上已固定块即下移，收尾按页压实；修完幂等。
+
+    func testShrinkingMaxColumnsPullsOutOfRangeBlockBackIntoWindow() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.medium], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 8)
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "b", column: 6, row: 0, width: 2, height: 1)
+
+        engine.setUserMaxColumns(4)
+
+        XCTAssertEqual(engine.drawerBlock(placementID: "a")?.originColumn, 0, "窗口内块零移动")
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originColumn, 2, "越界块就近折回窗口右缘")
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originRow, 0)
+        XCTAssertTrue(engine.validate().isEmpty)
+        let range = engine.occupiedColumnRange()
+        XCTAssertLessThanOrEqual(range.max - range.min, engine.effectiveMaxColumns())
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testShrinkingMaxColumnsPushesDownWhenWindowColumnOccupied() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.medium], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 8)
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "b", column: 2, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "c", column: 6, row: 0, width: 2, height: 1)
+
+        engine.setUserMaxColumns(4)
+
+        XCTAssertEqual(engine.drawerBlock(placementID: "a")?.originColumn, 0)
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originColumn, 2)
+        XCTAssertEqual(engine.drawerBlock(placementID: "c")?.originColumn, 2, "夹回窗口右缘 2...3")
+        XCTAssertEqual(engine.drawerBlock(placementID: "c")?.originRow, 1, "撞上 b 即下移")
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testShrinkingMaxColumnsAnchorsWindowAtPageLeftEdge() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.medium], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 8)
+        placeRaw(engine, id: "a", column: -2, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "b", column: 4, row: 0, width: 2, height: 1)
+
+        engine.setUserMaxColumns(4)
+
+        XCTAssertEqual(engine.drawerBlock(placementID: "a")?.originColumn, -2, "左缘（含负列左扩）锚定不动")
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originColumn, 0, "夹回窗口 [-2, 2) 右缘")
+        let range = engine.occupiedColumnRange()
+        XCTAssertEqual(range.min, -2)
+        XCTAssertEqual(range.max, 2)
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testShrinkingMaxColumnsCompactsRowsVacatedByRepair() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.medium], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 8)
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "b", column: 6, row: 3, width: 2, height: 1)
+
+        engine.setUserMaxColumns(4)
+
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originColumn, 2)
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originRow, 1, "折回后腾出的整行空洞被压实")
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testShrinkingMaxColumnsRepairsOnlyOverflowingPagesKeepsArrayOrder() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.medium], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 8)
+        placeRaw(engine, id: "fit-1", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "over-left", column: 0, row: 0, width: 2, height: 1, page: 1)
+        placeRaw(engine, id: "fit-2", column: 2, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "over-right", column: 6, row: 0, width: 2, height: 1, page: 1)
+
+        engine.setUserMaxColumns(4)
+
+        XCTAssertEqual(engine.drawerBlock(placementID: "fit-1")?.originColumn, 0, "合规页不动")
+        XCTAssertEqual(engine.drawerBlock(placementID: "fit-2")?.originColumn, 2)
+        XCTAssertEqual(engine.drawerBlock(placementID: "over-left")?.originColumn, 0)
+        XCTAssertEqual(engine.drawerBlock(placementID: "over-right")?.originColumn, 2, "越界页修复")
+        XCTAssertEqual(
+            engine.modelForTesting.drawerBlocks.map(\.placementID),
+            ["fit-1", "over-left", "fit-2", "over-right"],
+            "perPage 契约：数组顺序（ForEach 稳定性）不得重排"
+        )
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testShrinkingMaxColumnsRepairIsIdempotent() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.medium], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 8)
+        placeRaw(engine, id: "a", column: 0, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "b", column: 6, row: 0, width: 2, height: 1)
+        placeRaw(engine, id: "c", column: 6, row: 1, width: 2, height: 1)
+
+        engine.setUserMaxColumns(4)
+        let repaired = engine.modelForTesting.drawerBlocks
+
+        engine.setUserMaxColumns(8)
+        engine.setUserMaxColumns(4)
+        XCTAssertEqual(engine.modelForTesting.drawerBlocks, repaired, "重复缩列修复结果逐块相同")
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testRepairToleratesBlockWiderThanCapacity() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium, .wide], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 8)
+        placeRaw(engine, id: "wide", column: 1, row: 0, width: 6, height: 1)
+        placeRaw(engine, id: "small", column: 0, row: 1, width: 1, height: 1)
+
+        engine.setUserMaxColumns(4)
+
+        XCTAssertEqual(
+            engine.drawerBlock(placementID: "wide")?.originColumn, 0,
+            "超宽块无法用列位移修复：夹回窗口左缘（部分裁切与窄屏现状一致）"
+        )
+        XCTAssertEqual(engine.drawerBlock(placementID: "small")?.originColumn, 0)
+        XCTAssertEqual(
+            engine.modelForTesting.drawerBlocks.map(\.widthColumns),
+            [6, 1],
+            "不改写块跨度"
+        )
+        let kinds = Set(engine.validate().map(layoutIssueKind))
+        XCTAssertTrue(kinds.contains("outOfBounds"), "超宽块仍报越界（不可修复项）")
+        XCTAssertFalse(kinds.contains("overlap"))
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testRandomShrinkRepairKeepsInvariants() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 8)
+        // 固定种子可重放；每块独占一行（初始无重叠），列随机。
+        var seed: UInt64 = 0x5EED_2026
+        func random(_ bound: Int) -> Int {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Int((seed >> 33) % UInt64(bound))
+        }
+        let ids = (0..<6).map { "b\($0)" }
+        for (index, id) in ids.enumerated() {
+            placeRaw(engine, id: id, column: random(7), row: index, width: 1 + random(2), height: 1)
+        }
+
+        for _ in 0..<30 {
+            // 4...8：宽 ≤ 2 的块恒可修复，跨度不变量必须严格成立。
+            engine.setUserMaxColumns(4 + random(5))
+
+            let blocks = engine.modelForTesting.drawerBlocks
+            XCTAssertEqual(blocks.map(\.placementID), ids, "数组顺序稳定")
+            let range = engine.occupiedColumnRange()
+            XCTAssertLessThanOrEqual(range.max - range.min, engine.effectiveMaxColumns(), "跨度 ≤ 容量")
+            for (index, block) in blocks.enumerated() {
+                XCTAssertGreaterThanOrEqual(block.originRow, 0)
+                for other in blocks.dropFirst(index + 1) {
+                    XCTAssertFalse(
+                        LayoutEngine.rectsOverlap(block, other),
+                        "\(block.placementID) 与 \(other.placementID) 重叠"
+                    )
+                }
+            }
+        }
         try? FileManager.default.removeItem(at: directory)
     }
 }

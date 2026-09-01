@@ -9,7 +9,20 @@ extension LayoutEngine {
         let clamped = LayoutModel.clamped(columns, to: LayoutModel.maxColumnsRange)
         guard model.maxColumns != clamped else { return }
         model.maxColumns = clamped
+        // 容量缩小后先修越界块再落盘：越界状态（右侧块被面板裁掉）不进 layout.json。
+        repairBlocksBeyondCapacity()
         saveToDisk()
+    }
+
+    /// 越界重排实例入口（仅 `setUserMaxColumns` 挂钩；`updateScreenConstraint`
+    /// 有意不挂——换屏导致的容量变化是临时状态，修复会把布局永久改写，移回
+    /// 宽屏不可恢复）。按页分组修复，无越界时零 model 改写。
+    func repairBlocksBeyondCapacity() {
+        let result = Self.perPage(model.drawerBlocks) {
+            Self.repairCapacityOverflow($0, capacity: effectiveMaxColumns())
+        }
+        guard result.changed else { return }
+        model.drawerBlocks = result.blocks
     }
 
     func setUserMinRows(_ rows: Int) {

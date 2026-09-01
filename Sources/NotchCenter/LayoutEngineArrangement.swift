@@ -185,4 +185,52 @@ extension LayoutEngine {
             model.drawerBlocks[index].originRow = max(target.row, 0)
         }
     }
+
+    /// 容量缩小后的越界重排（纯函数，单页）：渲染可见列窗口 =
+    /// `[rangeMin, rangeMin + capacity)`（rangeMin 即该页 gridLeft），合并跨度
+    /// 超出容量时右缘块被裁。修复 = 保持左缘锚定不动，越出右缘的块把
+    /// `originColumn` 就近夹回窗口（最近合法位置 = 贴窗口右缘），再按
+    /// 「窗口内原块（阅读序）先固定、夹回块殿后」走 `placeInOrder`——撞上
+    /// 已固定块即下移，行顶边锚定、列不再动；最后按提交侧同序压实空行/空列。
+    /// 修完跨度 ≤ 容量，重复调用零操作（幂等，滑条连续拖动每档触发一次）。
+    ///
+    /// 不能走 `applyOrigins`/`validColumnRange`：越界状态下合法区间退化
+    /// （lower > upper），clamp 失效，修复必须整页一次算好。块宽超过容量的
+    /// 极端情况无法用列位移修复，夹回窗口左缘、接受部分裁切（与窄屏现状
+    /// 一致，不改写块跨度），其余块照常收拢。
+    /// （模块内私有：仅 `repairBlocksBeyondCapacity` 实例入口调用。）
+    static func repairCapacityOverflow(
+        _ pageBlocks: [PlacedBlock],
+        capacity: Int
+    ) -> (blocks: [PlacedBlock], changed: Bool) {
+        guard !pageBlocks.isEmpty, capacity > 0 else { return (pageBlocks, false) }
+        let rangeMin = pageBlocks.map(\.originColumn).min() ?? 0
+        let rangeMax = pageBlocks.map { $0.originColumn + $0.widthColumns }.max() ?? 0
+        guard rangeMax - rangeMin > capacity else { return (pageBlocks, false) }
+
+        var anchored: [PlacedBlock] = []
+        var pulledIn: [PlacedBlock] = []
+        for var block in pageBlocks {
+            let upper = max(rangeMin, rangeMin + capacity - block.widthColumns)
+            guard block.originColumn < rangeMin || block.originColumn > upper else {
+                anchored.append(block)
+                continue
+            }
+            block.originColumn = min(max(block.originColumn, rangeMin), upper)
+            pulledIn.append(block)
+        }
+        // 跨度超容量必有块越出右缘（rangeMax 的达成块），此分支纯防御。
+        guard !pulledIn.isEmpty else { return (pageBlocks, false) }
+
+        let origins = placeInOrder(anchored.sorted(by: inReadingOrder) + pulledIn.sorted(by: inReadingOrder))
+        var arranged = pageBlocks
+        for index in arranged.indices {
+            guard let origin = origins[arranged[index].placementID] else { continue }
+            arranged[index].originColumn = origin.column
+            arranged[index].originRow = origin.row
+        }
+        arranged = compactEmptyRows(arranged).blocks
+        arranged = compactEmptyColumns(arranged).blocks
+        return (arranged, true)
+    }
 }

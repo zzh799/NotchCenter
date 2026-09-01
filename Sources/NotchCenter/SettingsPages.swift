@@ -613,16 +613,6 @@ struct LayoutSettingsPage: View {
         }
     }
 
-    private var columnBinding: Binding<Int> {
-        Binding(
-            get: { layoutEngine.userMaxColumns },
-            set: { newValue in
-                layoutEngine.setUserMaxColumns(newValue)
-                controller.refreshAfterLayoutChange()
-            }
-        )
-    }
-
     private var minRowsBinding: Binding<Int> {
         Binding(
             get: { layoutEngine.userMinRows },
