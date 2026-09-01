@@ -282,6 +282,52 @@ final class DrawerPageTests: XCTestCase {
         )
     }
 
+    // MARK: 页面图标
+
+    func testDrawerPageIconsRoundTrip() throws {
+        let (engine, directory, fileURL) = try makeEngine()
+        _ = engine.addDrawerPage(.right)
+        engine.setDrawerPageIcon(page: 1, icon: "  star.fill  ")
+        XCTAssertEqual(engine.drawerPageIcon(1), "star.fill", "首尾空白剥除")
+
+        let reloaded = LayoutEngine(fileURL: fileURL, blockResolver: { _, _ in nil })
+        XCTAssertEqual(reloaded.drawerPageIcon(1), "star.fill")
+
+        // 空图标 = 清除，回落（主页房子、其余页无图标）。
+        engine.setDrawerPageIcon(page: 1, icon: "   ")
+        XCTAssertNil(engine.drawerPageIcon(1))
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testPageIconPrefersCustomThenHomeHouse() {
+        XCTAssertEqual(LayoutModel.pageIcon(page: 1, icons: ["1": "star.fill"]), "star.fill")
+        // 空串视同没有自定义图标。
+        XCTAssertEqual(LayoutModel.pageIcon(page: 1, icons: ["1": ""]), nil)
+        // 主页默认房子；其余页无图标退化为纯文本。
+        XCTAssertEqual(LayoutModel.pageIcon(page: 0, icons: [:]), "house.fill")
+        XCTAssertNil(LayoutModel.pageIcon(page: 1, icons: [:]))
+    }
+
+    func testLegacyLayoutJSONWithoutIconsDecodes() throws {
+        let (engine, directory, fileURL) = try makeEngine()
+        var model = engine.modelForTesting
+        model.drawerPages = [0, 1]
+        // 剥掉 drawerPageIcons 键 = 本改动前写出的 layout.json。
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: try JSONEncoder().encode(model),
+                options: []
+            ) as? [String: Any]
+        )
+        XCTAssertNotNil(json.removeValue(forKey: "drawerPageIcons"))
+        try JSONSerialization.data(withJSONObject: json).write(to: fileURL)
+
+        let reloaded = LayoutEngine(fileURL: fileURL, blockResolver: { _, _ in nil })
+        XCTAssertEqual(reloaded.drawerPageIcons, [:])
+        XCTAssertEqual(reloaded.drawerPages, [0, 1])
+        try? FileManager.default.removeItem(at: directory)
+    }
+
     // MARK: 删除页面
 
     func testRemoveDrawerPageDeletesItsBlocksAndTitle() throws {
@@ -297,6 +343,7 @@ final class DrawerPageTests: XCTestCase {
             pluginID: "com.test.plugin", blockID: "b", column: 0, row: 0, page: 1
         ))
         engine.setDrawerPageTitle(page: 1, title: "待删")
+        engine.setDrawerPageIcon(page: 1, icon: "star.fill")
         XCTAssertEqual(engine.drawerPages, [0, 1, 2])
 
         let removed = try XCTUnwrap(engine.removeDrawerPage(page: 1))
@@ -304,6 +351,7 @@ final class DrawerPageTests: XCTestCase {
         XCTAssertEqual(removed.first?.blockID, "b")
         XCTAssertEqual(engine.drawerPages, [0, 2], "只摘掉被删的那一页")
         XCTAssertNil(engine.drawerPageTitle(1), "标题随页面一起清理")
+        XCTAssertNil(engine.drawerPageIcon(1), "图标随页面一起清理")
         // 主页与该页之外的块毫发无损。
         XCTAssertEqual(engine.drawerBlocks.count, 1)
         XCTAssertEqual(engine.drawerBlock(placementID: home.placementID)?.page, 0)

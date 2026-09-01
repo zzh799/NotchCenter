@@ -147,6 +147,9 @@ struct LayoutModel: Codable, Equatable {
     /// `encode(to:)` 写成键值交替数组，与自定义解码不对称）。
     /// 缺失或空串 = 回落到显示序列里的 1-based 序号（见 `pageDisplayName`）。
     var drawerPageTitles: [String: String]
+    /// 页面自定义图标（SF Symbol 名）：键与空值语义同 `drawerPageTitles`。
+    /// 缺失 = 主页回落 `house.fill`、其余页无图标（见 `pageIcon`）。
+    var drawerPageIcons: [String: String]
 
     init(
         schemaVersion: Int = LayoutModel.currentSchemaVersion,
@@ -157,7 +160,8 @@ struct LayoutModel: Codable, Equatable {
         drawerBlocks: [PlacedBlock] = [],
         enabledPluginIDs: [String] = [],
         drawerPages: [Int] = [0],
-        drawerPageTitles: [String: String] = [:]
+        drawerPageTitles: [String: String] = [:],
+        drawerPageIcons: [String: String] = [:]
     ) {
         self.schemaVersion = schemaVersion
         self.maxColumns = Self.clamped(maxColumns, to: Self.maxColumnsRange)
@@ -168,12 +172,13 @@ struct LayoutModel: Codable, Equatable {
         self.enabledPluginIDs = enabledPluginIDs
         self.drawerPages = Self.normalizedPages(drawerPages)
         self.drawerPageTitles = drawerPageTitles
+        self.drawerPageIcons = drawerPageIcons
     }
 
     // 旧版 layout.json 无 drawerPages / minRows / minColumns 键 → 只有主页、下限取默认值。
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, maxColumns, minRows, minColumns, compactSlots, drawerBlocks
-        case enabledPluginIDs, drawerPages, drawerPageTitles
+        case enabledPluginIDs, drawerPages, drawerPageTitles, drawerPageIcons
     }
 
     init(from decoder: Decoder) throws {
@@ -200,6 +205,9 @@ struct LayoutModel: Codable, Equatable {
         )
         drawerPageTitles = try container.decodeIfPresent(
             [String: String].self, forKey: .drawerPageTitles
+        ) ?? [:]
+        drawerPageIcons = try container.decodeIfPresent(
+            [String: String].self, forKey: .drawerPageIcons
         ) ?? [:]
     }
 
@@ -248,6 +256,18 @@ struct LayoutModel: Codable, Equatable {
             return title
         }
         return LF("panel.page.untitled", (pages.firstIndex(of: page) ?? -1) + 1)
+    }
+
+    /// 页面图标（SF Symbol 名）：自定义图标优先；否则主页回落房子、其余页无图标
+    ///（胶囊退化为纯文本）。胶囊与设置浮窗共用这一份解析。
+    static func pageIcon(
+        page: Int,
+        icons: [String: String]
+    ) -> String? {
+        if let icon = icons[String(page)], !icon.isEmpty {
+            return icon
+        }
+        return page == homePage ? "house.fill" : nil
     }
 }
 

@@ -118,6 +118,7 @@ extension NotchPanelController {
             let activePage = self.uiState.drawerActivePage
             self.uiState.drawerPages = self.layoutEngine.drawerPages
             self.uiState.drawerPageTitles = self.layoutEngine.drawerPageTitles
+            self.uiState.drawerPageIcons = self.layoutEngine.drawerPageIcons
             self.uiState.drawerContentSize = self.layoutEngine.drawerContentSize(page: activePage)
             self.uiState.drawerGridLeftColumn = self.layoutEngine.gridLeftColumn(page: activePage)
             // 与上面的尺寸同批写入（分两批即一帧裁切，见 `DrawerGridGeometry.minimumRows`）。
@@ -403,8 +404,7 @@ extension NotchPanelController {
                     anchorFrame: anchorFrame,
                     placement: .overlay
                 )
-            },
-            onReorderBlocks: { [weak self] in
+            },            onReorderBlocks: { [weak self] in
                 self?.layoutEngine.reorderDrawerBlocks(page: self?.uiState.drawerActivePage ?? 0)
                 self?.refreshAfterEdit()
             },
@@ -417,8 +417,8 @@ extension NotchPanelController {
             onMovePage: { [weak self] page, targetIndex in
                 self?.moveDrawerPage(from: page, to: targetIndex)
             },
-            onRenamePage: { [weak self] page, title in
-                self?.renameDrawerPage(page, title: title)
+            onShowPageSettings: { [weak self] page, anchorFrame in
+                self?.showPageSettings(page: page, anchorFrame: anchorFrame)
             },
             onRemovePage: { [weak self] page in
                 self?.removeDrawerPage(page)
@@ -759,6 +759,33 @@ extension NotchPanelController {
     func renameDrawerPage(_ page: Int, title: String) {
         layoutEngine.setDrawerPageTitle(page: page, title: title)
         rebuildContent()
+    }
+
+    /// 设置页面图标（SF Symbol 名；空串 = 清除，主页回落房子、其余页纯文本）。
+    func setPageIcon(_ page: Int, icon: String) {
+        layoutEngine.setDrawerPageIcon(page: page, icon: icon)
+        rebuildContent()
+    }
+
+    /// 页面设置浮窗（分页胶囊齿轮角标触发）：名称即时生效 + 图标宫格点选。
+    /// 胶囊在屏幕顶端，`.below` 贴下方弹出（与紧凑图标同一摆放理由）。
+    func showPageSettings(page: Int, anchorFrame: CGRect) {
+        // 回落图标 = 清除自定义后的有效图标（主页房子、其余页 nil），
+        // 借空 icons 字典让 `pageIcon` 保持唯一解析点。
+        let fallbackIcon = LayoutModel.pageIcon(page: page, icons: [:])
+        SettingPopover.shared.present(
+            anchoredTo: anchorFrame,
+            placement: .below,
+            title: L("panel.page.settings.title")
+        ) {
+            DrawerPageSettingsPopover(
+                title: layoutEngine.drawerPageTitle(page) ?? "",
+                icon: layoutEngine.drawerPageIcon(page),
+                fallbackIcon: fallbackIcon,
+                onTitleChange: { [weak self] in self?.renameDrawerPage(page, title: $0) },
+                onIconChange: { [weak self] in self?.setPageIcon(page, icon: $0) }
+            )
+        }
     }
 
     /// 删除页面：连同页内的块一起移除。块里可能装着用户的笔记内容，

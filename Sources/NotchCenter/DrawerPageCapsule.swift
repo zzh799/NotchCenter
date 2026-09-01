@@ -5,17 +5,17 @@ import SwiftUI
 /// 分页胶囊行的槽位数学（值类型、无视图依赖，可单测重放）。
 /// 前提是胶囊**定宽等距**：槽位原点 = 槽位 × `step`，落点只需位移量、不必测 frame。
 enum DrawerPagePillLayout {
-    static let pillWidth: CGFloat = 34
+    /// 定宽取"图标 + 标题"所需（符号 + 3~4 个汉字），超出截断；
+    /// 槽位数学全部由本常量派生，改动会等比传导到高光/拖动落点。
+    static let pillWidth: CGFloat = 52
     static let pillHeight: CGFloat = 22
-    /// 每颗胶囊的命中/悬停框比胶囊高一档：顶角的改名/删除角标必须落在框内，
+    /// 每颗胶囊的命中/悬停框比胶囊高一档：顶角的设置/删除角标必须落在框内，
     /// 否则指针一移到角标上 `onHover` 就翻 false，角标当场消失、永远点不到。
     static let rowHeight: CGFloat = 28
     static let pillSpacing: CGFloat = 4
     /// 加号在胶囊外，不参与排序数学。
     static let addSpacing: CGFloat = 6
     static let badgeSide: CGFloat = 12
-    /// 就地重命名编辑框宽度：34pt 装不下几个字，向两侧探出邻位。
-    static let editorWidth: CGFloat = 68
     /// 按压位移超过该值才认定是拖动（否则视同点击切页）。
     static let dragPickupDistance: CGFloat = 4
 
@@ -68,13 +68,14 @@ enum DrawerPagePillAppearance {
 
 // MARK: - 抽屉分页胶囊行（顶栏中间）
 
-/// 每页一颗独立胶囊 + 行首行尾两颗**胶囊外**的加号。胶囊文字：自定义标题 →
-/// 序号，主页无标题画房子。点击与拖动共用一条按压手势（非编辑模式只认点击）；
-/// 编辑模式悬停出改名/删除角标、横向拖动排序。选中态由常驻高光层表示：
-/// 静止钉在激活胶囊、滑动会话期随 `swipe.progress` 平移。
+/// 每页一颗独立胶囊 + 行首行尾两颗**胶囊外**的加号。胶囊内容：图标 + 标题
+///（无图标退化为标题/序号，主页默认房子）。点击与拖动共用一条按压手势
+///（非编辑模式只认点击）；编辑模式悬停出设置/删除角标、横向拖动排序。
+/// 选中态由常驻高光层表示：静止钉在激活胶囊、滑动会话期随 `swipe.progress` 平移。
 struct DrawerPageCapsule: View {
     let pages: [Int]
     let titles: [String: String]
+    let icons: [String: String]
     let activePage: Int
     let isEditing: Bool
     /// 两颗加号的显隐（编辑模式且指针悬停在顶栏上）。
@@ -84,7 +85,7 @@ struct DrawerPageCapsule: View {
     let onSelect: (Int) -> Void
     let onAdd: (DrawerPageSide) -> Void
     let onMove: (Int, Int) -> Void
-    let onRename: (Int, String) -> Void
+    let onShowSettings: (Int, CGRect) -> Void
     let onRemove: (Int) -> Void
 
     /// 编辑拖动排序预览：被拖页 + 目标槽位，两者同设同清。
@@ -163,6 +164,7 @@ struct DrawerPageCapsule: View {
             slot: slot,
             count: pages.count,
             label: label(for: page, slot: slot),
+            icon: LayoutModel.pageIcon(page: page, icons: icons),
             help: LayoutModel.pageDisplayName(in: pages, page: page, titles: titles),
             // 胶囊壳不承载选中态；内容亮度随激活/进度变化，作高光层的"内的呼应"。
             contentActivation: activationWeight(page: page),
@@ -180,7 +182,7 @@ struct DrawerPageCapsule: View {
                     dragOffset = 0
                 }
             },
-            onRename: { onRename(page, $0) },
+            onShowSettings: { onShowSettings(page, $0) },
             onRemove: { onRemove(page) }
         )
     }
@@ -256,13 +258,15 @@ private struct PagePillHighlight: View {
 
 // MARK: - 单颗页面胶囊
 
-/// 独立结构体而非视图方法：悬停、拖动与就地重命名都要持 `@State`。
+/// 独立结构体而非视图方法：悬停与拖动都要持 `@State`。
 private struct DrawerPagePill: View {
     let page: Int
     let slot: Int
     let count: Int
-    /// 胶囊文字（空串 = 画主页房子图标）。
+    /// 胶囊文字（空串 = 主页无标题，图标兜底画房子）。
     let label: String
+    /// 胶囊图标（nil = 无图标，纯文本）。
+    let icon: String?
     let help: String
     /// 内容激活程度（0…1）：决定图标/文本亮度，随滑动进度直渲。
     let contentActivation: CGFloat
@@ -274,7 +278,8 @@ private struct DrawerPagePill: View {
     /// 跟手位移逐帧上报（**没有** target 越界也要报）：高光在激活页被拖时要随胶囊跟手。
     let onDragOffsetChanged: (CGFloat) -> Void
     let onDragCommit: (Int) -> Void
-    let onRename: (String) -> Void
+    /// 设置角标触发：上报胶囊全局 frame 作为浮窗锚点。
+    let onShowSettings: (CGRect) -> Void
     let onRemove: () -> Void
 
     @State private var isHovering = false
@@ -282,34 +287,34 @@ private struct DrawerPagePill: View {
     @State private var isDragging = false
     /// 只在目标槽位真的变了时才上报：逐帧写 @State 会让让位动画每次都被重启。
     @State private var reportedTarget: Int?
-    @State private var isRenaming = false
-    @State private var draft = ""
-    @FocusState private var isEditorFocused: Bool
+    @State private var globalFrame: CGRect = .zero
 
     private var isHome: Bool { page == LayoutModel.homePage }
-    /// 重命名期手势要让位给文本选择。
-    private var canDrag: Bool { isEditing && !isRenaming }
+    /// 图标/标题随激活度提亮的统一透明度（与旧纯文本档位一致）。
+    private var contentOpacity: Double {
+        icon == nil ? 0.5 + 0.45 * Double(contentActivation)
+                    : 0.45 + 0.5 * Double(contentActivation)
+    }
 
     var body: some View {
-        ZStack {
-            if isRenaming {
-                editor
-            } else {
-                pressSurface
+        pressSurface
+            .frame(width: DrawerPagePillLayout.pillWidth, height: DrawerPagePillLayout.rowHeight)
+            // 锚定矩形捕获（量逻辑位置，与抽屉块齿轮同一模式）：设置角标点击时
+            // 上报给页面设置浮窗。
+            .background {
+                GlobalFrameReader { globalFrame = $0 }
             }
-        }
-        .frame(width: DrawerPagePillLayout.pillWidth, height: DrawerPagePillLayout.rowHeight)
-        .overlay(alignment: .top) { badgeCluster }
-        // 拾取弹簧（scale/shadow）必须排在位移层**前**：isDragging 翻转那帧
-        // dragOffset 首次出现的跳变若被同一 spring 化，胶囊滞后于光标、与直渲
-        // 的高光错位。跟手位移（dragOffset）直渲，只有让位（shift）走 spring。
-        .scaleEffect(isDragging ? 1.06 : 1)
-        .shadow(color: .black.opacity(isDragging ? 0.45 : 0), radius: 6, y: 2)
-        .animation(.easeOut(duration: 0.12), value: isHovering)
-        .animation(DrawerAnimation.spring, value: isDragging)
-        .offset(x: CGFloat(shift) * DrawerPagePillLayout.step + (isDragging ? dragOffset : 0))
-        .animation(DrawerAnimation.spring, value: shift)
-        .onHover { isHovering = $0 }
+            .overlay(alignment: .top) { badgeCluster }
+            // 拾取弹簧（scale/shadow）必须排在位移层**前**：isDragging 翻转那帧
+            // dragOffset 首次出现的跳变若被同一 spring 化，胶囊滞后于光标、与直渲
+            // 的高光错位。跟手位移（dragOffset）直渲，只有让位（shift）走 spring。
+            .scaleEffect(isDragging ? 1.06 : 1)
+            .shadow(color: .black.opacity(isDragging ? 0.45 : 0), radius: 6, y: 2)
+            .animation(.easeOut(duration: 0.12), value: isHovering)
+            .animation(DrawerAnimation.spring, value: isDragging)
+            .offset(x: CGFloat(shift) * DrawerPagePillLayout.step + (isDragging ? dragOffset : 0))
+            .animation(DrawerAnimation.spring, value: shift)
+            .onHover { isHovering = $0 }
     }
 
     /// 按压面：**不能是 `Button`**——按钮在 AppKit 层接管按下，鼠标拖动的中间
@@ -344,38 +349,45 @@ private struct DrawerPagePill: View {
     @ViewBuilder
     private var content: some View {
         Group {
-            if label.isEmpty {
-                Image(systemName: "house.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.45 + 0.5 * Double(contentActivation)))
+            if let icon {
+                HStack(spacing: 3) {
+                    Image(systemName: icon)
+                        .font(.system(size: 10, weight: .semibold))
+                    if !label.isEmpty {
+                        Text(label)
+                            .font(.system(size: 10, weight: .medium))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
             } else {
                 Text(label)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5 + 0.45 * Double(contentActivation)))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .padding(.horizontal, 4)
             }
         }
+        .foregroundStyle(.white.opacity(contentOpacity))
         // 排序提交后的序号重排走淡入淡出（label 只在提交变，不波及滑动期直渲）。
         .id(label)
         .transition(.opacity)
         .animation(.easeOut(duration: 0.18), value: label)
     }
 
-    // MARK: 编辑模式角标（齿轮重命名 / 删除页面）
+    // MARK: 编辑模式角标（齿轮打开页面设置浮窗 / 删除页面）
 
     /// 顶角两条角标，落在胶囊命中框内（见 `rowHeight`）。主页不给删除。
     @ViewBuilder
     private var badgeCluster: some View {
-        if isEditing && isHovering && !isRenaming {
+        if isEditing && isHovering {
             HStack(spacing: 0) {
                 EditGlyphButton(
                     systemImage: "gearshape.fill",
-                    helpText: L("panel.help.page.rename"),
+                    helpText: L("panel.help.page.settings"),
                     side: DrawerPagePillLayout.badgeSide
                 ) {
-                    beginRename()
+                    onShowSettings(globalFrame)
                 }
                 Spacer(minLength: 0)
                 if !isHome {
@@ -391,52 +403,6 @@ private struct DrawerPagePill: View {
         }
     }
 
-    // MARK: 就地重命名
-
-    private var editor: some View {
-        TextField("", text: $draft)
-            .textFieldStyle(.plain)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(.white.opacity(0.95))
-            .multilineTextAlignment(.center)
-            .frame(width: DrawerPagePillLayout.editorWidth)
-            .padding(.horizontal, 4)
-            .frame(height: DrawerPagePillLayout.pillHeight)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(.black.opacity(0.55))
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(.white.opacity(0.24), lineWidth: 1)
-                    )
-            )
-            .focused($isEditorFocused)
-            .onExitCommand { cancelRename() }
-            .onSubmit { commitRename() }
-            .onChange(of: isEditorFocused) { _, focused in
-                if !focused { commitRename() }
-            }
-    }
-
-    private func beginRename() {
-        draft = label
-        isRenaming = true
-        // 视图换成 TextField 之后才有可聚焦的对象，下一轮才拿得到焦点。
-        DispatchQueue.main.async { isEditorFocused = true }
-    }
-
-    private func commitRename() {
-        guard isRenaming else { return }
-        isRenaming = false
-        isEditorFocused = false
-        onRename(draft)
-    }
-
-    private func cancelRename() {
-        isRenaming = false
-        isEditorFocused = false
-    }
-
     // MARK: 按压：点击切页 / 拖动排序
 
     /// 一条手势管两种意图（`minimumDistance: 0` 从按下那刻起持续收事件）：
@@ -449,7 +415,7 @@ private struct DrawerPagePill: View {
         DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onChanged { value in
                 if !isDragging {
-                    guard canDrag,
+                    guard isEditing,
                           abs(value.translation.width) > DrawerPagePillLayout.dragPickupDistance else { return }
                     isDragging = true
                     reportedTarget = nil

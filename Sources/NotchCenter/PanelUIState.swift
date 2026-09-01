@@ -45,11 +45,12 @@ final class PanelUIState: ObservableObject {
     @Published var drawerGridMinColumns = LayoutModel.defaultMinColumns
     @Published var drawerElements: [DrawerElement] = []
 
-    /// 页面显示序列 / 自定义标题：layout.json 的镜像，经 `rebuildContent` 同步。
+    /// 页面显示序列 / 自定义标题与图标：layout.json 的镜像，经 `rebuildContent` 同步。
     /// 激活页是运行时状态，不落盘。
     @Published var drawerPages: [Int] = [0]
     @Published var drawerActivePage = 0
     @Published var drawerPageTitles: [String: String] = [:]
+    @Published var drawerPageIcons: [String: String] = [:]
 
     /// 一次左右滑动会话（非空 = 正在滑动，目标页正从侧面滑入）。
     /// 跟手期只有 `offset` 与**派生尺寸**在动（`drawerWindowSize` /

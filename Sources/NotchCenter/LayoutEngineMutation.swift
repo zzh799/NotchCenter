@@ -237,6 +237,17 @@ extension LayoutEngine {
         saveToDisk()
     }
 
+    func drawerPageIcon(_ page: Int) -> String? {
+        model.drawerPageIcons[String(page)]
+    }
+
+    /// 设置页面图标（SF Symbol 名）；空串（或纯空白）= 清除，主页回落房子、其余页无图标。
+    func setDrawerPageIcon(page: Int, icon: String) {
+        let trimmed = icon.trimmingCharacters(in: .whitespacesAndNewlines)
+        model.drawerPageIcons[String(page)] = trimmed.isEmpty ? nil : trimmed
+        saveToDisk()
+    }
+
     /// 删除页面，连页内的块一起移除并返回被删块（调用方逐个补
     /// `placementWasRemoved`）；主页不可删。
     ///
@@ -251,6 +262,7 @@ extension LayoutEngine {
         model.drawerBlocks.removeAll { $0.page == page }
         model.drawerPages.removeAll { $0 == page }
         model.drawerPageTitles[String(page)] = nil
+        model.drawerPageIcons[String(page)] = nil
         saveToDisk()
         return removed
     }

@@ -87,12 +87,16 @@
 "panel.help.unpin" = "Unpin drawer";
 "panel.help.page.addLeft" = "Add page on the left";
 "panel.help.page.addRight" = "Add page on the right";
-"panel.help.page.rename" = "Rename page";
+"panel.help.page.settings" = "Page settings";
 "panel.help.page.delete" = "Delete page (with its blocks)";
 "panel.page.untitled" = "Page %d";
 "panel.page.delete" = "Delete page";
 "panel.page.delete.confirmTitle" = "Delete page “%@”?";
 "panel.page.delete.confirmBody" = "The %d block(s) on this page will be removed too.";
+"panel.page.settings.title" = "Page Settings";
+"panel.page.settings.name" = "Name";
+"panel.page.settings.icon" = "Icon";
+"panel.page.settings.icon.none" = "No icon";
 
 /* 面板交互提示标签 */
 

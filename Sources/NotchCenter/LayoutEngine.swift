@@ -107,6 +107,10 @@ final class LayoutEngine: ObservableObject {
         model.drawerPageTitles
     }
 
+    var drawerPageIcons: [String: String] {
+        model.drawerPageIcons
+    }
+
     func page(ofPlacementID placementID: String) -> Int? {
         model.drawerBlocks.first { $0.placementID == placementID }?.page
     }

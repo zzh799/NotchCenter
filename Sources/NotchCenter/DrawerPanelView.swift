@@ -33,11 +33,12 @@ struct DrawerActions {
     let onShowBlockSettings: (String, String, CGRect) -> Void
     /// 编辑模式一键重排：按阅读顺序紧密排布当前页的抽屉块。
     let onReorderBlocks: () -> Void
-    /// 分页胶囊：切页 / 在指定侧新增 / 拖动排序到目标槽位 / 重命名 / 删除（连页内块）。
+    /// 分页胶囊：切页 / 在指定侧新增 / 拖动排序到目标槽位 / 弹出页面设置
+    ///（图标+名称浮窗，(page, 胶囊全局 frame)）/ 删除（连页内块）。
     let onSelectPage: (Int) -> Void
     let onAddPage: (DrawerPageSide) -> Void
     let onMovePage: (Int, Int) -> Void
-    let onRenamePage: (Int, String) -> Void
+    let onShowPageSettings: (Int, CGRect) -> Void
     let onRemovePage: (Int) -> Void
     /// 左右滑动切页的**拖拽**通路（网格背景手势）：只上报原始平移量，
     /// 方向、位移与落位判据由控制器按 `DrawerPageSwipe` 决定。松手回调
@@ -206,6 +207,7 @@ struct DrawerPanelView: View {
             DrawerPageCapsule(
                 pages: ui.drawerPages,
                 titles: ui.drawerPageTitles,
+                icons: ui.drawerPageIcons,
                 activePage: ui.drawerActivePage,
                 isEditing: ui.isEditing,
                 showsAddButtons: ui.isEditing && isTopBarHovering,
@@ -213,7 +215,7 @@ struct DrawerPanelView: View {
                 onSelect: actions.onSelectPage,
                 onAdd: actions.onAddPage,
                 onMove: actions.onMovePage,
-                onRename: actions.onRenamePage,
+                onShowSettings: actions.onShowPageSettings,
                 onRemove: actions.onRemovePage
             )
 

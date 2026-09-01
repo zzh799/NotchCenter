@@ -87,12 +87,16 @@
 "panel.help.unpin" = "取消固定抽屉";
 "panel.help.page.addLeft" = "在左侧新增页面";
 "panel.help.page.addRight" = "在右侧新增页面";
-"panel.help.page.rename" = "重命名页面";
+"panel.help.page.settings" = "页面设置";
 "panel.help.page.delete" = "删除页面（连同页内块）";
 "panel.page.untitled" = "页面 %d";
 "panel.page.delete" = "删除页面";
 "panel.page.delete.confirmTitle" = "删除页面「%@」？";
 "panel.page.delete.confirmBody" = "该页上的 %d 个块将一并移除。";
+"panel.page.settings.title" = "页面设置";
+"panel.page.settings.name" = "名称";
+"panel.page.settings.icon" = "图标";
+"panel.page.settings.icon.none" = "无图标";
 
 /* 面板交互提示标签 */
 
