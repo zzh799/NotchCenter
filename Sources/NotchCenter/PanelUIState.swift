@@ -59,25 +59,37 @@ final class PanelUIState: ObservableObject {
     @Published var drawerSwipe: DrawerSwipe?
 
     /// 滑动会话快照：`elements` 是目标页的只读预览副本（`BlockLayoutInfo.isPreview`）。
+    /// 条带模型：一次会话 = 原点页 + 一侧邻居构成的"两层页带"在视口里跟手移动，
+    /// `offset` 是带符号**条带位移**（原点 = `originPage`）。位移穿越原点（死区外）
+    /// 时整条带换绑到另一侧邻居（`rebind`）——方向、目标与预览层都变，
+    /// 唯独原点锚（起点两尺寸）恒不动。
     struct DrawerSwipe {
-        let side: DrawerPageSide
-        let targetPage: Int
-        let elements: [DrawerElement]
+        /// 会话原点页（= 建会时的激活页，会话期间**恒不变**）：中途反手换绑的
+        /// 邻居始终以它为基准解析；尺寸插值的起点永远钉在它的尺寸上——换绑
+        /// 绝不再冻结起点（旧实现把中间插值值当新起点，回退终点变成中间值，
+        /// 抽屉尺寸卡死）。
+        let originPage: Int
+        /// 当前条带方向（换绑后更新，不再恒定）。
+        var side: DrawerPageSide
+        /// 当前目标页（+ 其预览副本与尺寸，换绑时整体刷新）。
+        var targetPage: Int
+        var elements: [DrawerElement]
         /// 目标页内容尺寸（预览层宽度；尺寸插值的终点之一）。
-        let contentSize: CGSize
+        var contentSize: CGSize
         /// 目标页窗口尺寸（屏幕封顶后；尺寸插值的终点之一）。
-        let targetWindowSize: CGSize
+        var targetWindowSize: CGSize
         /// 目标页格网最左列，与 `drawerGridLeftColumn` 同义。
-        let leftColumn: Int
-        /// 预览层与网格层的带符号相邻间距（`DrawerPageSwipe.gap`，会话期冻结）。
-        let gap: CGFloat
-        /// 会话开始时的内容尺寸（网格层宽度在会话期冻结为此值；尺寸插值起点）。
+        var leftColumn: Int
+        /// 预览层与网格层的带符号相邻间距（= 该侧条的揭示全程，换绑时重算）。
+        var gap: CGFloat
+        /// 会话开始时的内容尺寸（网格层宽度在会话期冻结为此值；尺寸插值起点，
+        /// **永不随换绑更新**）。
         let startContentSize: CGSize
-        /// 会话开始时的窗口尺寸（尺寸插值起点）。
+        /// 会话开始时的窗口尺寸（尺寸插值起点，永不随换绑更新）。
         let startWindowSize: CGSize
-        /// 冻结的位移上限（起点页宽）：会话期 `drawerContentSize` 在插值，
-        /// 位移换算与橡皮筋若再读它会逐帧漂移，必须钉在会话起点的值上。
-        let limit: CGFloat
+        /// 当前条带的位移上限（橡皮筋与落位门槛按它取：右侧束带 = 原点页宽、
+        /// 左侧束带 = 目标页宽，换绑时更新）。
+        var limit: CGFloat
         /// 已进入落位拍（滑到位动画进行中，预览层即将全覆盖）：位移由动画驱动，
         /// 不得再接新手势/拖拽帧，否则落位与跟手会抢同一个 offset。
         var isLanding = false
@@ -87,6 +99,30 @@ final class PanelUIState: ObservableObject {
         /// 滑动进度 p ∈ [0,1]（位移 / 落位全程）：面板尺寸插值与胶囊高亮层
         /// 都从这一份进度派生——跟手、落位 spring 与回弹天然同曲线。
         var progress: CGFloat { DrawerPageSwipe.progress(offset: offset, gap: gap) }
+
+        /// 换绑到另一侧邻居：只换条带量（方向/目标/预览/尺寸/间距/上限），
+        /// 原点锚（起点两尺寸）与位移保持不动。换绑只发生在 |offset| ≈ 死区：
+        /// 旧预览层已整层移出视口、新预览层整层还在视口外，这一帧的层替换
+        /// 不可见（与落位交接同一条"像素重合"原理）。
+        mutating func rebind(
+            side: DrawerPageSide,
+            targetPage: Int,
+            elements: [DrawerElement],
+            contentSize: CGSize,
+            targetWindowSize: CGSize,
+            leftColumn: Int,
+            gap: CGFloat,
+            limit: CGFloat
+        ) {
+            self.side = side
+            self.targetPage = targetPage
+            self.elements = elements
+            self.contentSize = contentSize
+            self.targetWindowSize = targetWindowSize
+            self.leftColumn = leftColumn
+            self.gap = gap
+            self.limit = limit
+        }
     }
 
     /// 从设置面板拖拽组件时的落点预览（抽屉网格虚线占位 / 快速区插入指示）。

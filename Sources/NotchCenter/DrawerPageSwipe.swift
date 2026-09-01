@@ -5,7 +5,9 @@ import AppKit
 /// "这一下算不算向左/向右滑、滑到哪了、该不该落位"的唯一判据
 /// （纯函数 + 值类型累加器，无视图与窗口依赖）。两条输入通路各传自己的横向
 /// 平移量进来：触控板轻扫逐事件喂 `DrawerPageScrollTracker`，网格背景拖拽
-/// 直接喂 `DragGesture` 的 translation。
+/// 直接喂 `DragGesture` 的 translation。平移量即带符号的**条带位移**
+/// （原点 = 会话起点页）：反手不重起累加、位移连续回退到原点，越过原点
+/// （死区外）才换向（`reversedSide`）。
 ///
 /// 判据必须只有一份：门槛与横纵压比一旦在视图里各写一遍，手感会在两通路之间
 /// 漂移，且无法在单测里重放。
@@ -22,6 +24,12 @@ enum DrawerPageSwipe {
     /// 横向必须压过纵向的倍数（对**累加后**的总量判定：逐事件比值在触控板上就是
     /// 噪声，斜着划也会被误判成纯横向）。
     static let dominanceRatio: CGFloat = 1.5
+
+    /// 手势中途反手（条带位移越过原点）的换向死区（pt）：|位移| 越过它才把
+    /// 条带换绑到另一侧邻居。原点附近 ±几点的手指抖动必须吸收在死区内——
+    /// 换绑那一帧另一侧预览层以 O(deadBand) 宽的边缘一步进入视口，死区越小
+    /// 这笔可见边缘越小。
+    static let flipDeadBand: CGFloat = 8
 
     /// 一次切页后的冷却（秒）：与调用方的 `momentumPhase` 过滤配合，挡住一次长扫连翻数页。
     static let cooldown: TimeInterval = 0.35
@@ -58,6 +66,29 @@ enum DrawerPageSwipe {
         guard abs(translation.width) >= threshold else { return nil }
         guard abs(translation.width) >= abs(translation.height) * dominanceRatio else { return nil }
         return translation.width < 0 ? .right : .left
+    }
+
+    /// 松手瞬间的意图方向 = 条带位移的符号（向左翻 = 负位移 → `.right`，
+    /// 向右翻 = 正位移 → `.left`，位移 0 = 无意图）。它是提交门的半边：
+    /// 意图方向必须与**会话当前条带方向**一致才落位——反手滑回原点后的
+    /// 松手天然不匹配，只弹回、不落位。
+    static func side(forOffset offset: CGFloat) -> DrawerPageSide? {
+        offset < 0 ? .right : (offset > 0 ? .left : nil)
+    }
+
+    /// 条带中途反手的换向判据（触控板累加器与控制器会话换绑共用同一份）：
+    /// 当前条带方向 + 带符号条带位移 → 应换到的方向；死区（|offset| ≤
+    /// deadBand）内不换。`.right` 条带由负位移揭示，位移越过 `+deadBand`
+    /// 说明条带已被拖回原点并继续向另一侧推进 → 换到 `.left`；反之亦然。
+    static func reversedSide(
+        current: DrawerPageSide,
+        offset: CGFloat,
+        deadBand: CGFloat = flipDeadBand
+    ) -> DrawerPageSide? {
+        switch current {
+        case .right: return offset > deadBand ? .left : nil
+        case .left: return offset < -deadBand ? .right : nil
+        }
     }
 
     /// 横向平移量 → 面板实际位移（同号）：`limit` 内 1:1，越界按 `rubberBand` 阻尼。
@@ -151,18 +182,18 @@ struct DrawerScrollFrame {
 }
 
 /// 触控板横向轻扫累加器：一次轻扫由一串小增量事件组成，必须累加后再判方向，
-/// 并把累加量换算成实时位移（目标页跟手滑入）。一次手势只许翻一页——方向一旦
-/// 锁定就不再改；有手势边界时提交交给 `finish`，惯性尾巴由调用方按
-/// `momentumPhase` 过滤、压根不进这里。时钟由调用方注入（`NSEvent.timestamp`）
-/// 以便单测逐事件重放。
+/// 并把累加量换算成实时位移（目标页跟手滑入）。一次手势只许翻一页——方向
+/// 在条带位移越过原点（死区外）时可改向（反手立刻反悔），死区内恒定；
+/// 有手势边界时提交交给 `finish`，惯性尾巴由调用方按 `momentumPhase` 过滤、
+/// 压根不进这里。时钟由调用方注入（`NSEvent.timestamp`）以便单测逐事件重放。
 struct DrawerPageScrollTracker {
     private(set) var accumulatedX: CGFloat = 0
     private(set) var accumulatedY: CGFloat = 0
-    /// 本次手势已锁定的滑动方向（未达门槛为 nil）。
+    /// 本次手势已锁定的滑动方向（未达门槛为 nil；条带位移越过原点死区后更新）。
     private(set) var lockedSide: DrawerPageSide?
 
     /// 手势样本（时间, 累计横向位移）：`finish` 时估计即时速度用
-    /// （位移判据之外的速度判据）。`.began` 与反向重起时清零。
+    /// （位移判据之外的速度判据）。`.began` 时清零。
     private var samples: [(time: TimeInterval, x: CGFloat)] = []
 
     private var lastCommitTime: TimeInterval?
@@ -181,15 +212,23 @@ struct DrawerPageScrollTracker {
         }
         guard !isCoolingDown(at: now, cooldown: cooldown) else { return nil }
 
-        // 方向反转：从反向的第一个事件起重新累加并解锁（往回划要能立刻反悔）。
-        if accumulatedX * deltaX < 0 {
-            reset()
-        }
+        // 累加量就是带符号的**条带位移**，手势期间连续推进、反手不清零：
+        // 回退阶段抽屉随累加量平滑收回到原点，越过原点（死区外）才换向。
         accumulatedX += deltaX
         accumulatedY += deltaY
         recordSample(at: now)
 
-        if lockedSide == nil {
+        if let lockedSide {
+            // 手势进行中反手：越过原点死区立即换向（立刻反悔），原点附近
+            // 抖动（|位移| ≤ deadBand）保持原方向。
+            if let flipped = DrawerPageSwipe.reversedSide(
+                current: lockedSide,
+                offset: accumulatedX,
+                deadBand: DrawerPageSwipe.flipDeadBand
+            ) {
+                self.lockedSide = flipped
+            }
+        } else {
             lockedSide = DrawerPageSwipe.side(
                 for: CGSize(width: accumulatedX, height: accumulatedY),
                 threshold: DrawerPageSwipe.scrollThreshold

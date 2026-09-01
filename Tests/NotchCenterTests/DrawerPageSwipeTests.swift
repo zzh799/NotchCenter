@@ -270,15 +270,58 @@ final class DrawerPageSwipeTests: XCTestCase {
         XCTAssertNil(tracker.finish(at: 1, limit: limit))
     }
 
-    func testDirectionReversalRestartsAndReLocks() {
+    func testDirectionReversalFlipsPastOriginWithDeadBand() {
         var tracker = DrawerPageScrollTracker()
         XCTAssertEqual(tracker.feed(deltaX: -60, phase: .began, at: 0, limit: limit)?.side, .right)
-        // 往回划：重新起算并改锁另一侧（+80 单独越线 → 左侧页）。
-        guard let reversed = tracker.feed(deltaX: 80, phase: .changed, at: 0.01, limit: limit) else {
-            return XCTFail("反向累加应改锁另一侧")
+        // 反手但条带没过原点（累加仍为负）：方向不变，位移跟手回收。
+        let partial = tracker.feed(deltaX: 20, phase: .changed, at: 0.01, limit: limit)
+        XCTAssertEqual(partial?.side, .right, "原点死区内不换向")
+        XCTAssertEqual(partial?.offset ?? 0, -40, accuracy: 0.001,
+                       "位移 = 手势累计（连续、不因反手重起）")
+        // 越过原点死区（+8 外）：改锁另一侧（立刻反悔）。
+        guard let crossed = tracker.feed(deltaX: 50, phase: .changed, at: 0.02, limit: limit) else {
+            return XCTFail("越过原点应换向并继续出帧")
         }
-        XCTAssertEqual(reversed.side, .left)
-        XCTAssertEqual(reversed.offset, 80, accuracy: 0.001)
+        XCTAssertEqual(crossed.side, .left, "越过原点（死区外）改锁另一侧")
+        XCTAssertEqual(crossed.offset, 10, accuracy: 0.001, "位移 = 手势累计（原点为 0）")
+    }
+
+    func testReversalJitterAroundOriginStaysLocked() {
+        var tracker = DrawerPageScrollTracker()
+        _ = tracker.feed(deltaX: -60, phase: .began, at: 0, limit: limit)
+        // 原点附近 ±7pt 抖动：不换向（死区吸收），位移跟手微动。
+        XCTAssertEqual(tracker.feed(deltaX: 67, phase: .changed, at: 0.01, limit: limit)?.side, .right)
+        XCTAssertEqual(tracker.feed(deltaX: -13, phase: .changed, at: 0.02, limit: limit)?.side, .right)
+    }
+
+    func testReversalAcrossOriginTwiceFlipsBackAndCommitsOriginalSide() {
+        // A→B（-140）→ 反手越过原点（+60，换到 C 侧）→ 再反回 B 侧（-140）：
+        // 方向随条带位移往返，松手落位回原目标侧（旧实现会卡在换绑后的另一侧）。
+        var tracker = DrawerPageScrollTracker()
+        XCTAssertEqual(tracker.feed(deltaX: -140, phase: .began, at: 0, limit: limit)?.side, .right)
+        XCTAssertEqual(tracker.feed(deltaX: 200, phase: .changed, at: 0.01, limit: limit)?.side, .left, "越过原点换到左向")
+        XCTAssertEqual(tracker.feed(deltaX: -200, phase: .changed, at: 0.02, limit: limit)?.side, .right, "再越过原点换回右向")
+        // 松手：位移 -140 ≥ 门槛 90 → 落位回 B 侧。
+        XCTAssertEqual(tracker.finish(at: 0.03, limit: limit), .right)
+    }
+
+    // MARK: 反手换向（原点穿越死区）
+
+    func testReversedSideDeadBand() {
+        // 死区内（|offset| ≤ flipDeadBand）不换；越过才换到另一侧。
+        XCTAssertNil(DrawerPageSwipe.reversedSide(current: .right, offset: 8))
+        XCTAssertEqual(DrawerPageSwipe.reversedSide(current: .right, offset: 9), .left)
+        XCTAssertNil(DrawerPageSwipe.reversedSide(current: .right, offset: -30))
+        XCTAssertNil(DrawerPageSwipe.reversedSide(current: .left, offset: 30))
+        XCTAssertEqual(DrawerPageSwipe.reversedSide(current: .left, offset: -9), .right)
+        XCTAssertNil(DrawerPageSwipe.reversedSide(current: .left, offset: 0))
+    }
+
+    func testSideForOffsetIsStripPosition() {
+        // 条带位移的符号 = 意图方向；0 = 在原点 = 无意图（提交门据此拒绝）。
+        XCTAssertEqual(DrawerPageSwipe.side(forOffset: -1), .right)
+        XCTAssertEqual(DrawerPageSwipe.side(forOffset: 1), .left)
+        XCTAssertNil(DrawerPageSwipe.side(forOffset: 0))
     }
 
     func testCooldownBlocksTheNextGesture() {
