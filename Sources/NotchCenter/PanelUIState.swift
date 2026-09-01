@@ -95,6 +95,9 @@ final class PanelUIState: ObservableObject {
         var isLanding = false
         /// 当前位移（pt，带符号；与手指同向）。
         var offset: CGFloat
+        /// 落位拍已换页：预览层使命结束，视图侧据此就地撤层。不能等 animated
+        /// 清理才撤——目标页更宽时它会探回已变宽的裁剪框内，淡出成右侧重影。
+        var isLanded = false
 
         /// 滑动进度 p ∈ [0,1]（位移 / 落位全程）：面板尺寸插值与胶囊高亮层
         /// 都从这一份进度派生——跟手、落位 spring 与回弹天然同曲线。

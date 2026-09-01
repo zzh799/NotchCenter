@@ -205,6 +205,63 @@ final class DrawerPageSwipeTests: XCTestCase {
         ))
     }
 
+    // MARK: 落位后的预览层撤除
+
+    /// 构造一个处于落位终点（offset = arrivalOffset）的会话快照。
+    private func makeSession(
+        side: DrawerPageSide,
+        gridWidth: CGFloat,
+        targetWidth: CGFloat
+    ) -> PanelUIState.DrawerSwipe {
+        let originSize = CGSize(width: gridWidth, height: 500)
+        let targetSize = CGSize(width: targetWidth, height: 500)
+        let gap = DrawerPageSwipe.gap(side: side, gridWidth: gridWidth, targetWidth: targetWidth)
+        return PanelUIState.DrawerSwipe(
+            originPage: 0,
+            side: side,
+            targetPage: 1,
+            elements: [],
+            contentSize: targetSize,
+            targetWindowSize: targetSize,
+            leftColumn: 0,
+            gap: gap,
+            startContentSize: originSize,
+            startWindowSize: originSize,
+            limit: abs(gap),
+            offset: DrawerPageSwipe.arrivalOffset(gap: gap)
+        )
+    }
+
+    func testLandedPreviewPokesBackIntoClipOnlyWhenTargetIsWider() {
+        // 落位后 offset=0，预览层横坐标 = gap = 原点页宽：目标页更宽时会探回
+        // 已变宽的裁剪框内（重影条带），因此视图必须按 isLanded 就地撤层，
+        // 不能赌"落位后它在屏外"。
+        func landed(_ session: PanelUIState.DrawerSwipe) -> PanelUIState.DrawerSwipe {
+            var s = session
+            s.offset = 0
+            s.isLanded = true
+            return s
+        }
+        let wider = landed(makeSession(side: .right, gridWidth: 600, targetWidth: 1_000))
+        XCTAssertLessThan(
+            wider.offset + wider.gap,
+            wider.contentSize.width,
+            "宽目标页：落位后预览层左缘落在裁剪框内（重影条带存在）"
+        )
+        let narrower = landed(makeSession(side: .right, gridWidth: 1_000, targetWidth: 600))
+        XCTAssertGreaterThanOrEqual(
+            narrower.offset + narrower.gap,
+            narrower.contentSize.width,
+            "目标页不宽于原页：预览层完全在右缘外（屏外假设成立的唯一情形）"
+        )
+        let leftward = landed(makeSession(side: .left, gridWidth: 1_000, targetWidth: 600))
+        XCTAssertLessThanOrEqual(
+            leftward.offset + leftward.gap + leftward.contentSize.width,
+            0,
+            "左滑落位：预览层整体在左缘外"
+        )
+    }
+
     // MARK: 触控板累加器（有手势边界）
 
     func testFlickLocksDirectionAndFollowsAccumulation() {

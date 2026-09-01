@@ -257,12 +257,14 @@ struct DrawerPanelView: View {
     /// 网格层宽度由 `grid` 冻结在`会话起点值`，预览层宽度 = 目标页宽，二者
     /// 邻接缘始终重合）。容器高度 = 内容高度：内容 ≡ 可视区，ScrollView
     /// 才不闪滚动条（与 `gridFrameHeight` 同源教训；会话外二者恒等）。
+    /// 预览层按 `isLanded` 就地撤除（落位帧两层像素重合，撤层不可见）——不能等
+    /// 异步 animated 清理才撤：目标页更宽时它会探回裁剪框内，淡出成右侧重影。
     private var pageSlide: some View {
         let offset = ui.drawerSwipe?.offset ?? 0
         return ZStack(alignment: .topLeading) {
             grid
                 .offset(x: offset)
-            if let swipe = ui.drawerSwipe {
+            if let swipe = ui.drawerSwipe, !swipe.isLanded {
                 previewGrid(swipe)
                     .offset(x: swipe.offset + swipe.gap)
                     .allowsHitTesting(false)

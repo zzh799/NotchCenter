@@ -696,8 +696,8 @@ extension NotchPanelController {
     /// 落位第二拍：换页与撤层**都不加动画**，靠像素重合藏住交接（网格已是目标页
     /// 真实例，预览层恰好落在 x=0，窗口尺寸也已在第一拍的 spring 里到目标值——
     /// 这一帧不动任何尺寸，整帧保持非动画帧）。视图侧据此在会话挂载期关掉换页
-    /// 淡入（见 `DrawerPanelView.grid`）。只剩姿势性的收尾交给下一拍
-    /// `rebuildContent(animated: true)`（写入与当前相同的尺寸，无可见动画）。
+    /// 淡入（见 `DrawerPanelView.grid`），并按 `isLanded` 就地撤掉预览层。收尾交给
+    /// 下一拍 `rebuildContent(animated: true)`（写入与当前相同的尺寸，无可见动画）。
     private func landDrawerSwipe(_ session: PanelUIState.DrawerSwipe) {
         guard uiState.drawerSwipe?.isLanding == true,
               uiState.drawerSwipe?.targetPage == session.targetPage else { return }
@@ -710,9 +710,10 @@ extension NotchPanelController {
         uiState.drawerElements = buildDrawerElements(page: session.targetPage)
         var landed = session
         landed.offset = 0
+        landed.isLanded = true
         uiState.drawerSwipe = landed
         DispatchQueue.main.async { [weak self] in
-            // 尺寸换成新页（同一条 spring）并撤掉预览层——此时它已在屏外，撤层不可见。
+            // 收尾清会话：预览层已在落位帧撤除，这里的 animated 清理无可见层。
             self?.rebuildContent(animated: true)
         }
     }
