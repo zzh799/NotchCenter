@@ -55,18 +55,26 @@ public struct GridSpan: Hashable, Codable, Sendable {
 
 /// 块对横向滑动（抽屉切页手势）的消费声明（文档 §5.3）。
 ///
-/// 抽屉的水平轻扫切页与块内容的手势优先级：只有当块确实会**消费横向滚动**
-/// 时切页才让路（横向 ScrollView、横向可滚动的编辑器等）。SwiftUI 的视图树
-/// 对宿主不可内省（ScrollView 不落在 AppKit 命中链上，实测拿不到
-/// `NSScrollView`），因此块必须自行声明——静态卡片块声明 `.none` 后，
-/// 指针落在其上滑动即可直接切页（"在不使用滑动的组件上滑动时触发页面滑动"）。
-/// 未声明的第三方块按 `.horizontal`（让路）处理，兼容旧行为。
+/// 抽屉的水平轻扫切页与块内容的手势优先级：`.none` 静态卡片不消费横向
+/// 增量、其上滑动照常切页（"在不使用滑动的组件上滑动时触发页面滑动"）；
+/// `.always` 无条件让路；`.horizontal` 由宿主用 NSView 子树探针核实后让路
+/// （见宿主 `DrawerScrollProbe`）——SwiftUI 的视图树对宿主不可内省（ScrollView
+/// 不落在 AppKit 命中链上，实测拿不到 `NSScrollView`），但其内部滚动机构是
+/// 真实 NSView，可从窗口 `contentView` 向下子树枚举到：块声明 `.horizontal`
+/// 后，宿主核实"光标下确有横向溢出的滚动视图"才让路——空/未满的横向
+/// `ScrollView`（如文件架）放行切页，塞满溢出时让路。块以非 ScrollView 机制
+/// 消费横向输入（自定义拖拽手势等，探针看不见）时声明 `.always`。
+/// 未声明的第三方块按 `.horizontal`（探针核实后让路）处理。
 public enum BlockScrollUsage: Sendable, Hashable {
     /// 块不消费横向滚动/轻扫：指针落在块上时，抽屉的水平轻扫照常切页
     /// （块自身的纵向滚动不受影响）。
     case none
-    /// 块内含横向可滚动区域：切页让路，横向增量归块自己。
+    /// 块内含横向可滚动区域（ScrollView 机制）：切页让路，横向增量归块自己；
+    /// 宿主探针核实内容当前确实横向溢出才让路，空/未满时放行切页。
     case horizontal
+    /// 无条件让路：块消费横向输入但宿主探针看不见（自定义拖拽手势等非
+    /// ScrollView 机制），指针落在块上时切页永远让位。
+    case always
 }
 
 /// 插件提供的最小 UI 单元（文档 §4.2）。
@@ -90,8 +98,9 @@ public struct NotchBlock: Identifiable {
     /// 目录条目图标（SF Symbol 名称，可选）。宿主在“添加块”目录里渲染
     /// “图标 + 块名”；未声明时回退纯文本条目（向后兼容第三方插件）。
     public let symbolName: String?
-    /// 块对横向滑动（抽屉切页）的消费声明。默认 `.horizontal`（切页让路），
-    /// 静态卡片块请显式声明 `.none`。
+    /// 块对横向滑动（抽屉切页）的消费声明。默认 `.horizontal`（探针核实横向
+    /// 溢出后让路），静态卡片块请显式声明 `.none`；自定义横向手势块（非
+    /// ScrollView 机制）声明 `.always`。
     public let scrollUsage: BlockScrollUsage
     /// 视图工厂：携带 `BlockContext` 构建块视图。
     public let makeView: @MainActor (BlockContext) -> AnyView

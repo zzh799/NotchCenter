@@ -467,6 +467,13 @@ extension NotchPanelController {
     /// 位移上限 = 当前页宽（滑到刚好覆盖整页）。
     private var drawerSwipeLimit: CGFloat { max(uiState.drawerContentSize.width, 1) }
 
+    /// 让路：光标下的块要消费横向滑动——放弃本次切页（重置轨迹与在途会话），
+    /// 横向增量留给块自己。
+    private func yieldDrawerSwipeToBlock() {
+        drawerScrollTracker.reset()
+        endDrawerSwipe(commit: false, offset: 0)
+    }
+
     func handleDrawerScroll(_ event: NSEvent) {
         let phase = event.phase
         // 过滤：非精确增量是鼠标滚轮（只有纵向）；惯性尾巴足以再翻一页；
@@ -480,15 +487,31 @@ extension NotchPanelController {
         // 位移上限在会话期冻结（`drawerContentSize` 随进度插值，现读会让
         // 橡皮筋与位移换算逐帧漂移）；无会话时 = 当前页宽。
         let limit = uiState.drawerSwipe?.limit ?? drawerSwipeLimit
-        // 光标落在"会消费横向滑动"的块上时让路（插件经 `BlockScrollUsage`
-        // 声明：横向 ScrollView 等才让路——SwiftUI 视图树对宿主不可内省，
-        // "文档视图宽于视口"那条 NSView 探针实测永不命中，勿改回）。
-        // 其余块（含静态卡片）不消费横向增量，其上滑动照常切页。
+        // 光标落在块上时按滚动消费声明（`BlockScrollUsage`）决定是否让路：
+        // `.none` 静态卡片不消费横向增量，其上滑动照常切页；`.always` 无条件
+        // 让路（探针看不见的自定义横向手势）；`.horizontal` 经 `DrawerScrollProbe`
+        // 子树枚举核实"光标下确有横向溢出的滚动视图"才让路——空/未满的横向
+        // ScrollView（如文件架）放行切页。探针从窗口 contentView 向下 DFS，不依赖
+        // 命中链（SwiftUI 在宿主视图层接管事件，hitTest 到不了内部滚动机构，
+        // 旧的"沿 superview 向上找 NSScrollView"实测恒 false，勿改回）。
         if let window = event.window,
-           drawerElement(at: window.convertPoint(toScreen: event.locationInWindow))?.scrollUsage == .horizontal {
-            drawerScrollTracker.reset()
-            endDrawerSwipe(commit: false, offset: 0)
-            return
+           let element = drawerElement(at: window.convertPoint(toScreen: event.locationInWindow)) {
+            switch element.scrollUsage {
+            case .none:
+                break
+            case .always:
+                yieldDrawerSwipeToBlock()
+                return
+            case .horizontal:
+                // 探针盲区系统（macOS 15 前，内部结构未实测）回落静态让路旧行为。
+                let scrollable = DrawerScrollProbe.hasHorizontalOverflowUnderCursor(
+                    in: window,
+                    cursorWindowPoint: event.locationInWindow)
+                if scrollable || !DrawerScrollProbe.refinesNegativeResult {
+                    yieldDrawerSwipeToBlock()
+                    return
+                }
+            }
         }
         if let frame = drawerScrollTracker.feed(
             deltaX: event.scrollingDeltaX,
