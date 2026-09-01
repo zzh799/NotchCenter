@@ -159,17 +159,31 @@ enum DrawerPageSwipe {
         return (recent.last!.x - recent.first!.x) / dt
     }
 
-    /// 预览层相对网格层的**带符号**相邻间距：目标页在右贴当前页右缘，在左贴
-    /// 当前页左缘（各按自己的页宽相邻）。
+    /// 页带留白 = 抽屉内容边距的两倍（“两倍边框距离”）：预览副本与源页面在
+    /// 滑动中不得贴死，中间要露出一条背景带才看得出是两页。倍数的唯一出处，
+    /// 调用点传当前指标快照的 `contentPadding`。
+    static func bandSpacing(contentPadding: CGFloat) -> CGFloat {
+        contentPadding * 2
+    }
+
+    /// 预览层相对网格层的**带符号**间距：目标页在右让出“源页宽 + 留白”，
+    /// 在左让出“目标页宽 + 留白”——两层之间恒隔一条 `spacing` 宽的背景带
+    /// （相邻缘各按自己的页宽对齐，再各让出一份留白）。
     ///
     /// 会话期一次性算出并冻结：落位动画途中当前页尺寸会换成目标页尺寸，
     /// 位移若再现算，两层会在滑动途中错开一条缝。
-    static func gap(side: DrawerPageSide, gridWidth: CGFloat, targetWidth: CGFloat) -> CGFloat {
-        side == .right ? gridWidth : -targetWidth
+    static func gap(
+        side: DrawerPageSide,
+        gridWidth: CGFloat,
+        targetWidth: CGFloat,
+        spacing: CGFloat
+    ) -> CGFloat {
+        side == .right ? gridWidth + spacing : -(targetWidth + spacing)
     }
 
-    /// 落位终点位移：两层刚性相邻（预览层位置 = 位移 + gap），走到 `-gap` 时
-    /// 预览层正好落在 x=0 完全覆盖可视区——换页就在这一帧之后发生。
+    /// 落位终点位移：两层构成刚性页带（预览层位置 = 位移 + gap，层间距恒等于
+    /// 留白），走到 `-gap` 时预览层正好落在 x=0 完全覆盖可视区（源页连留白
+    /// 一起滑出视口）——换页就在这一帧之后发生。
     static func arrivalOffset(gap: CGFloat) -> CGFloat { -gap }
 }
 

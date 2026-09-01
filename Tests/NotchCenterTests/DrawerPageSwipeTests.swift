@@ -11,6 +11,9 @@ final class DrawerPageSwipeTests: XCTestCase {
     /// 常用页宽：落位门槛 = min(1000 × 0.28, 90) = 90pt。
     private let limit: CGFloat = 1_000
 
+    /// 页带留白（= 两倍默认内容边距，与 `DrawerPageSwipe.bandSpacing` 一致）。
+    private let spacing: CGFloat = 32
+
     // MARK: 方向判定
 
     func testSideForHorizontalTranslation() {
@@ -176,11 +179,45 @@ final class DrawerPageSwipeTests: XCTestCase {
         )
     }
 
-    // MARK: 页带几何（两层刚性相邻 + 落位终点）
+    // MARK: 页带几何（两层夹留白的刚性页带 + 落位终点）
 
-    func testGapAbutsPagesByTheirOwnWidths() {
-        XCTAssertEqual(DrawerPageSwipe.gap(side: .right, gridWidth: 1_000, targetWidth: 600), 1_000)
-        XCTAssertEqual(DrawerPageSwipe.gap(side: .left, gridWidth: 1_000, targetWidth: 600), -600)
+    func testGapSeparatesPagesByBandSpacing() {
+        // 预览层让出"相邻页宽 + 留白"：两层之间恒隔一条页带留白；
+        // spacing = 0 退化为刚性相邻（旧几何）。
+        XCTAssertEqual(
+            DrawerPageSwipe.gap(side: .right, gridWidth: 1_000, targetWidth: 600, spacing: spacing),
+            1_000 + spacing
+        )
+        XCTAssertEqual(
+            DrawerPageSwipe.gap(side: .left, gridWidth: 1_000, targetWidth: 600, spacing: spacing),
+            -(600 + spacing)
+        )
+        XCTAssertEqual(
+            DrawerPageSwipe.gap(side: .right, gridWidth: 1_000, targetWidth: 600, spacing: 0),
+            1_000
+        )
+        XCTAssertEqual(DrawerPageSwipe.bandSpacing(contentPadding: 16), 32, "留白 = 内容边距 × 2")
+    }
+
+    func testSwipeKeepsSpacingStripBetweenLayers() {
+        // 用户可见的页间背景条 = 留白：任意条带位移下，源页与预览层相邻缘的
+        // 距离恒等于 spacing（页带刚性，不随面板尺寸插值漂移）。
+        let gridWidth: CGFloat = 1_000
+        let targetWidth: CGFloat = 600
+        for side in [DrawerPageSide.right, .left] {
+            let gap = DrawerPageSwipe.gap(
+                side: side, gridWidth: gridWidth, targetWidth: targetWidth, spacing: spacing
+            )
+            for offset in [-600.0, -213.0, 0.0, 177.0, 520.0] {
+                // 源页占 [offset, offset + gridWidth]，预览层占
+                // [offset + gap, offset + gap + targetWidth]：右带量
+                // 预览左缘 − 源页右缘，左带量源页左缘 − 预览右缘。
+                let strip = side == .right
+                    ? (offset + gap) - (offset + gridWidth)
+                    : offset - (offset + gap + targetWidth)
+                XCTAssertEqual(strip, spacing, accuracy: 0.001, "\(side) @ \(offset)")
+            }
+        }
     }
 
     func testArrivalOffsetLandsPreviewExactlyAtZero() {
@@ -189,17 +226,24 @@ final class DrawerPageSwipeTests: XCTestCase {
             (.right, 1_000, 600), (.left, 1_000, 600), (.right, 600, 1_000),
         ]
         for case let (side, gridWidth, targetWidth) in cases {
-            let gap = DrawerPageSwipe.gap(side: side, gridWidth: gridWidth, targetWidth: targetWidth)
+            let gap = DrawerPageSwipe.gap(
+                side: side, gridWidth: gridWidth, targetWidth: targetWidth, spacing: spacing
+            )
             let offset = DrawerPageSwipe.arrivalOffset(gap: gap)
             XCTAssertEqual(offset + gap, 0, "预览层落到 x=0（\(side)）")
-            XCTAssertEqual(abs(offset), side == .right ? gridWidth : targetWidth,
-                           "网格位移等于它自己那一页的宽度：滑到刚好看不见")
+            XCTAssertEqual(
+                abs(offset),
+                (side == .right ? gridWidth : targetWidth) + spacing,
+                "网格位移 = 本页宽 + 留白：源页连留白一起滑出，完全看不见"
+            )
         }
     }
 
     func testArrivalOffsetIsBeyondCommitThreshold() {
-        // 落位终点必然远过门槛：门槛取 min(页宽×0.28, 90)，位移却要走满整页宽。
-        let gap = DrawerPageSwipe.gap(side: .right, gridWidth: limit, targetWidth: limit)
+        // 落位终点必然远过门槛：门槛取 min(页宽×0.28, 90)，位移却要走满整页宽 + 留白。
+        let gap = DrawerPageSwipe.gap(
+            side: .right, gridWidth: limit, targetWidth: limit, spacing: spacing
+        )
         XCTAssertTrue(DrawerPageSwipe.shouldCommit(
             offset: DrawerPageSwipe.arrivalOffset(gap: gap), limit: limit
         ))
@@ -215,7 +259,9 @@ final class DrawerPageSwipeTests: XCTestCase {
     ) -> PanelUIState.DrawerSwipe {
         let originSize = CGSize(width: gridWidth, height: 500)
         let targetSize = CGSize(width: targetWidth, height: 500)
-        let gap = DrawerPageSwipe.gap(side: side, gridWidth: gridWidth, targetWidth: targetWidth)
+        let gap = DrawerPageSwipe.gap(
+            side: side, gridWidth: gridWidth, targetWidth: targetWidth, spacing: spacing
+        )
         return PanelUIState.DrawerSwipe(
             originPage: 0,
             side: side,
@@ -233,9 +279,9 @@ final class DrawerPageSwipeTests: XCTestCase {
     }
 
     func testLandedPreviewPokesBackIntoClipOnlyWhenTargetIsWider() {
-        // 落位后 offset=0，预览层横坐标 = gap = 原点页宽：目标页更宽时会探回
-        // 已变宽的裁剪框内（重影条带），因此视图必须按 isLanded 就地撤层，
-        // 不能赌"落位后它在屏外"。
+        // 落位后 offset=0，预览层横坐标 = gap = 原点页宽 + 留白：目标页宽过
+        // 原点页宽 + 留白时会探回已变宽的裁剪框内（重影条带），因此视图必须
+        // 按 isLanded 就地撤层，不能赌"落位后它在屏外"。
         func landed(_ session: PanelUIState.DrawerSwipe) -> PanelUIState.DrawerSwipe {
             var s = session
             s.offset = 0

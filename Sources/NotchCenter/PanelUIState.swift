@@ -81,15 +81,16 @@ final class PanelUIState: ObservableObject {
         var targetWindowSize: CGSize
         /// 目标页格网最左列，与 `drawerGridLeftColumn` 同义。
         var leftColumn: Int
-        /// 预览层与网格层的带符号相邻间距（= 该侧条的揭示全程，换绑时重算）。
+        /// 预览层与网格层的带符号间距（相邻页宽 + 页带留白，换绑时重算；
+        /// 留白 = `DrawerPageSwipe.bandSpacing`，两倍内容边距）。
         var gap: CGFloat
         /// 会话开始时的内容尺寸（网格层宽度在会话期冻结为此值；尺寸插值起点，
         /// **永不随换绑更新**）。
         let startContentSize: CGSize
         /// 会话开始时的窗口尺寸（尺寸插值起点，永不随换绑更新）。
         let startWindowSize: CGSize
-        /// 当前条带的位移上限（橡皮筋与落位门槛按它取：右侧束带 = 原点页宽、
-        /// 左侧束带 = 目标页宽，换绑时更新）。
+        /// 当前条带的位移上限（橡皮筋与落位门槛按它取 = |gap|：右侧束带 =
+        /// 原点页宽 + 留白、左侧束带 = 目标页宽 + 留白，换绑时更新）。
         var limit: CGFloat
         /// 已进入落位拍（滑到位动画进行中，预览层即将全覆盖）：位移由动画驱动，
         /// 不得再接新手势/拖拽帧，否则落位与跟手会抢同一个 offset。

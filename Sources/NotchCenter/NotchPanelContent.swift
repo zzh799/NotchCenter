@@ -590,10 +590,12 @@ extension NotchPanelController {
             return
         }
         let targetContentSize = layoutEngine.drawerContentSize(page: target)
+        // gap 与留白都冻结在会话起点：落位途中指标被调整也不改条带几何。
         let gap = DrawerPageSwipe.gap(
             side: side,
             gridWidth: uiState.drawerContentSize.width,
-            targetWidth: targetContentSize.width
+            targetWidth: targetContentSize.width,
+            spacing: DrawerPageSwipe.bandSpacing(contentPadding: GridMetrics.current.contentPadding)
         )
         uiState.drawerSwipe = PanelUIState.DrawerSwipe(
             originPage: uiState.drawerActivePage,
@@ -606,8 +608,8 @@ extension NotchPanelController {
             gap: gap,
             startContentSize: uiState.drawerContentSize,
             startWindowSize: uiState.drawerWindowSize,
-            // 位移上限 = 当前条带的揭示距离（|gap|）：右侧 = 原点页宽、
-            // 左侧 = 目标页宽——按方向取，两侧页宽不同时才算得准（旧实现
+            // 位移上限 = 当前条带的揭示距离（|gap|）：右侧 = 原点页宽 + 留白、
+            // 左侧 = 目标页宽 + 留白——按方向取，两侧页宽不同时才算得准（旧实现
             // 一律用原点页宽，左侧条带会提前触橡皮筋/门槛错位）。
             limit: abs(gap),
             offset: 0
@@ -643,6 +645,15 @@ extension NotchPanelController {
                 side: newSide
             ) {
                 let targetContentSize = layoutEngine.drawerContentSize(page: target)
+                // 上限与 beginDrawerSwipe 同一公式：|gap| = 该侧揭示距离
+                // （右 = 原点页宽 + 留白、左 = 目标页宽 + 留白），两侧页宽
+                // 不同时不能拿目标页宽冒充右束带。
+                let gap = DrawerPageSwipe.gap(
+                    side: newSide,
+                    gridWidth: swipe.startContentSize.width,
+                    targetWidth: targetContentSize.width,
+                    spacing: DrawerPageSwipe.bandSpacing(contentPadding: GridMetrics.current.contentPadding)
+                )
                 swipe.rebind(
                     side: newSide,
                     targetPage: target,
@@ -650,12 +661,8 @@ extension NotchPanelController {
                     contentSize: targetContentSize,
                     targetWindowSize: drawerWindowSize(for: activePair, page: target),
                     leftColumn: layoutEngine.gridLeftColumn(page: target),
-                    gap: DrawerPageSwipe.gap(
-                        side: newSide,
-                        gridWidth: swipe.startContentSize.width,
-                        targetWidth: targetContentSize.width
-                    ),
-                    limit: targetContentSize.width
+                    gap: gap,
+                    limit: abs(gap)
                 )
             } else {
                 // 该侧没有邻居（首/末页）：硬停在原点。
