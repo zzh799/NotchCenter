@@ -316,7 +316,10 @@ extension NotchPanelController {
 
     /// 把设置面板对齐到抽屉可见底缘：屏幕中线水平居中，顶缘 = 抽屉底缘
     /// + 间距；屏幕高度不足时贴屏幕底（面板层级更高，允许与抽屉重叠）。
-    func positionSettingsWindow() {
+    /// `animated: true` 时跟随抽屉高度的 spring 同步移动（时长对齐
+    /// `DrawerAnimation.spring` 的 response），否则抽屉底缘先动、面板后跳，
+    /// spring 期间出现短暂脱节。
+    func positionSettingsWindow(animated: Bool = false) {
         guard let window = settingsWindowController?.window else { return }
         guard let pair = activePair ?? pairs.first else { return }
         let visible = visibleDrawerFrame(for: pair)
@@ -326,6 +329,15 @@ extension NotchPanelController {
             pair.screenFrame.minY + 12
         )
         let originX = pair.screenFrame.midX - size.width / 2
-        window.setFrameOrigin(NSPoint(x: round(originX), y: round(originY)))
+        let origin = NSPoint(x: round(originX), y: round(originY))
+        guard animated else {
+            window.setFrameOrigin(origin)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrameOrigin(origin)
+        }
     }
 }

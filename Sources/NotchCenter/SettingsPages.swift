@@ -550,11 +550,11 @@ struct LayoutSettingsPage: View {
                         maxValue: layoutEngine.userMaxColumns,
                         onMinChange: { newValue in
                             layoutEngine.setUserMinColumns(newValue)
-                            controller.refreshAfterLayoutChange()
+                            controller.refreshAfterLayoutChange(animated: true)
                         },
                         onMaxChange: { newValue in
                             layoutEngine.setUserMaxColumns(newValue)
-                            controller.refreshAfterLayoutChange()
+                            controller.refreshAfterLayoutChange(animated: true)
                         }
                     )
                 }
@@ -618,7 +618,7 @@ struct LayoutSettingsPage: View {
             get: { layoutEngine.userMinRows },
             set: { newValue in
                 layoutEngine.setUserMinRows(newValue)
-                controller.refreshAfterLayoutChange()
+                controller.refreshAfterLayoutChange(animated: true)
             }
         )
     }

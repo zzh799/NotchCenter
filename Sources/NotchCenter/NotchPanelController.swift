@@ -414,8 +414,12 @@ final class NotchPanelController: NSObject {
     }
 
     /// 布局配置（如列数）变化后的刷新：重建内容并在展开时重设抽屉窗口 frame。
-    func refreshAfterLayoutChange() {
-        rebuildContent()
+    /// `animated: true` 时内容同批套 spring（可见面板尺寸/块重排平滑过渡，
+    /// 设置页列数与最小行数回调使用）；网格指标防抖路径保持瞬时（连续
+    /// spring 发黏）。窗口 frame 只在屏幕容量/网格指标变化时才真正改变
+    /// ——列数配置变化下 `drawerFrame` 恒等，`setFrame` 为无害 no-op。
+    func refreshAfterLayoutChange(animated: Bool = false) {
+        rebuildContent(animated: animated)
         if isExpanded, let pair = activePair {
             pair.drawerPanel.setFrame(drawerFrame(for: pair), display: true)
         }
@@ -450,15 +454,16 @@ final class NotchPanelController: NSObject {
     }
 
     /// 抽屉窗口（方案 E：固定满高满宽）：顶缘钉死屏幕顶端，高度一次摆到
-    /// 屏高上限；宽度固定为屏幕能容纳的最大列数。可见面板尺寸
-    /// （`drawerWindowSize`）随实际占用列数自适应收缩并在窗口内水平居中，
-    /// 窗口比可见面板宽的部分是透明区（命中测试由 `DrawerHostingView`
-    /// 可见矩形限定 + `ignoresMouseEvents` 光标跟踪双机制穿透）。
-    /// 窗口 frame 不跟随内容宽度动画——跟随会导致宽度变化期间裁剪
-    /// spring 变形中的内容、面板偏离屏幕中线。
+    /// 屏高上限；宽度固定为**屏幕能容纳的最大列数**（`screenColumnCapacity`，
+    /// 不受用户最大列数配置约束）。可见面板尺寸（`drawerWindowSize`）随实际
+    /// 占用列数自适应收缩并在窗口内水平居中，窗口比可见面板宽的部分是透明
+    /// 区（命中测试由 `DrawerHostingView` 可见矩形限定 + `ignoresMouseEvents`
+    /// 光标跟踪双机制穿透，两者都按面板宽计算）。窗口 frame 不跟随内容宽度
+    /// 动画——跟随会导致宽度变化期间裁剪 spring 变形中的内容、面板偏离屏幕
+    /// 中线；按屏幕容量取满宽后，列数配置变化完全不改窗口 frame。
     private func drawerFrame(for pair: ScreenPanelPair) -> NSRect {
         let screenFrame = pair.screenFrame
-        let width = NotchGridMetrics.contentWidth(columns: layoutEngine.effectiveMaxColumns())
+        let width = NotchGridMetrics.contentWidth(columns: layoutEngine.screenColumnCapacity())
             + NotchGridMetrics.contentPadding * 2
         let size = CGSize(
             width: width,

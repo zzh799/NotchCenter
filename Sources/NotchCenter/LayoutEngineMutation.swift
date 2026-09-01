@@ -49,16 +49,22 @@ extension LayoutEngine {
         availableScreenWidth = width
     }
 
-    func effectiveMaxColumns() -> Int {
-        let capacity = max(
+    /// 屏幕宽度能容纳的最大列数（容量分量，不受用户最大列数配置约束）。
+    /// 抽屉窗口的固定满宽按它取（见 `NotchPanelController.drawerFrame`）
+    /// ——列数配置变化只 spring 可见面板，窗口 frame 不动。
+    func screenColumnCapacity() -> Int {
+        max(
             1,
             Int(
                 (availableScreenWidth - NotchGridMetrics.contentPadding * 2
                     + NotchGridMetrics.spacing)
-                    / (NotchGridMetrics.cellWidth + NotchGridMetrics.spacing)
+                / (NotchGridMetrics.cellWidth + NotchGridMetrics.spacing)
             )
         )
-        return min(model.maxColumns, capacity)
+    }
+
+    func effectiveMaxColumns() -> Int {
+        min(model.maxColumns, screenColumnCapacity())
     }
 
     /// 行/列下限（配置项「最小行数 / 最小列数」）的**唯一计算出口**从这里取：

@@ -129,6 +129,23 @@ final class LayoutEngineTests: XCTestCase {
         XCTAssertEqual(engine.effectiveMaxColumns(), 8)
     }
 
+    func testScreenColumnCapacityIsIndependentOfUserMaxColumns() throws {
+        register(blockID: "shelf", kind: .drawer, sizes: [.medium], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 4)
+        // 默认屏（1440）容量 8：容量分量不受用户最大列数约束——抽屉窗口
+        // 的固定满宽按它取，列数配置变化不改窗口 frame（spring 无裁剪）。
+        XCTAssertEqual(engine.screenColumnCapacity(), 8)
+        XCTAssertEqual(engine.effectiveMaxColumns(), 4)
+        engine.setUserMaxColumns(2)
+        XCTAssertEqual(engine.screenColumnCapacity(), 8)
+        XCTAssertEqual(engine.effectiveMaxColumns(), 2)
+
+        engine.updateScreenConstraint(width: 700)
+        XCTAssertEqual(engine.screenColumnCapacity(), 4)
+        XCTAssertEqual(engine.effectiveMaxColumns(), 2)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
     // MARK: 移动与缩放（文档 §5.5）
 
     func testMoveBlockResolvesOverlapToNearestFreeSpot() throws {

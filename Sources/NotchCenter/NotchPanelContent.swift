@@ -146,9 +146,10 @@ extension NotchPanelController {
         }
 
         // 设置面板贴挂在抽屉底缘：抽屉高度变化（增删块、网格指标调整、
-        // 进入编辑模式）后面板必须跟着重新对齐。
+        // 进入编辑模式）后面板必须跟着重新对齐；animated 时与抽屉的
+        // spring 同步移动（时长对齐），避免底缘先动、面板后跳。
         if isSettingsPresented {
-            positionSettingsWindow()
+            positionSettingsWindow(animated: animated)
         }
     }
 
