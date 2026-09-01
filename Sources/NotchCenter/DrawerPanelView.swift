@@ -12,6 +12,8 @@ struct DrawerElement: Identifiable {
     let supportedSpans: [GridSpan]
     /// 当前已提交的跨度（与 placement 一致；布局遗留数据可能为 nil）。
     let currentSpan: GridSpan?
+    /// 块声明的横向滑动消费（滑动切页的让路判据，见 `BlockScrollUsage`）。
+    let scrollUsage: BlockScrollUsage
     /// 插件是否提供设置界面（编辑模式左上角齿轮按钮的显隐条件）。
     let hasSettings: Bool
 
@@ -38,9 +40,10 @@ struct DrawerActions {
     let onRenamePage: (Int, String) -> Void
     let onRemovePage: (Int) -> Void
     /// 左右滑动切页的**拖拽**通路（网格背景手势）：只上报原始平移量，
-    /// 方向、位移与落位判据由控制器按 `DrawerPageSwipe` 决定。
+    /// 方向、位移与落位判据由控制器按 `DrawerPageSwipe` 决定。松手回调
+    /// 第二个参数是 `DragGesture` 的预测终点（速度判据折算了它）。
     let onSwipeDrag: (CGSize) -> Void
-    let onSwipeDragEnded: (CGSize) -> Void
+    let onSwipeDragEnded: (CGSize, CGSize) -> Void
 }
 
 struct DrawerPanelView: View {
@@ -199,12 +202,14 @@ struct DrawerPanelView: View {
             Spacer(minLength: 0)
 
             // 分页胶囊行：顶栏居中，每页一颗独立胶囊、加号在胶囊外（详见 DrawerPageCapsule）。
+            // 滑动会话期把会话快照传进去：高亮层随进度在激活胶囊与目标胶囊间平移。
             DrawerPageCapsule(
                 pages: ui.drawerPages,
                 titles: ui.drawerPageTitles,
                 activePage: ui.drawerActivePage,
                 isEditing: ui.isEditing,
                 showsAddButtons: ui.isEditing && isTopBarHovering,
+                swipe: ui.drawerSwipe,
                 onSelect: actions.onSelectPage,
                 onAdd: actions.onAddPage,
                 onMove: actions.onMovePage,
@@ -247,9 +252,11 @@ struct DrawerPanelView: View {
 
     /// 滑动切页的两层容器：当前页与目标页预览层**刚性相邻**成一条页带（预览层
     /// 横坐标 = `offset + gap`，`gap` 在会话开始时冻结），整体跟手平移、超出裁掉。
-    /// 容器宽高**钉死在当前页**（不是两层的并集）：让容器随预览页长高会让
-    /// ScrollView 内容高出可视区、亮起滚动条（与 `gridFrameHeight` 同源教训）。
-    /// 跟手期只动 `offset`；落位与交接见 `NotchPanelContent.landDrawerSwipe`。
+    /// 容器宽高跟随 `drawerContentSize`——会话期间该尺寸随滑动进度在起止两端间
+    /// 插值（面板同步长大/缩小），页带本身保持刚性相邻（两侧宽度差不会撕开：
+    /// 网格层宽度由 `grid` 冻结在`会话起点值`，预览层宽度 = 目标页宽，二者
+    /// 邻接缘始终重合）。容器高度 = 内容高度：内容 ≡ 可视区，ScrollView
+    /// 才不闪滚动条（与 `gridFrameHeight` 同源教训；会话外二者恒等）。
     private var pageSlide: some View {
         let offset = ui.drawerSwipe?.offset ?? 0
         return ZStack(alignment: .topLeading) {
@@ -263,7 +270,7 @@ struct DrawerPanelView: View {
         }
         .frame(
             width: ui.drawerContentSize.width,
-            height: gridFrameHeight,
+            height: ui.drawerContentSize.height,
             alignment: .topLeading
         )
         .clipped()
@@ -300,8 +307,12 @@ struct DrawerPanelView: View {
     /// 网格层。两条跟随元素变化的 spring 在**滑动会话挂载期必须关闭**：
     /// 切页换的是整页元素身份，落位那一帧若让它参与动画，退场页会在 x=0 上
     /// 重影淡出、进场页再从反方向滑一遍（真机报告"目标页面直接淡出"的根因）。
+    /// 会话期网格层宽度必须**冻结在会话起点值**：容器宽度随插值收窄时，
+    /// 若本层 bounds 跟着收窄，其右缘（裁剪缘）会与预览层左缘错开一条缝——
+    /// 预览层邻接缘按"当前页宽"起排，只有宽度不变时两者才恒重合。
     private var grid: some View {
         let swipeActive = ui.drawerSwipe != nil
+        let gridWidth = ui.drawerSwipe?.startContentSize.width ?? ui.drawerContentSize.width
         return ZStack(alignment: .topLeading) {
             ForEach(ui.drawerElements) { element in
                 blockContainer(for: element)
@@ -309,7 +320,7 @@ struct DrawerPanelView: View {
             dropPlaceholder
         }
         .frame(
-            width: ui.drawerContentSize.width,
+            width: gridWidth,
             height: gridFrameHeight,
             alignment: .topLeading
         )
@@ -331,7 +342,10 @@ struct DrawerPanelView: View {
             .highPriorityGesture(
                 DragGesture(minimumDistance: DrawerPageSwipe.dragMinDistance)
                     .onChanged { actions.onSwipeDrag($0.translation) }
-                    .onEnded { actions.onSwipeDragEnded($0.translation) }
+                    .onEnded { value in
+                        // 第二个参数 = 预测终点：控制器据此折算松手速度判据。
+                        actions.onSwipeDragEnded(value.translation, value.predictedEndTranslation)
+                    }
             )
     }
 

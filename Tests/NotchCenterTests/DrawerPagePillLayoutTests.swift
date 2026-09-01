@@ -120,4 +120,32 @@ final class DrawerPagePillLayoutTests: XCTestCase {
             }
         }
     }
+
+    // MARK: 滑动会话高亮层（激活胶囊 → 目标胶囊随进度平移）
+
+    func testHighlightXEndpointsAreSlotOrigins() {
+        // p=0 停在激活胶囊左缘、p=1 到目标胶囊左缘（槽距 = step）。
+        XCTAssertEqual(DrawerPagePillLayout.highlightX(fromSlot: 0, toSlot: 2, progress: 0), 0)
+        XCTAssertEqual(DrawerPagePillLayout.highlightX(fromSlot: 0, toSlot: 2, progress: 1), 2 * step)
+        XCTAssertEqual(DrawerPagePillLayout.highlightX(fromSlot: 3, toSlot: 1, progress: 1), step)
+    }
+
+    func testHighlightXInterpolatesLinearlyWithProgress() {
+        // 半程 = 两槽中点；进度与滑动会话的 offset/gap 同源，跟手/落位/回弹一致。
+        XCTAssertEqual(DrawerPagePillLayout.highlightX(fromSlot: 1, toSlot: 3, progress: 0.5), 2 * step)
+        XCTAssertEqual(DrawerPagePillLayout.highlightX(fromSlot: 3, toSlot: 1, progress: 0.25), 2.5 * step)
+        XCTAssertEqual(
+            DrawerPagePillLayout.highlightX(fromSlot: 0, toSlot: 4, progress: 0.25),
+            step,
+            "四槽距的四分之一 = 一格"
+        )
+    }
+
+    func testHighlightXClampsProgressAndHandlesSameSlot() {
+        // 越界进度夹紧（落位 spring 轻微过冲时高亮不飞出目标胶囊）。
+        XCTAssertEqual(DrawerPagePillLayout.highlightX(fromSlot: 1, toSlot: 3, progress: -0.5), step)
+        XCTAssertEqual(DrawerPagePillLayout.highlightX(fromSlot: 1, toSlot: 3, progress: 4.0), 3 * step)
+        // 会话异常（目标槽位缺失退化为激活槽位）时高亮纹丝不动。
+        XCTAssertEqual(DrawerPagePillLayout.highlightX(fromSlot: 2, toSlot: 2, progress: 0.7), 2 * step)
+    }
 }

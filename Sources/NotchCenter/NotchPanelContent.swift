@@ -307,6 +307,7 @@ extension NotchPanelController {
                     lhs.columns == rhs.columns ? lhs.rows < rhs.rows : lhs.columns < rhs.columns
                 },
                 currentSpan: currentSpan,
+                scrollUsage: block.scrollUsage,
                 hasSettings: block.instanceSettingsView != nil
                     || entry.instance?.settingsView != nil
             )
@@ -424,8 +425,11 @@ extension NotchPanelController {
             onSwipeDrag: { [weak self] translation in
                 self?.drawerSwipeDrag(translation: translation)
             },
-            onSwipeDragEnded: { [weak self] translation in
-                self?.drawerSwipeDragEnded(translation: translation)
+            onSwipeDragEnded: { [weak self] translation, predictedEndTranslation in
+                self?.drawerSwipeDragEnded(
+                    translation: translation,
+                    predictedEndTranslation: predictedEndTranslation
+                )
             }
         )
     }
@@ -472,12 +476,15 @@ extension NotchPanelController {
         guard event.hasPreciseScrollingDeltas, event.momentumPhase.isEmpty,
               !phase.contains(.mayBegin), canSwipeDrawerPage else { return }
 
-        let limit = drawerSwipeLimit
-        // 光标落在块上时让路：横向增量属于块自己（文件架横向滚动、编辑器选字）。
-        // 判据走格网几何——实测 SwiftUI 的 ScrollView 在 AppKit 命中链上拿不到
-        // `NSScrollView`，"文档视图宽于视口"那条例外从未命中。
+        // 位移上限在会话期冻结（`drawerContentSize` 随进度插值，现读会让
+        // 橡皮筋与位移换算逐帧漂移）；无会话时 = 当前页宽。
+        let limit = uiState.drawerSwipe?.limit ?? drawerSwipeLimit
+        // 光标落在"会消费横向滑动"的块上时让路（插件经 `BlockScrollUsage`
+        // 声明：横向 ScrollView 等才让路——SwiftUI 视图树对宿主不可内省，
+        // "文档视图宽于视口"那条 NSView 探针实测永不命中，勿改回）。
+        // 其余块（含静态卡片）不消费横向增量，其上滑动照常切页。
         if let window = event.window,
-           isPointOverDrawerBlock(window.convertPoint(toScreen: event.locationInWindow)) {
+           drawerElement(at: window.convertPoint(toScreen: event.locationInWindow))?.scrollUsage == .horizontal {
             drawerScrollTracker.reset()
             endDrawerSwipe(commit: false)
             return
@@ -505,21 +512,37 @@ extension NotchPanelController {
             threshold: DrawerPageSwipe.dragMinDistance
         ) else { return }
         beginDrawerSwipe(side)
+        guard let session = uiState.drawerSwipe else { return }
         updateDrawerSwipe(offset: DrawerPageSwipe.offset(
             translation: translation.width,
-            limit: drawerSwipeLimit
+            limit: session.limit
         ))
     }
 
-    /// 拖拽通路：松手定夺（过阈值落位，否则弹回）。
-    func drawerSwipeDragEnded(translation: CGSize) {
-        let offset = DrawerPageSwipe.offset(translation: translation.width, limit: drawerSwipeLimit)
-        endDrawerSwipe(commit: DrawerPageSwipe.shouldCommit(offset: offset, limit: drawerSwipeLimit))
+    /// 拖拽通路：松手定夺（过阈值落位，否则弹回）。速度判据经 DragGesture 的
+    /// 预测终点折算成"预测位移"——松手瞬间的强速度 = 预测终点越过门槛 →
+    /// 落位（与触控板通路的 `velocityEstimate` 走同一份 `shouldCommit`）。
+    func drawerSwipeDragEnded(translation: CGSize, predictedEndTranslation: CGSize) {
+        guard let session = uiState.drawerSwipe else { return }
+        let offset = DrawerPageSwipe.offset(translation: translation.width, limit: session.limit)
+        let predictedOffset = DrawerPageSwipe.offset(
+            translation: predictedEndTranslation.width,
+            limit: session.limit
+        )
+        endDrawerSwipe(commit: DrawerPageSwipe.shouldCommit(
+            offset: offset,
+            limit: session.limit,
+            predictedOffset: predictedOffset
+        ))
     }
 
     /// 开始／维持一次滑动会话。目标页的只读预览副本（`isPreview` = true）只在
     /// 首次进入时构建并缓存进会话——每帧重建会让插件视图反复出现消失，
     /// 编辑器与选区状态首帧就废。
+    ///
+    /// 会话同时冻结尺寸插值的两端与位移上限：`drawerWindowSize` /
+    /// `drawerContentSize` 会在整个会话期间随进度在起止两端间插值
+    /// （见 `updateDrawerSwipe`），这些量若现读就会逐帧漂移。
     func beginDrawerSwipe(_ side: DrawerPageSide) {
         guard uiState.drawerSwipe?.side != side else { return }
         // 上一次提交的滑到位动画还在跑：本次手势整个忽略（不能走下面的
@@ -534,37 +557,56 @@ extension NotchPanelController {
             uiState.drawerSwipe = nil
             return
         }
-        let targetSize = layoutEngine.drawerContentSize(page: target)
+        let targetContentSize = layoutEngine.drawerContentSize(page: target)
         uiState.drawerSwipe = PanelUIState.DrawerSwipe(
             side: side,
             targetPage: target,
             elements: buildDrawerElements(page: target, isPreview: true),
-            contentSize: targetSize,
+            contentSize: targetContentSize,
+            targetWindowSize: drawerWindowSize(for: activePair, page: target),
             leftColumn: layoutEngine.gridLeftColumn(page: target),
             gap: DrawerPageSwipe.gap(
                 side: side,
                 gridWidth: uiState.drawerContentSize.width,
-                targetWidth: targetSize.width
+                targetWidth: targetContentSize.width
             ),
+            startContentSize: uiState.drawerContentSize,
+            startWindowSize: uiState.drawerWindowSize,
+            limit: drawerSwipeLimit,
             offset: 0
         )
     }
 
-    /// 跟手位移（**不加动画**：加了就变成"追赶手指"）。
+    /// 跟手位移（**不加动画**：加了就变成"追赶手指"）。面板尺寸随同一份
+    /// 进度在起止两端间插值——滑动往目标页推进，面板就同步长大/缩小，
+    /// 往回滑进度减小、尺寸恢复（两维都插值，与位移线性一致）。
     func updateDrawerSwipe(offset: CGFloat) {
         guard var swipe = uiState.drawerSwipe, !swipe.isLanding, swipe.offset != offset else { return }
         swipe.offset = offset
+        let p = swipe.progress
+        uiState.drawerWindowSize = DrawerPageSwipe.interpolatedSize(
+            from: swipe.startWindowSize,
+            to: swipe.targetWindowSize,
+            progress: p
+        )
+        uiState.drawerContentSize = DrawerPageSwipe.interpolatedSize(
+            from: swipe.startContentSize,
+            to: swipe.contentSize,
+            progress: p
+        )
         uiState.drawerSwipe = swipe
     }
 
-    /// 结束会话。不提交：位移弹回，回弹动画结束后再撤层。
-    /// 提交：**分两拍**——先把两层刚性滑到位（预览层落到 x=0 全覆盖）才换页。
+    /// 结束会话。不提交：位移弹回、尺寸随同一进度回退到起点，回弹动画结束后
+    /// 再撤层。提交：**分两拍**——先把两层刚性滑到位（预览层落到 x=0 全覆盖、
+    /// 面板尺寸在同一条 spring 里插值到目标页）才换页。
     /// 绝不能在松手那一帧就撤层 + `selectDrawerPage`：那会把撤层、位移归零与
     /// 换页全挤进同一条 spring，真机上表现为目标页原地淡出、新页再反向滑一遍。
     func endDrawerSwipe(commit: Bool) {
         guard let swipe = uiState.drawerSwipe, !swipe.isLanding else { return }
         guard commit else {
             withAnimation(DrawerAnimation.spring, completionCriteria: .logicallyComplete) {
+                // p → 0：插值尺寸同步回落到起点（往回滑立即恢复原大小）。
                 updateDrawerSwipe(offset: 0)
             } completion: { [weak self] in
                 // 期间可能已经开始下一次手势或整层被重建清掉——只清属于本次会话、
@@ -578,7 +620,11 @@ extension NotchPanelController {
         var landing = swipe
         landing.isLanding = true
         withAnimation(DrawerAnimation.spring, completionCriteria: .logicallyComplete) {
+            // 位移与尺寸同一条 spring 滑向终点：线性弹簧的中间帧对两个终点
+            // 是同一仿射解，落位动画全程"尺寸进度 ≡ 位移进度"。
             landing.offset = DrawerPageSwipe.arrivalOffset(gap: swipe.gap)
+            uiState.drawerWindowSize = swipe.targetWindowSize
+            uiState.drawerContentSize = swipe.contentSize
             self.uiState.drawerSwipe = landing
         } completion: { [weak self] in
             self?.landDrawerSwipe(landing)
@@ -586,8 +632,10 @@ extension NotchPanelController {
     }
 
     /// 落位第二拍：换页与撤层**都不加动画**，靠像素重合藏住交接（网格已是目标页
-    /// 真实例，预览层恰好落在 x=0）。视图侧据此在会话挂载期关掉换页淡入（见
-    /// `DrawerPanelView.grid`）。尺寸必须留到下一拍：这一帧动它会把整帧变成动画帧。
+    /// 真实例，预览层恰好落在 x=0，窗口尺寸也已在第一拍的 spring 里到目标值——
+    /// 这一帧不动任何尺寸，整帧保持非动画帧）。视图侧据此在会话挂载期关掉换页
+    /// 淡入（见 `DrawerPanelView.grid`）。只剩姿势性的收尾交给下一拍
+    /// `rebuildContent(animated: true)`（写入与当前相同的尺寸，无可见动画）。
     private func landDrawerSwipe(_ session: PanelUIState.DrawerSwipe) {
         guard uiState.drawerSwipe?.isLanding == true,
               uiState.drawerSwipe?.targetPage == session.targetPage else { return }

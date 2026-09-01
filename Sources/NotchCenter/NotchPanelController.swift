@@ -395,16 +395,18 @@ final class NotchPanelController: NSObject {
     /// 高度时封顶（网格 ScrollView 可视高度随之压缩，文档 §5.3）。
     /// 与 `DrawerPanelView` 根视图共享该尺寸，保证布局一致。
     /// `previewRows` 用于拖拽/缩放预览（按预览布局的最低行临时增高）；
-    /// `previewColumns` 同理（按预览布局的实际占用列数临时增宽）。
+    /// `previewColumns` 同理（按预览布局的实际占用列数临时增宽）；
+    /// `page` 缺省 = 当前激活页（滑动切页的尺寸插值终点按目标页取）。
     func drawerWindowSize(
         for pair: ScreenPanelPair?,
+        page: Int? = nil,
         previewRows: Int? = nil,
         previewColumns: Int? = nil
     ) -> CGSize {
         var size = layoutEngine.drawerWindowSize(
             contentRows: previewRows,
             contentColumns: previewColumns,
-            page: uiState.drawerActivePage
+            page: page ?? uiState.drawerActivePage
         )
         if let pair {
             let maxHeight = pair.screenFrame.height - 8 - pair.layout.compactHeight
@@ -553,13 +555,19 @@ final class NotchPanelController: NSObject {
         )
     }
 
-    /// 屏幕坐标是否落在**当前激活页**的任一抽屉块上：触控板横向轻扫用它让路
-    /// （块上的横向增量属于块自己——文件架滚动、编辑器选字）。
+    /// 屏幕坐标是否落在**当前激活页**的任一抽屉块上。
     /// 格 → 屏幕走 `drawerScreenMapper`，与占位框、落点判定同一份换算。
     func isPointOverDrawerBlock(_ screenPoint: NSPoint) -> Bool {
-        guard isExpanded, let pair = activePair else { return false }
+        drawerElement(at: screenPoint) != nil
+    }
+
+    /// 屏幕坐标处的当前页抽屉块。`scrollUsage`（插件声明的横向滑动消费）是
+    /// 滑动切页的让路判据——只有声明 `.horizontal` 的块才让路，其余块上
+    /// 滑动照常切页（见 `NotchPanelContent.handleDrawerScroll`）。
+    func drawerElement(at screenPoint: NSPoint) -> DrawerElement? {
+        guard isExpanded, let pair = activePair else { return nil }
         let mapper = drawerScreenMapper(for: pair)
-        return uiState.drawerElements.contains { element in
+        return uiState.drawerElements.first { element in
             mapper.screenRect(for: GridCell(element.placement)).contains(screenPoint)
         }
     }

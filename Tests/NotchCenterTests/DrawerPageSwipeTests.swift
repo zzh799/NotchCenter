@@ -62,6 +62,118 @@ final class DrawerPageSwipeTests: XCTestCase {
         // 窄页面（200pt）：比例门槛 56pt 比 90pt 更严。
         XCTAssertFalse(DrawerPageSwipe.shouldCommit(offset: 55, limit: 200))
         XCTAssertTrue(DrawerPageSwipe.shouldCommit(offset: 60, limit: 200))
+        // commitThreshold 与 shouldCommit 同一条公式。
+        XCTAssertEqual(DrawerPageSwipe.commitThreshold(limit: limit), 90)
+        XCTAssertEqual(DrawerPageSwipe.commitThreshold(limit: 200), 56, accuracy: 0.001)
+    }
+
+    // MARK: 速度判据（较强速度的滑动也能触发翻页，不只看滑动距离）
+
+    func testShouldCommitIgnoresSlowVelocity() {
+        // 位移没到门槛、速度也不够猛：慢推不落位（刻意滑到一半停住就该弹回）。
+        XCTAssertFalse(DrawerPageSwipe.shouldCommit(offset: 60, limit: limit, velocity: -700))
+        XCTAssertFalse(DrawerPageSwipe.shouldCommit(offset: -60, limit: limit, velocity: 700))
+        XCTAssertFalse(DrawerPageSwipe.shouldCommit(offset: 60, limit: limit, velocity: 700))
+        XCTAssertFalse(DrawerPageSwipe.shouldCommit(offset: -60, limit: limit, velocity: -700))
+    }
+
+    func testShouldCommitAcceptsStrongAlignedVelocity() {
+        // 位移不足但松手速度够猛且同向：一甩就翻页。
+        XCTAssertTrue(DrawerPageSwipe.shouldCommit(offset: -60, limit: limit, velocity: -800))
+        XCTAssertTrue(DrawerPageSwipe.shouldCommit(offset: 60, limit: limit, velocity: 1_500))
+    }
+
+    func testShouldCommitRequiresVelocityAlignedWithOffset() {
+        // 往回甩的加速度不落位：位移向前、速度向后 = 用户反悔了。
+        XCTAssertFalse(DrawerPageSwipe.shouldCommit(offset: 60, limit: limit, velocity: -1_500))
+        XCTAssertFalse(DrawerPageSwipe.shouldCommit(offset: -60, limit: limit, velocity: 1_500))
+        // 位移为零（方向都没锁过）时速度再猛也不算。
+        XCTAssertFalse(DrawerPageSwipe.shouldCommit(offset: 0, limit: limit, velocity: -3_000))
+    }
+
+    func testShouldCommitUsesPredictedEndTranslation() {
+        // 拖拽通路：松手瞬间的强速度经 DragGesture 的预测终点折算成位移。
+        XCTAssertTrue(DrawerPageSwipe.shouldCommit(
+            offset: 50, limit: limit, predictedOffset: 95
+        ))
+        XCTAssertFalse(DrawerPageSwipe.shouldCommit(
+            offset: 50, limit: limit, predictedOffset: 89
+        ))
+        // 预测终点与当前位移反向（回拉刹车）：不落位。
+        XCTAssertFalse(DrawerPageSwipe.shouldCommit(
+            offset: 50, limit: limit, predictedOffset: -200
+        ))
+        // 位移已够门槛时预测方向无关紧要（距离判据先成立）。
+        XCTAssertTrue(DrawerPageSwipe.shouldCommit(
+            offset: -95, limit: limit, predictedOffset: 200
+        ))
+    }
+
+    // MARK: 滑动进度（面板尺寸插值与胶囊高亮共用的唯一进度）
+
+    func testProgressIsOffsetOverTravel() {
+        // 进度 = |位移| / |落位全程|；两侧方向一致。
+        XCTAssertEqual(DrawerPageSwipe.progress(offset: -500, gap: 1_000), 0.5, accuracy: 0.001)
+        XCTAssertEqual(DrawerPageSwipe.progress(offset: 500, gap: 1_000), 0.5, accuracy: 0.001)
+        // 左滑的 gap 为负（= -目标页宽），取绝对值同样成立。
+        XCTAssertEqual(DrawerPageSwipe.progress(offset: 300, gap: -600), 0.5, accuracy: 0.001)
+        XCTAssertEqual(DrawerPageSwipe.progress(offset: 0, gap: -600), 0, "没滑就是 0（往回滑进度归零、尺寸恢复）")
+        // 越界（过度拖拽）夹紧到 1。
+        XCTAssertEqual(DrawerPageSwipe.progress(offset: -2_000, gap: 1_000), 1, accuracy: 0.001)
+        XCTAssertEqual(DrawerPageSwipe.progress(offset: 700, gap: 200), 1, accuracy: 0.001)
+        XCTAssertEqual(DrawerPageSwipe.progress(offset: -3, gap: 4), 0.75, accuracy: 0.001)
+        // 没有落位全程可参照（gap 为 0）时进度恒为 0。
+        XCTAssertEqual(DrawerPageSwipe.progress(offset: 100, gap: 0), 0)
+    }
+
+    func testInterpolatedSizeIsLinearBetweenEndpoints() {
+        let start = CGSize(width: 1_000, height: 300)
+        let target = CGSize(width: 400, height: 600)
+        // 中点 = 两侧平均；终点 = 目标页自身所需尺寸。
+        XCTAssertEqual(
+            DrawerPageSwipe.interpolatedSize(from: start, to: target, progress: 0.5),
+            CGSize(width: 700, height: 450)
+        )
+        XCTAssertEqual(
+            DrawerPageSwipe.interpolatedSize(from: start, to: target, progress: 1),
+            target
+        )
+        XCTAssertEqual(
+            DrawerPageSwipe.interpolatedSize(from: start, to: target, progress: 0),
+            start,
+            "往回滑进度归零 = 恢复到本页尺寸"
+        )
+        // 两页尺寸相同时插值是恒等变换（面板不该有可见抖动）。
+        let same = CGSize(width: 800, height: 400)
+        XCTAssertEqual(
+            DrawerPageSwipe.interpolatedSize(from: same, to: same, progress: 0.73),
+            same
+        )
+    }
+
+    // MARK: 速度估计（样本窗口差商）
+
+    func testVelocityEstimateUsesRecentWindow() {
+        let now: TimeInterval = 1.0
+        typealias Sample = (time: TimeInterval, x: CGFloat)
+        let old: Sample = (time: 0.5, x: -50)
+        // 窗口外（> 0.12s 前）的样本不参与：只按近段差商。
+        let recent: [Sample] = [(time: 0.90, x: -80), (time: 0.96, x: -170)]
+        XCTAssertEqual(
+            DrawerPageSwipe.velocityEstimate(from: [old] + recent, at: now),
+            -1_500,
+            accuracy: 1.0,
+            "(-170 - -80) / (0.96 - 0.90) = -1500 pt/s"
+        )
+    }
+
+    func testVelocityEstimateNeedsTwoSamples() {
+        XCTAssertEqual(DrawerPageSwipe.velocityEstimate(from: [], at: 1), 0)
+        XCTAssertEqual(
+            DrawerPageSwipe.velocityEstimate(from: [(time: 0.9, x: -80)], at: 1),
+            0,
+            "单样本无差商可言"
+        )
     }
 
     // MARK: 页带几何（两层刚性相邻 + 落位终点）
@@ -123,6 +235,27 @@ final class DrawerPageSwipeTests: XCTestCase {
         var short = DrawerPageScrollTracker()
         _ = short.feed(deltaX: -50, phase: .began, at: 5, limit: limit)
         XCTAssertNil(short.finish(at: 5.02, limit: limit), "没到落位阈值应弹回")
+    }
+
+    func testFastFlickCommitsViaVelocityWhileDistanceIsShort() {
+        // 一甩：累加 -80pt（< 落位门槛 90），但 80pt 在 0.04s 内完成 =
+        // 1000pt/s > 800——速度快照样翻页（"较强速度的滑动能触发滑到
+        // 目的页，而不只看滑动距离"）。
+        var tracker = DrawerPageScrollTracker()
+        _ = tracker.feed(deltaX: -40, phase: .began, at: 0, limit: limit)
+        let frame = tracker.feed(deltaX: -40, phase: .changed, at: 0.04, limit: limit)
+        XCTAssertEqual(frame?.offset ?? 0, -80, accuracy: 0.001, "位移本身没到门槛")
+        XCTAssertFalse(frame?.commits ?? true, "触控板有边界，中途帧不就地提交")
+        XCTAssertEqual(tracker.finish(at: 0.05, limit: limit), .right, "速度够猛 → 落位")
+    }
+
+    func testSlowDragDoesNotCommitViaVelocity() {
+        // 同样的 80pt 用 0.3s 推完（266pt/s < 800）：速度与位移都不够 → 弹回。
+        var tracker = DrawerPageScrollTracker()
+        _ = tracker.feed(deltaX: -30, phase: .began, at: 10, limit: limit)
+        _ = tracker.feed(deltaX: -30, phase: .changed, at: 10.15, limit: limit)
+        _ = tracker.feed(deltaX: -20, phase: .changed, at: 10.3, limit: limit)
+        XCTAssertNil(tracker.finish(at: 10.32, limit: limit))
     }
 
     func testVerticalScrollNeverLocks() {

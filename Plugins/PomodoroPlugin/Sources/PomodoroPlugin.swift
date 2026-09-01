@@ -29,7 +29,9 @@ public final class PomodoroPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugi
                 kind: .drawer,
                 supportedSizes: [.medium, .large],
                 defaultSize: .medium,
+                // 静态控制卡、不消费横向滚动：其上滑动直接切页。
                 symbolName: "timer",
+                scrollUsage: .none,
                 makeView: { context in
                     AnyView(PomodoroDrawerBlockView(context: context))
                 }

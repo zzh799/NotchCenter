@@ -33,8 +33,22 @@ enum DrawerPageSwipe {
     /// 于是退化成 90pt。
     static let commitDistance: CGFloat = 90
 
+    /// 松手瞬间的速度门槛（pt/s）：位移没到落位门槛但速度够猛也算落位
+    /// （“较强速度的滑动能触发滑到目的页，而不只看滑动距离”）。刻意慢推
+    /// （< 800pt/s）不触发；速度必须与位移**同向**——往回甩的加速度不算。
+    static let commitVelocity: CGFloat = 800
+
     /// 越界橡皮筋阻尼：拖过整页宽度后每移动 1pt 只推进 0.35pt。
     static let rubberBand: CGFloat = 0.35
+
+    /// 速度估计的采样窗口（秒）：只取手势最近这一小段做差商，整段的平均
+    /// 速度会把“先慢后猛的一甩”稀释掉。
+    static let velocityWindow: TimeInterval = 0.12
+
+    /// 落位门槛距离（比例与绝对距离取较严者）。
+    static func commitThreshold(limit: CGFloat) -> CGFloat {
+        min(limit * commitRatio, commitDistance)
+    }
 
     /// 横向平移量 → 目标页面侧；未达门槛或横向没压过纵向时为 nil。
     ///
@@ -57,7 +71,61 @@ enum DrawerPageSwipe {
     }
 
     static func shouldCommit(offset: CGFloat, limit: CGFloat) -> Bool {
-        abs(offset) >= min(limit * commitRatio, commitDistance)
+        abs(offset) >= commitThreshold(limit: limit)
+    }
+
+    /// 松手定夺：位移门槛之外，另两条速度通路共用同一判据——
+    /// - `velocity`：触控板通路的采样即时速度（`velocityEstimate` 估计）；
+    /// - `predictedOffset`：拖拽通路的预测终点位移（`DragGesture.predictedEndTranslation`
+    ///   折算了松手瞬间的速度）。
+    /// 两条都要求与当前位移同向，且只作“加码”：没到位移门槛时它们能抬一手，
+    /// 慢推或往回甩则保持原判。
+    static func shouldCommit(
+        offset: CGFloat,
+        limit: CGFloat,
+        velocity: CGFloat? = nil,
+        predictedOffset: CGFloat? = nil
+    ) -> Bool {
+        let threshold = commitThreshold(limit: limit)
+        if abs(offset) >= threshold { return true }
+        if let velocity, velocity * offset > 0, abs(velocity) >= commitVelocity {
+            return true
+        }
+        if let predictedOffset, predictedOffset * offset > 0, abs(predictedOffset) >= threshold {
+            return true
+        }
+        return false
+    }
+
+    /// 滑动进度 p ∈ [0,1]：位移对“落位全程”（|gap|）的比例。
+    /// 面板尺寸插值与胶囊高亮层都从这一份进度派生——跟手期它随手指线性
+    /// 推进，落位/回弹期它随同一条 spring 收敛，往回滑 p 减小、一切同步回退。
+    static func progress(offset: CGFloat, gap: CGFloat) -> CGFloat {
+        let travel = abs(gap)
+        guard travel > 0 else { return 0 }
+        return min(max(abs(offset) / travel, 0), 1)
+    }
+
+    /// 面板尺寸在会话起止两端间的线性插值（进度与位移一致）。
+    static func interpolatedSize(from start: CGSize, to target: CGSize, progress p: CGFloat) -> CGSize {
+        CGSize(
+            width: start.width + (target.width - start.width) * p,
+            height: start.height + (target.height - start.height) * p
+        )
+    }
+
+    /// 由一段 (时间, 累计横向位移) 样本估计即时速度（pt/s）：取最近
+    /// `velocityWindow` 秒内的首尾样本做差商；样本不足两个时速度视为 0。
+    /// 惯性尾巴由调用方按 `momentumPhase` 过滤、不进样本。
+    static func velocityEstimate(
+        from samples: [(time: TimeInterval, x: CGFloat)],
+        at now: TimeInterval
+    ) -> CGFloat {
+        let recent = samples.filter { now - $0.time <= velocityWindow }
+        guard recent.count >= 2 else { return 0 }
+        let dt = recent.last!.time - recent.first!.time
+        guard dt > 0.001 else { return 0 }
+        return (recent.last!.x - recent.first!.x) / dt
     }
 
     /// 预览层相对网格层的**带符号**相邻间距：目标页在右贴当前页右缘，在左贴
@@ -93,6 +161,10 @@ struct DrawerPageScrollTracker {
     /// 本次手势已锁定的滑动方向（未达门槛为 nil）。
     private(set) var lockedSide: DrawerPageSide?
 
+    /// 手势样本（时间, 累计横向位移）：`finish` 时估计即时速度用
+    /// （位移判据之外的速度判据）。`.began` 与反向重起时清零。
+    private var samples: [(time: TimeInterval, x: CGFloat)] = []
+
     private var lastCommitTime: TimeInterval?
 
     /// 喂入一个滚动事件的增量，返回本帧的方向与位移（方向未定/冷却中为 nil）。
@@ -115,6 +187,7 @@ struct DrawerPageScrollTracker {
         }
         accumulatedX += deltaX
         accumulatedY += deltaY
+        recordSample(at: now)
 
         if lockedSide == nil {
             lockedSide = DrawerPageSwipe.side(
@@ -134,8 +207,8 @@ struct DrawerPageScrollTracker {
         return DrawerScrollFrame(side: lockedSide, offset: offset, commits: commits)
     }
 
-    /// 手势结束（`.ended` / `.cancelled`）：位移够阈值则返回落位方向，否则 nil
-    /// （调用方负责弹回）。两种情况都会清理本手势。
+    /// 手势结束（`.ended` / `.cancelled`）：位移够阈值、或松手速度够猛则返回
+    /// 落位方向，否则 nil（调用方负责弹回）。两种情况都会清理本手势。
     mutating func finish(
         at now: TimeInterval,
         limit: CGFloat,
@@ -143,8 +216,12 @@ struct DrawerPageScrollTracker {
     ) -> DrawerPageSide? {
         let offset = DrawerPageSwipe.offset(translation: accumulatedX, limit: limit)
         let side = lockedSide
+        let velocity = DrawerPageSwipe.velocityEstimate(from: samples, at: now)
         reset()
-        guard let side, DrawerPageSwipe.shouldCommit(offset: offset, limit: limit) else { return nil }
+        guard let side else { return nil }
+        guard DrawerPageSwipe.shouldCommit(offset: offset, limit: limit, velocity: velocity) else {
+            return nil
+        }
         lastCommitTime = now
         return side
     }
@@ -154,6 +231,15 @@ struct DrawerPageScrollTracker {
         accumulatedX = 0
         accumulatedY = 0
         lockedSide = nil
+        samples.removeAll()
+    }
+
+    /// 记录本帧样本：只保留最近一段（以时间为准），防长手势内存无谓增长。
+    private mutating func recordSample(at now: TimeInterval) {
+        samples.append((time: now, x: accumulatedX))
+        while samples.count > 16 || (samples.count > 2 && now - samples.first!.time > DrawerPageSwipe.velocityWindow * 4) {
+            samples.removeFirst()
+        }
     }
 
     /// 冷却：一次切页后 `cooldown` 内不再认新手势。`phase` 恒空的设备没有手势

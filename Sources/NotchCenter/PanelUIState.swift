@@ -52,8 +52,10 @@ final class PanelUIState: ObservableObject {
     @Published var drawerPageTitles: [String: String] = [:]
 
     /// 一次左右滑动会话（非空 = 正在滑动，目标页正从侧面滑入）。
-    /// 跟手期间只有 `offset` 在动，**不得**改 `drawerWindowSize`/`drawerElements`
-    /// ——尺寸真源仍然只有 `rebuildContent` 一条通道。
+    /// 跟手期只有 `offset` 与**派生尺寸**在动（`drawerWindowSize` /
+    /// `drawerContentSize` 随滑动进度在其起止两端间插值，见
+    /// `NotchPanelContent.updateDrawerSwipe`）——注意尺寸插值的两端、
+    /// 位移上限都在会话里冻结，`rebuildContent` 仍是提交后尺寸的唯一出口。
     @Published var drawerSwipe: DrawerSwipe?
 
     /// 滑动会话快照：`elements` 是目标页的只读预览副本（`BlockLayoutInfo.isPreview`）。
@@ -61,16 +63,30 @@ final class PanelUIState: ObservableObject {
         let side: DrawerPageSide
         let targetPage: Int
         let elements: [DrawerElement]
+        /// 目标页内容尺寸（预览层宽度；尺寸插值的终点之一）。
         let contentSize: CGSize
+        /// 目标页窗口尺寸（屏幕封顶后；尺寸插值的终点之一）。
+        let targetWindowSize: CGSize
         /// 目标页格网最左列，与 `drawerGridLeftColumn` 同义。
         let leftColumn: Int
         /// 预览层与网格层的带符号相邻间距（`DrawerPageSwipe.gap`，会话期冻结）。
         let gap: CGFloat
+        /// 会话开始时的内容尺寸（网格层宽度在会话期冻结为此值；尺寸插值起点）。
+        let startContentSize: CGSize
+        /// 会话开始时的窗口尺寸（尺寸插值起点）。
+        let startWindowSize: CGSize
+        /// 冻结的位移上限（起点页宽）：会话期 `drawerContentSize` 在插值，
+        /// 位移换算与橡皮筋若再读它会逐帧漂移，必须钉在会话起点的值上。
+        let limit: CGFloat
         /// 已进入落位拍（滑到位动画进行中，预览层即将全覆盖）：位移由动画驱动，
         /// 不得再接新手势/拖拽帧，否则落位与跟手会抢同一个 offset。
         var isLanding = false
         /// 当前位移（pt，带符号；与手指同向）。
         var offset: CGFloat
+
+        /// 滑动进度 p ∈ [0,1]（位移 / 落位全程）：面板尺寸插值与胶囊高亮层
+        /// 都从这一份进度派生——跟手、落位 spring 与回弹天然同曲线。
+        var progress: CGFloat { DrawerPageSwipe.progress(offset: offset, gap: gap) }
     }
 
     /// 从设置面板拖拽组件时的落点预览（抽屉网格虚线占位 / 快速区插入指示）。

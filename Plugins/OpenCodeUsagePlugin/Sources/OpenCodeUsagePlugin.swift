@@ -21,7 +21,9 @@ import SwiftUI
         defaultSize: .medium,
         supportedGridSpans: [],
         interaction: .expandDrawer,
+        // 静态用量卡、不消费横向滚动：其上滑动直接切页。
         symbolName: "gauge",
+        scrollUsage: .none,
         instanceSettingsView: { context in
             AnyView(OpenCodeUsageInstanceSettingsView(instance: instanceModel(for: context)))
         },

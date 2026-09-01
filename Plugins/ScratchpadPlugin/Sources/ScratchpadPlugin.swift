@@ -38,7 +38,9 @@ import SwiftUI
                     }
                 }
             ),
+            // 文件架是横向 ScrollView：切页让路，横向滚动归它自己。
             symbolName: "tray.full",
+            scrollUsage: .horizontal,
             makeView: { context in
                 AnyView(ScratchpadShelfBlockView(context: context))
             }

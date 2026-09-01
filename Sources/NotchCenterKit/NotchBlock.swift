@@ -53,6 +53,22 @@ public struct GridSpan: Hashable, Codable, Sendable {
     }
 }
 
+/// 块对横向滑动（抽屉切页手势）的消费声明（文档 §5.3）。
+///
+/// 抽屉的水平轻扫切页与块内容的手势优先级：只有当块确实会**消费横向滚动**
+/// 时切页才让路（横向 ScrollView、横向可滚动的编辑器等）。SwiftUI 的视图树
+/// 对宿主不可内省（ScrollView 不落在 AppKit 命中链上，实测拿不到
+/// `NSScrollView`），因此块必须自行声明——静态卡片块声明 `.none` 后，
+/// 指针落在其上滑动即可直接切页（"在不使用滑动的组件上滑动时触发页面滑动"）。
+/// 未声明的第三方块按 `.horizontal`（让路）处理，兼容旧行为。
+public enum BlockScrollUsage: Sendable, Hashable {
+    /// 块不消费横向滚动/轻扫：指针落在块上时，抽屉的水平轻扫照常切页
+    /// （块自身的纵向滚动不受影响）。
+    case none
+    /// 块内含横向可滚动区域：切页让路，横向增量归块自己。
+    case horizontal
+}
+
 /// 插件提供的最小 UI 单元（文档 §4.2）。
 @MainActor
 public struct NotchBlock: Identifiable {
@@ -74,6 +90,9 @@ public struct NotchBlock: Identifiable {
     /// 目录条目图标（SF Symbol 名称，可选）。宿主在“添加块”目录里渲染
     /// “图标 + 块名”；未声明时回退纯文本条目（向后兼容第三方插件）。
     public let symbolName: String?
+    /// 块对横向滑动（抽屉切页）的消费声明。默认 `.horizontal`（切页让路），
+    /// 静态卡片块请显式声明 `.none`。
+    public let scrollUsage: BlockScrollUsage
     /// 视图工厂：携带 `BlockContext` 构建块视图。
     public let makeView: @MainActor (BlockContext) -> AnyView
     /// 放置实例级设置界面（可选）。编辑模式块齿轮触发时，宿主优先用它并以
@@ -90,6 +109,7 @@ public struct NotchBlock: Identifiable {
         defaultSize: BlockSize? = nil,
         interaction: BlockInteraction = .expandDrawer,
         symbolName: String? = nil,
+        scrollUsage: BlockScrollUsage = .horizontal,
         makeView: @escaping @MainActor (BlockContext) -> AnyView
     ) {
         self.init(
@@ -101,6 +121,7 @@ public struct NotchBlock: Identifiable {
             supportedGridSpans: [],
             interaction: interaction,
             symbolName: symbolName,
+            scrollUsage: scrollUsage,
             instanceSettingsView: nil,
             makeView: makeView
         )
@@ -115,6 +136,7 @@ public struct NotchBlock: Identifiable {
         supportedGridSpans: Set<GridSpan>,
         interaction: BlockInteraction = .expandDrawer,
         symbolName: String? = nil,
+        scrollUsage: BlockScrollUsage = .horizontal,
         instanceSettingsView: (@MainActor (BlockContext) -> AnyView)? = nil,
         makeView: @escaping @MainActor (BlockContext) -> AnyView
     ) {
@@ -130,6 +152,7 @@ public struct NotchBlock: Identifiable {
         self.defaultSize = defaultSize
         self.interaction = interaction
         self.symbolName = symbolName
+        self.scrollUsage = scrollUsage
         self.instanceSettingsView = instanceSettingsView
         self.makeView = makeView
     }
