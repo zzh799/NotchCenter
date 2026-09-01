@@ -575,6 +575,12 @@ extension NotchPanelController {
             limit: drawerSwipeLimit,
             offset: 0
         )
+        // 进入滑动「驻留期」：滑动中面板随目标页尺寸收缩，光标可能被甩到
+        // 抽屉外——此时若不设防，收起任务会在落位前就挂起（0.25s 后把刚
+        // 切好的页收走）。置位后鼠标在抽屉外不收起，待重入停留区再移出才
+        // 正常收起（`handleMouseLocation` 清除），或点另一块屏的刘海搬走。
+        cancelCollapse()
+        isAwaitingDrawerReentry = true
     }
 
     /// 跟手位移（**不加动画**：加了就变成"追赶手指"）。面板尺寸随同一份

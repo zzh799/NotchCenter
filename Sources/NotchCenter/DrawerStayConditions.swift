@@ -19,10 +19,16 @@ struct DrawerStayConditions: Equatable, Sendable {
     var isPinned: Bool
     /// 点击触发模式：抽屉只随点击开合，悬停不参与收起。
     var isClickTriggered: Bool
+    /// 滑动切页后的「待重入」驻留期：鼠标在抽屉外也不自动收起，等鼠标
+    /// 重新进入停留区（`handleMouseLocation` 在停留区内清除本标志）再移出
+    /// 后才正常收起；期间点另一块屏的刘海热区会把抽屉搬过去（`expand`
+    /// 清除）。
+    var isAwaitingDrawerReentry = false
 
     /// 任一条件成立即应保持展开。
     var shouldKeepExpanded: Bool {
         isMenuTracking || isSettingsPresented || isEditing
             || isEditEntryPending || isPinned || isClickTriggered
+            || isAwaitingDrawerReentry
     }
 }

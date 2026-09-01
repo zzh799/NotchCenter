@@ -50,4 +50,22 @@ final class DrawerStayConditionsTests: XCTestCase {
         conditions.isEditEntryPending = true
         XCTAssertTrue(conditions.shouldKeepExpanded)
     }
+
+    /// 滑动切页后的「待重入」驻留期：鼠标在抽屉外也不自动收起；重入停留区
+    /// 由 `handleMouseLocation` 清除标志后才恢复正常悬停收起。
+    func testAwaitingDrawerReentryKeepsExpanded() {
+        var conditions = none
+        conditions.isAwaitingDrawerReentry = true
+        XCTAssertTrue(conditions.shouldKeepExpanded, "滑动后鼠标在抽屉外期间不得自动收起")
+
+        // 与其他保持条件互不影响：各自独立成立即保持。
+        conditions = none
+        conditions.isAwaitingDrawerReentry = true
+        conditions.isPinned = true
+        XCTAssertTrue(conditions.shouldKeepExpanded)
+        conditions = none
+        conditions.isAwaitingDrawerReentry = true
+        conditions.isMenuTracking = true
+        XCTAssertTrue(conditions.shouldKeepExpanded)
+    }
 }

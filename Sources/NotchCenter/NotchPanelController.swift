@@ -55,6 +55,13 @@ final class NotchPanelController: NSObject {
     var isEditingForComponentsPage = false
 
     var isRevealedForFileDrag = false
+    /// 滑动切页后的「待重入」驻留期：`beginDrawerSwipe` 建立会话时置位，
+    /// 鼠标重新进入停留区（`handleMouseLocation`）、收起（`collapse`）或
+    /// 重新展开（`expand`，含跨屏搬移）时清除。置位期间鼠标在抽屉外也
+    /// 不安排收起——滑动中面板随目标页尺寸收缩、光标被"甩"到抽屉外时，
+    /// 收起任务会在落位前就挂起（0.25s 后把刚切好的页收走），必须有这么
+    /// 一段"等鼠标回来"的宽限。
+    var isAwaitingDrawerReentry = false
     /// 收起态进入编辑的等待期（揭示 → 编辑两段式之间）：悬停判定视为停留。
     ///
     /// 两段式存在的原因：窗口固定满高，揭示（收起尺寸 → 全尺寸）与编辑
@@ -245,6 +252,19 @@ final class NotchPanelController: NSObject {
 
     func expand(animated: Bool, activate: Bool = true) {
         if isExpanded {
+            // 已展开：点击了另一块屏的刘海热区 = 把抽屉搬过去（旧屏收走，
+            // 新屏按常规揭示）——既是一般多屏语义，也是滑动驻留期
+            // （`isAwaitingDrawerReentry`）里"鼠标在其他抽屉外点击收回"的
+            // 逃生通道。同屏点击只做焦点前置。
+            if let pair = pairContainingLocation(NSEvent.mouseLocation),
+               pair !== activePair {
+                activePair = pair
+                layoutEngine.updateScreenConstraint(width: pair.screenFrame.width)
+                cancelCollapse()
+                isAwaitingDrawerReentry = false
+                presentDrawer(animated: animated, activate: activate)
+                return
+            }
             if activate {
                 NSApp.activate(ignoringOtherApps: true)
                 activePair?.drawerPanel.makeKeyAndOrderFront(nil)
@@ -262,6 +282,15 @@ final class NotchPanelController: NSObject {
         cancelCollapse()
         isExpanded = true
         isRevealedForFileDrag = false
+        isAwaitingDrawerReentry = false
+        presentDrawer(animated: animated, activate: activate)
+    }
+
+    /// 在（已是新的）`activePair` 上呈现抽屉：重建内容（屏幕约束可能变）、
+    /// 定位热区与抽屉窗口、收掉其余屏（抽屉单例不变量）、播放揭示动画。
+    /// 新建展开与跨屏搬移共用同一路径的窗口呈现部分。
+    private func presentDrawer(animated: Bool, activate: Bool) {
+        guard let pair = activePair else { return }
         rebuildContent()
         positionCompactPanel(pair)
         // 参考codex-island：窗口固定尺寸，只上线不动画；可见面板经
@@ -293,6 +322,9 @@ final class NotchPanelController: NSObject {
         guard isExpanded else { return }
         isExpanded = false
         isRevealedForFileDrag = false
+        // 任何收起路径都结束滑动驻留期（Escape / 钉住取消 / 到期收起……），
+        // 下次展开不继承驻留态。
+        isAwaitingDrawerReentry = false
         if isEditing {
             isEditing = false
         }

@@ -162,17 +162,23 @@ extension NotchPanelController {
             return
         }
 
-        // 已展开：守卫条件（`DrawerStayConditions`）任一成立即保持，
+        // 已展开：先判停留区——鼠标回到抽屉（或任一屏热区）即解除滑动
+        // 驻留期，之后离开再正常安排收起。停留区判定必须先于
+        // `shouldKeepExpanded`：驻留期本身是保持条件，放后面就永远
+        // 轮不到清除。滑动会话进行中不清除：滑动中面板随目标页尺寸收缩、
+        // 光标可能短暂地进出于可见矩形，中间帧的重入不应提前解除驻留。
+        if uiState.drawerSwipe == nil, isPointInExpandedStayRegion(point) {
+            isAwaitingDrawerReentry = false
+            cancelCollapse()
+            return
+        }
+        // 守卫条件（`DrawerStayConditions`）任一成立即保持，
         // 与 `scheduleCollapse` 到期回调共用同一判据。
         if shouldKeepExpanded() {
             cancelCollapse()
             return
         }
-        if isPointInExpandedStayRegion(point) {
-            cancelCollapse()
-        } else {
-            scheduleCollapse()
-        }
+        scheduleCollapse()
     }
 
     /// 展开态是否应当保持：`handleMouseLocation` 与 `scheduleCollapse`
@@ -181,7 +187,9 @@ extension NotchPanelController {
     /// 此前两处各自维护条件清单，到期回调漏了 `isEditEntryPending` 与
     /// `isSettingsPresented`——收起态点编辑按钮后（0.38s 等待期）把鼠标
     /// 移出停留区，揭示会在中途被收起。清单收进 `DrawerStayConditions`
-    /// 后不再可能漏。
+    /// 后不再可能漏。滑动驻留期（`isAwaitingDrawerReentry`）也在此清单内：
+    /// 鼠标在抽屉外时保持展开，重入停留区后由 `handleMouseLocation`
+    /// 清除标志（滑动会话挂载期不清除）。
     func shouldKeepExpanded() -> Bool {
         stayConditions().shouldKeepExpanded
     }
@@ -193,7 +201,8 @@ extension NotchPanelController {
             isEditing: isEditing,
             isEditEntryPending: isEditEntryPending,
             isPinned: isPinned,
-            isClickTriggered: settingsStore.triggerMode == .click
+            isClickTriggered: settingsStore.triggerMode == .click,
+            isAwaitingDrawerReentry: isAwaitingDrawerReentry
         )
     }
 
