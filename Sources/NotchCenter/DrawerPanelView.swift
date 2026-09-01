@@ -202,7 +202,7 @@ struct DrawerPanelView: View {
             Spacer(minLength: 0)
 
             // 分页胶囊行：顶栏居中，每页一颗独立胶囊、加号在胶囊外（详见 DrawerPageCapsule）。
-            // 滑动会话期把会话快照传进去：高亮层随进度在激活胶囊与目标胶囊间平移。
+            // 高亮层常驻标记选中页：静止钉在激活胶囊，滑动会话期随进度平移。
             DrawerPageCapsule(
                 pages: ui.drawerPages,
                 titles: ui.drawerPageTitles,
