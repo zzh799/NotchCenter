@@ -156,4 +156,110 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertNil(strip.slotRect(at: -1))
         XCTAssertNil(strip.slotRect(at: 3))
     }
+
+    // MARK: 活动摘要带宽（Agent Note 2026-09-03-compact-area-activity-summary）
+
+    func testSummaryBandKeepsPanelsEqualAndNotchCentered() {
+        // 摘要芯片带宽计入两面板（取两侧较大值）：任一侧有摘要，面板仍然
+        // 等宽、刘海恒为带宽中心（无摘要一侧的余量落在面板外端）。
+        let gap = NotchGeometry.summaryIconGap
+        let iconOnly = CompactStripLayout(notchWidth: 210, height: 32, slotCount: 3)
+        let leftOnly = CompactStripLayout(
+            notchWidth: 210, height: 32, slotCount: 3, leftSummaryWidth: 90
+        )
+        let rightOnly = CompactStripLayout(
+            notchWidth: 210, height: 32, slotCount: 3, rightSummaryWidth: 60
+        )
+        let both = CompactStripLayout(
+            notchWidth: 210, height: 32, slotCount: 3,
+            leftSummaryWidth: 90, rightSummaryWidth: 60
+        )
+
+        for strip in [leftOnly, rightOnly, both] {
+            XCTAssertEqual(strip.leftPanelWidth, strip.rightPanelWidth)
+            XCTAssertEqual(strip.notchCenterX, strip.windowWidth / 2, accuracy: 0.001)
+        }
+        // 左侧 90 芯片 → sideSummaryBand = 90 + gap；两面板各加一份。
+        XCTAssertEqual(leftOnly.windowWidth - iconOnly.windowWidth, 2 * (90 + gap), accuracy: 0.001)
+        // 两侧都在时取较大侧（90 + gap），不是两侧之和。
+        XCTAssertEqual(both.windowWidth - iconOnly.windowWidth, 2 * (90 + gap), accuracy: 0.001)
+    }
+
+    func testSummaryChipRectsFlankNotchInsidePanels() {
+        let padding = NotchGeometry.compactHorizontalPadding
+        let gap = NotchGeometry.summaryIconGap
+        let strip = CompactStripLayout(
+            notchWidth: 210, height: 32, slotCount: 3,
+            leftSummaryWidth: 90, rightSummaryWidth: 60
+        )
+
+        // 芯片贴各面板靠刘海一端（内侧），无摘要侧返回 nil。
+        let leftChip = strip.leftSummaryRect
+        let rightChip = strip.rightSummaryRect
+        XCTAssertNotNil(leftChip)
+        XCTAssertNotNil(rightChip)
+        XCTAssertEqual(leftChip!.width, 90)
+        XCTAssertEqual(rightChip!.width, 60)
+        // 芯片高度随紧凑带自适应（夹在上下留白内、上下对称）。
+        XCTAssertEqual(leftChip!.midY, rightChip!.midY)
+        XCTAssertEqual(leftChip!.midY, strip.height / 2)
+
+        // 芯片与同侧最内图标之间恰好一个 summaryIconGap。
+        let innerLeftIcon = strip.slotRect(at: 2)! // 左列 1（靠刘海一侧的左图标）
+        let innerRightIcon = strip.slotRect(at: 1)! // 右列 0（靠刘海一侧的右图标）
+        XCTAssertEqual(leftChip!.minX - innerLeftIcon.maxX, gap, accuracy: 0.001)
+        XCTAssertEqual(innerRightIcon.minX - rightChip!.maxX, gap, accuracy: 0.001)
+        // 芯片不出面板：左芯片右缘 ≤ 左面板内缘（留 padding）、右芯片在右面板内。
+        XCTAssertLessThanOrEqual(leftChip!.maxX, strip.leftPanelWidth)
+        XCTAssertGreaterThanOrEqual(rightChip!.minX, strip.rightPanelX)
+        // 面板外侧仍留 padding：芯片/图标不与面板外缘贴合。
+        XCTAssertEqual(leftChip!.maxX, strip.leftPanelWidth - padding, accuracy: 0.001)
+    }
+
+    func testSummaryBandShiftsIconsOnlyOnChipSide() {
+        // 右侧有摘要时右列图标整体外移：面板等宽化增量（sideSummaryBand，
+        // 右面板随左侧面板一起右移） + 自身芯片带（rightSummaryBand）；
+        // 左列图标不移动（左芯片占用的是面板内侧新增带宽）。
+        let iconOnly = CompactStripLayout(notchWidth: 210, height: 32, slotCount: 3)
+        let withRight = CompactStripLayout(
+            notchWidth: 210, height: 32, slotCount: 3, rightSummaryWidth: 60
+        )
+        XCTAssertEqual(
+            withRight.slotRect(at: 1)!.minX - iconOnly.slotRect(at: 1)!.minX,
+            withRight.sideSummaryBand + withRight.rightSummaryBand,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(withRight.slotRect(at: 0)!.minX, iconOnly.slotRect(at: 0)!.minX)
+
+        // 左侧芯片只在面板内侧新增带宽：左图标槽位与纯图标几何一致。
+        let withLeft = CompactStripLayout(
+            notchWidth: 210, height: 32, slotCount: 3, leftSummaryWidth: 90
+        )
+        XCTAssertEqual(withLeft.slotRect(at: 0)!.minX, iconOnly.slotRect(at: 0)!.minX)
+        XCTAssertEqual(withLeft.slotRect(at: 2)!.minX, iconOnly.slotRect(at: 2)!.minX)
+    }
+
+    func testActivationFrameIncludesSummaryBand() {
+        // 热区 frame 透传摘要宽度：宽度 = 含芯片带宽的紧凑尺寸、贴屏幕顶、
+        // 绕屏幕中线居中（控制器据此重摆热区窗口，窗口 frame 不参与动画）。
+        let screenFrame = NSRect(x: 0, y: 0, width: 1512, height: 982)
+        let layout = NotchGeometry.layout(for: nil, compactCount: 3)
+        let frame = NotchGeometry.activationFrame(
+            for: layout,
+            slotCount: 3,
+            leftSummaryWidth: 90,
+            rightSummaryWidth: 60,
+            in: screenFrame
+        )
+        XCTAssertEqual(
+            frame.width,
+            layout.compactSize(
+                slotCount: 3,
+                leftSummaryWidth: 90,
+                rightSummaryWidth: 60
+            ).width
+        )
+        XCTAssertEqual(frame.midX, screenFrame.midX)
+        XCTAssertEqual(frame.maxY, screenFrame.maxY)
+    }
 }

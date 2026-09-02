@@ -77,31 +77,24 @@ class TransparentHitHostingView<Content: View>: FirstMouseHostingView<Content> {
     }
 }
 
-/// 活动岛面板：永不成为 key/main 窗口——岛上是计时展示与轻量按钮，点击
-/// 不应把焦点从用户当前应用抢走（按钮经 acceptsFirstMouse 直接响应）。
-@MainActor
-final class IslandPanel: NotchPanel {
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
-}
-
 // MARK: - 屏幕面板对
 
-/// 每个物理屏幕一套（紧凑热区 + 抽屉 + 活动岛）窗口组；内容状态由共享的
+/// 每个物理屏幕一套（紧凑热区 + 抽屉）窗口组；内容状态由共享的
 /// PanelUIState 驱动，几何按各自屏幕独立计算（文档 §6.3 多显示器：
 /// 每个屏幕单独显示一个 NotchCenter）。
 @MainActor
 final class ScreenPanelPair {
     let screen: NSScreen
+    /// 共享 UI 状态（控制器先建 uiState 再建 pair；几何镜像只读它）。
+    unowned let uiState: PanelUIState
     let hotPanel: NotchPanel
     let drawerPanel: NotchPanel
-    let islandPanel: IslandPanel
     var hotHostingView: TransparentHitHostingView<CompactPanelView>?
     var drawerHostingView: NSHostingView<DrawerPanelView>?
-    var islandHostingView: IslandHostingView<ActivityIslandPanelView>?
 
-    init(screen: NSScreen, configure: (NotchPanel) -> Void) {
+    init(screen: NSScreen, uiState: PanelUIState, configure: (NotchPanel) -> Void) {
         self.screen = screen
+        self.uiState = uiState
         hotPanel = NotchPanel(
             contentRect: .zero,
             styleMask: [.borderless, .fullSizeContentView],
@@ -114,29 +107,38 @@ final class ScreenPanelPair {
             backing: .buffered,
             defer: false
         )
-        islandPanel = IslandPanel(
-            contentRect: .zero,
-            styleMask: [.borderless, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
         configure(hotPanel)
         configure(drawerPanel)
-        configure(islandPanel)
     }
 
     /// 该屏幕当前的紧凑图标数（控制器 `refreshCompactGeometry()` 在增删
     /// 紧凑块后同步；紧凑带宽随其动态伸缩，热点/热区 frame 都按它计算）。
     var compactCount = 0
 
+    /// 该屏幕生效的左/右摘要宽度镜像（控制器随几何同步刷新；供热区 frame
+    /// 与带宽取数，避免重复推导可见性）。
+    var summaryLeftWidth: CGFloat = 0
+    var summaryRightWidth: CGFloat = 0
+
     /// 该屏幕的刘海/回退布局（与图标数无关的恒定部分）。
     var layout: NotchLayout { NotchGeometry.layout(for: screen, compactCount: compactCount) }
     var screenFrame: NSRect { screen.frame }
-    /// 该屏幕当前的紧凑条带几何（宽度随当前图标数动态伸缩）——
-    /// 面板/命中测试/收起尺寸都通过它取宽度。
-    var compactStrip: CompactStripLayout { layout.compactStrip(slotCount: compactCount) }
-    /// 紧凑热区在该屏幕上的 frame（宽度随当前图标数伸缩）。
-    var hotFrame: NSRect { NotchGeometry.activationFrame(for: layout, slotCount: compactCount, in: screenFrame) }
+    /// 该屏幕当前的紧凑条带几何（宽度随当前图标数与摘要带宽动态伸缩）——
+    /// 面板/命中测试/收起尺寸都通过它取宽度。视图与控制器共用同一推导
+    /// （`PanelUIState.compactStrip`：让位/可见性一处判定）。
+    var compactStrip: CompactStripLayout {
+        uiState.compactStrip(layout: layout, slotCount: compactCount)
+    }
+    /// 紧凑热区在该屏幕上的 frame（宽度随当前图标数与摘要带宽伸缩）。
+    var hotFrame: NSRect {
+        NotchGeometry.activationFrame(
+            for: layout,
+            slotCount: compactCount,
+            leftSummaryWidth: summaryLeftWidth,
+            rightSummaryWidth: summaryRightWidth,
+            in: screenFrame
+        )
+    }
 }
 
 extension NotchPanelController {

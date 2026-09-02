@@ -93,7 +93,6 @@ extension NotchPanelController {
     @objc private func mousePollingTick(_ timer: Timer) {
         handleMouseLocation(NSEvent.mouseLocation)
         updateDrawerMouseEvents(cursor: NSEvent.mouseLocation)
-        updateIslandMouseEvents(cursor: NSEvent.mouseLocation)
     }
 
     /// 可见抽屉矩形（紧凑带 + 当前面板高度，顶贴屏幕）：穿透命中与停留

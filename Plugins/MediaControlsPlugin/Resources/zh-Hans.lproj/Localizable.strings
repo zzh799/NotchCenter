@@ -1,0 +1,22 @@
+/* MediaControlsPlugin 简体中文文案（键集合必须与 en 基准一致，LocalizationTests 校验） */
+
+/* 块 */
+"block.drawer.name" = "媒体控制";
+
+/* 抽屉块状态与提示 */
+"drawer.nothing" = "当前没有正在播放的内容";
+"drawer.hint" = "在任何 App 里播放内容（Spotify、音乐、浏览器……），控制面板会出现在这里。";
+"drawer.unavailable" = "媒体控制不可用";
+"drawer.unavailable.hint" = "这台 Mac 没有向 NotchCenter 开放系统媒体会话。";
+
+/* 控制按钮帮助与无障碍 */
+"help.play" = "播放";
+"help.pause" = "暂停";
+"help.next" = "下一首";
+"help.previous" = "上一首";
+"help.togglePlayPause" = "播放或暂停";
+"a11y.mediaControls" = "媒体控制";
+
+/* 状态角标（摘要副文案与状态行） */
+"state.playing" = "播放中";
+"state.paused" = "已暂停";

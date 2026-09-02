@@ -98,10 +98,11 @@ struct DrawerPanelView: View {
         VStack(spacing: 0) {
             // 与独立紧凑面板完全相同的尺寸并水平居中：
             // 保证展开动画前后图标在屏幕上的绝对位置不变。
-            // 带宽随当前紧凑图标数动态伸缩。
+            // 带宽随当前紧凑图标数 + 活动摘要带宽伸缩（与热区窗口同源
+            // `PanelUIState.compactStrip`：摘要可见性/让位一处判定）。
             compactView
                 .frame(
-                    width: layout.compactStrip(slotCount: ui.compactCount).windowWidth,
+                    width: ui.compactStrip(layout: layout, slotCount: ui.compactCount).windowWidth,
                     height: layout.compactHeight
                 )
                 .frame(maxWidth: .infinity)

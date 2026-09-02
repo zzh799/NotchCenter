@@ -16,10 +16,6 @@
 "help.skip" = "Skip";
 "help.stop" = "Stop";
 
-/* 活动岛 */
-"island.hint" = "Look ~6 m away and relax your eyes";
-"island.backToFocus" = "Back to focus";
-
 /* 紧凑块交互提示与无障碍 */
 "compact.help.start" = "Start focus session";
 "compact.help.stop" = "Stop pomodoro";
@@ -43,7 +39,7 @@
 "settings.sound.start" = "Start Sound";
 "settings.sound.end" = "End Sound";
 "settings.preview" = "Preview sound";
-"settings.explanation" = "While focusing, a chime plays at a random interval and a short micro break starts. The activity island next to the notch shows the live timer.";
+"settings.explanation" = "While focusing, a chime plays at a random interval and a short micro break starts. A live progress summary appears next to the notch while a session is running.";
 "sound.none" = "None";
 
 /* 单位 */

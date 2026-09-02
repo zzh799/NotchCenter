@@ -5,10 +5,10 @@ import SwiftUI
 /// PomodoroPlugin（官方番茄钟插件）：专注/休息循环 + 随机间隔提示音微休息
 /// （参考 JokerQianwei/Focus 的间隔效应与随机提醒设计）。
 ///
-/// 运行期间经活动岛机制（HostController.showActivityIsland）在刘海下方
-/// 常驻一个计时小岛：紧凑态显示倒计时，悬停展开控制，微休息自动展开提醒。
-/// 同时提供紧凑快捷开关、抽屉控制卡与状态栏菜单项；设置覆盖计时 / 随机
-/// 提示音 / 声音效果三组。
+/// 运行期间经活动摘要通道（HostController.showActivitySummary）在刘海紧凑带
+/// 提交迷你进度摘要（阶段简介 + 剩余时间 + 进度），收起态也可一瞥当前状态；
+/// 完整控制（暂停/跳过/停止）在抽屉控制卡。同时提供紧凑快捷开关与状态栏
+/// 菜单项；设置覆盖计时 / 随机提示音 / 声音效果三组。
 @objc(PomodoroPlugin) @MainActor
 public final class PomodoroPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
     public static var blocks: [NotchBlock] {

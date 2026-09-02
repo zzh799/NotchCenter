@@ -16,10 +16,6 @@
 "help.skip" = "跳过";
 "help.stop" = "停止";
 
-/* 活动岛 */
-"island.hint" = "看看 6 米外的景物，放松眼睛";
-"island.backToFocus" = "回到专注";
-
 /* 紧凑块交互提示与无障碍 */
 "compact.help.start" = "开始专注";
 "compact.help.stop" = "停止番茄钟";
@@ -43,7 +39,7 @@
 "settings.sound.start" = "开始音效";
 "settings.sound.end" = "结束音效";
 "settings.preview" = "试听";
-"settings.explanation" = "专注期间按随机间隔响起提示音并进入短暂微休息；刘海旁的活动岛实时显示计时进度。";
+"settings.explanation" = "专注期间按随机间隔响起提示音并进入短暂微休息；运行期间刘海内会显示计时进度摘要。";
 "sound.none" = "无";
 
 /* 单位 */

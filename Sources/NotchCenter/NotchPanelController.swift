@@ -158,21 +158,21 @@ final class NotchPanelController: NSObject {
         for stale in stalePairs {
             stale.hotPanel.orderOut(nil)
             stale.drawerPanel.orderOut(nil)
-            stale.islandPanel.orderOut(nil)
         }
 
         // 为新接入的屏幕创建面板对。
         for screen in screens where !pairs.contains(where: { $0.screen === screen }) {
-            let pair = ScreenPanelPair(screen: screen) { Self.configurePanel($0) }
+            let pair = ScreenPanelPair(screen: screen, uiState: uiState) { Self.configurePanel($0) }
             wirePairEvents(pair)
             pairs.append(pair)
         }
 
-        // 各自定位紧凑热区与活动岛；展开中的那块同时定位抽屉。
+        // 各自定位紧凑热区；展开中的那块同时定位抽屉。
         for pair in pairs {
             positionCompactPanel(pair)
-            syncIslandPanel(pair)
         }
+        // 新接入的 pair 摘要宽度镜像默认 0：按当前生效摘要宽度同步一次。
+        syncSummaryGeometryMirrors()
         if let active = activePair, isExpanded {
             active.drawerPanel.setFrame(drawerFrame(for: active), display: true)
         }
@@ -355,6 +355,9 @@ final class NotchPanelController: NSObject {
             withTransaction(t) {
                 uiState.drawerWindowSize = target
             }
+            // 摘要让位/恢复：抽屉展开期间摘要不展示（带宽随之收缩），
+            // 收起后按有效宽度恢复。热区窗口 frame 不参与动画，直接重摆。
+            syncSummaryGeometryMirrors()
             return
         }
         // 展开先无动画贴到紧凑带起点（rebuildContent 可能已把尺寸写成
@@ -371,6 +374,9 @@ final class NotchPanelController: NSObject {
             uiState.isDrawerExpanded = revealed
             uiState.drawerWindowSize = target
         }
+        // 让位/恢复的带宽变化随状态翻转同步（AppKit setFrame 不经 SwiftUI
+        // Transaction，这里不在 withAnimation 内也不影响抽屉动画）。
+        syncSummaryGeometryMirrors()
     }
 
     /// 收起态的可见面板尺寸：紧凑带宽度 × 0 内容高。
@@ -381,6 +387,8 @@ final class NotchPanelController: NSObject {
     private func setCollapsedSize() {
         uiState.isDrawerExpanded = false
         uiState.drawerWindowSize = collapsedPanelSize()
+        // 收起态恢复摘要展示带宽（若序列非空）。
+        syncSummaryGeometryMirrors()
     }
 
     /// 退出前落盘（AppDelegate 调用）。
@@ -620,5 +628,68 @@ extension NotchPanelController: HostController {
 
     func refreshCompactDisplay() {
         rebuildContent()
+    }
+
+    // MARK: 活动摘要通道（Agent Note 2026-09-03-compact-area-activity-summary）
+
+    /// 展示或覆盖更新活动摘要：同 id 原位覆盖（不改变摘要序列中的新旧次序，
+    /// 最新条目恒在序列尾），新 id 追加到序列尾。
+    func showActivitySummary(_ summary: ActivitySummary) {
+        if let index = uiState.activitySummaries.firstIndex(where: { $0.id == summary.id }) {
+            guard uiState.activitySummaries[index] != summary else { return }
+            uiState.activitySummaries[index] = summary
+        } else {
+            uiState.activitySummaries.append(summary)
+        }
+        syncSummaryWidths()
+    }
+
+    /// 收回指定活动摘要；id 不存在时无副作用。收回后可见对重算，
+    /// 余下次新条目自动顶上空位（收回回退）。
+    func removeActivitySummary(id: String) {
+        guard uiState.activitySummaries.contains(where: { $0.id == id }) else { return }
+        uiState.activitySummaries.removeAll { $0.id == id }
+        syncSummaryWidths()
+    }
+
+    /// 依据当前摘要序列重算左右芯片估算宽度并同步镜像与几何。
+    ///
+    /// 只读模型（可见性/让位在 `PanelUIState.visibleSummaryPair` 与
+    /// `effectiveSummary*Width` 一处判定）：这里把"若展示应为多宽"的估算值
+    /// 写入 `summaryLeftWidth / summaryRightWidth`，并把生效宽度（含抽屉
+    /// 展开让位）推到各 pair 的几何镜像——带宽变化时热区窗口 frame 随新
+    /// 宽度重摆（窗口 frame 不参与动画：摘要芯片出现/更新/移除的过渡都在
+    /// 窗口内容内完成）。估算宽度未变时无副作用。
+    private func syncSummaryWidths() {
+        // 可见性无关的芯片估算：按序列最新两条（最新在左、次新在右）——
+        // 让位只影响镜像宽度（effective），不影响这里存储的估算值。
+        let pair = ActivitySummaryDisplay.visiblePair(
+            from: uiState.activitySummaries,
+            drawerExpanded: false
+        )
+        let left = pair.left.map { SummaryChipMetrics.estimatedWidth(for: $0) } ?? 0
+        let right = pair.right.map { SummaryChipMetrics.estimatedWidth(for: $0) } ?? 0
+        if left != uiState.summaryLeftWidth || right != uiState.summaryRightWidth {
+            uiState.summaryLeftWidth = left
+            uiState.summaryRightWidth = right
+        }
+        syncSummaryGeometryMirrors()
+    }
+
+    /// 把生效摘要宽度（让位/无摘要 = 0）同步到各 pair 镜像并重摆热区窗口。
+    /// 抽屉展开让位、收起恢复都走这里（`isDrawerExpanded` 翻转后调用）。
+    func syncSummaryGeometryMirrors() {
+        let left = uiState.effectiveSummaryLeftWidth
+        let right = uiState.effectiveSummaryRightWidth
+        var changed = false
+        for pair in pairs where pair.summaryLeftWidth != left || pair.summaryRightWidth != right {
+            pair.summaryLeftWidth = left
+            pair.summaryRightWidth = right
+            changed = true
+        }
+        guard changed else { return }
+        for pair in pairs {
+            positionCompactPanel(pair)
+        }
     }
 }

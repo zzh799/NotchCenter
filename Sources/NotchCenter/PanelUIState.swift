@@ -145,12 +145,42 @@ final class PanelUIState: ObservableObject {
     /// 否则块会永久隐形（见 `DragPreviewLanding.cancel`）。
     @Published var landingPlacementID: String?
 
-    /// 活动岛内容（插件活动状态的专属 UI，按提交顺序堆叠在刘海下方）。
-    /// 由控制器经 HostController.showActivityIsland / removeActivityIsland 维护。
-    @Published var activityIslands: [ActivityIslandContent] = []
-    /// 活动岛当前可见内容尺寸（SwiftUI 侧布局回写，含退出/让位动画的中间帧）：
-    /// 活动岛窗口命中测试与 `ignoresMouseEvents` 光标跟踪据此穿透透明区。
-    @Published var islandVisibleSize: CGSize = .zero
+    /// 活动摘要序列（插件活动状态的紧凑带展示，按提交顺序维护，新提交追加在
+    /// 尾；同 id 覆盖更新、不改变新旧次序）。由控制器经 HostController
+    /// showActivitySummary / removeActivitySummary 维护；展示排布（每侧一条、
+    /// 最新优先、抽屉展开期间让位）见 `ActivitySummaryDisplay.visiblePair`。
+    @Published var activitySummaries: [ActivitySummary] = []
+    /// 左侧摘要芯片宽度（控制器按摘要文案估算的镜像；无摘要/抽屉展开期间为 0）。
+    @Published var summaryLeftWidth: CGFloat = 0
+    /// 右侧摘要芯片宽度（同上）。
+    @Published var summaryRightWidth: CGFloat = 0
+
+    /// 当前应展示的左右摘要（含抽屉展开让位规则）。
+    var visibleSummaryPair: (left: ActivitySummary?, right: ActivitySummary?) {
+        ActivitySummaryDisplay.visiblePair(
+            from: activitySummaries,
+            drawerExpanded: isDrawerExpanded
+        )
+    }
+
+    /// 布局生效的左侧摘要宽度（让位/无摘要时为 0）。
+    var effectiveSummaryLeftWidth: CGFloat {
+        visibleSummaryPair.left == nil ? 0 : summaryLeftWidth
+    }
+
+    /// 布局生效的右侧摘要宽度（让位/无摘要时为 0）。
+    var effectiveSummaryRightWidth: CGFloat {
+        visibleSummaryPair.right == nil ? 0 : summaryRightWidth
+    }
+
+    /// 按本状态构建紧凑条带几何：视图与命中测试都从这一处取（不直读引擎）。
+    func compactStrip(layout: NotchLayout, slotCount: Int) -> CompactStripLayout {
+        layout.compactStrip(
+            slotCount: slotCount,
+            leftSummaryWidth: effectiveSummaryLeftWidth,
+            rightSummaryWidth: effectiveSummaryRightWidth
+        )
+    }
 
     struct DropPreview: Equatable {
         let zone: BlockDragCoordinator.DropZone

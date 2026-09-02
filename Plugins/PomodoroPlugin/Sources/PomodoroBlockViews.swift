@@ -29,7 +29,7 @@ struct PomodoroCompactView: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(
                             isRunning
-                                ? PomodoroIslandLayout.accent(for: store.display.phase).opacity(0.38)
+                                ? PomodoroTheme.accent(for: store.display.phase).opacity(0.38)
                                 : .clear
                         )
                 )
@@ -74,7 +74,7 @@ struct PomodoroDrawerBlockView: View {
                     .foregroundStyle(.white.opacity(0.96))
                     .padding(.horizontal, 18)
                     .padding(.vertical, 8)
-                    .background(Capsule().fill(PomodoroIslandLayout.focusAccent.opacity(0.85)))
+                    .background(Capsule().fill(PomodoroTheme.focusAccent.opacity(0.85)))
             }
             .buttonStyle(.plain)
             Text(LF("drawer.focusFor", store.config.focusMinutes))
@@ -88,7 +88,7 @@ struct PomodoroDrawerBlockView: View {
 
     private var runningContent: some View {
         let display = store.display
-        let accent = PomodoroIslandLayout.accent(for: display.phase)
+        let accent = PomodoroTheme.accent(for: display.phase)
         return VStack(spacing: 9) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -96,7 +96,7 @@ struct PomodoroDrawerBlockView: View {
                         Circle()
                             .fill(accent)
                             .frame(width: 6, height: 6)
-                        Text(PomodoroIslandLayout.phaseTitle(for: display))
+                        Text(PomodoroTheme.phaseTitle(for: display))
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.78))
                     }

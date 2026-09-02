@@ -51,9 +51,11 @@ struct CompactPanelView: View {
     var body: some View {
         GeometryReader { proxy in
             let isEditing = ui.isEditing
-            // 条带宽度随当前紧凑图标数动态伸缩（视图侧按 uiState 的数量计算，
-            // layout 只携带屏幕相关的刘海/高度部分）。
-            let strip = layout.compactStrip(slotCount: ui.compactCount)
+            // 条带宽度随当前紧凑图标数与活动摘要带宽动态伸缩：视图取数只经
+            // PanelUIState 的 `compactStrip(layout:slotCount:)`（可见性/让位
+            // 在 `effectiveSummary*Width` 一处判定，layout 只携带屏幕相关的
+            // 刘海/高度部分），不直读引擎、不自行拼接摘要宽度。
+            let strip = ui.compactStrip(layout: layout, slotCount: ui.compactCount)
             let panelHeight = proxy.size.height
 
             // .top 对齐让黑色带在窗口内水平居中（其余元素均为绝对定位），
@@ -144,6 +146,11 @@ struct CompactPanelView: View {
                         )
                         .allowsHitTesting(false)
                 }
+
+                // 活动摘要芯片层：最新在左、次新在右，贴刘海两侧（几何与
+                // 可见性已判定，见 `summaryChipLayer`）。放最上层：芯片点击
+                // 穿透到空白热区（与整条黑色带同一展开语义），不挡图标。
+                summaryChipLayer(strip: strip)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
@@ -214,6 +221,36 @@ struct CompactPanelView: View {
         }
         // 还没有任何图标：贴刘海中心（快速区为空时带宽只剩刘海）。
         return strip.notchCenterX
+    }
+
+    // MARK: - 活动摘要芯片（Agent Note 2026-09-03-compact-area-activity-summary）
+
+    /// 活动摘要芯片层：按 `PanelUIState.visibleSummaryPair`（最新在左、
+    /// 次新在右；抽屉展开期间让位 = 空）渲染左右各至多一颗芯片，几何照
+    /// `strip.leftSummaryRect` / `rightSummaryRect` 摆放。
+    ///
+    /// 过渡纪律：出现/更新/移除动画一律发生在窗口**内容内**（transition +
+    /// animation 由 SwiftUI 在既有宿主视图内完成）；带宽变化时窗口 frame
+    /// 的伸缩由控制器 `syncSummaryGeometryMirrors` 非动画重摆，不走这里。
+    @ViewBuilder
+    private func summaryChipLayer(strip: CompactStripLayout) -> some View {
+        let pair = ui.visibleSummaryPair
+        if let summary = pair.left, let rect = strip.leftSummaryRect {
+            SummaryChipView(summary: summary)
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+                // 分支身份稳定（不随 summary.id 重置）：出现/消失走 transition，
+                // 同侧换摘要（更新）原地换内容、进度条随动画平滑跟进。
+                .transition(.opacity.combined(with: .scale(scale: 0.86)))
+                .animation(.easeOut(duration: 0.18), value: ui.activitySummaries)
+        }
+        if let summary = pair.right, let rect = strip.rightSummaryRect {
+            SummaryChipView(summary: summary)
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+                .transition(.opacity.combined(with: .scale(scale: 0.86)))
+                .animation(.easeOut(duration: 0.18), value: ui.activitySummaries)
+        }
     }
 }
 
@@ -347,6 +384,101 @@ private struct CompactBlockContainer: View {
         } else {
             // .custom 交互由插件视图自行处理；核心不拦截点击。
             view
+        }
+    }
+}
+
+// MARK: - 活动摘要芯片外观
+
+/// 单颗活动摘要芯片（刘海紧凑带内、贴刘海一侧）：胶囊底衬上一行
+/// 「(符号) 主文案 副文案」+ 底部迷你进度条。
+///
+/// - 宽高由调用方按 `SummaryChipMetrics.estimatedWidth` 估算的带几何给出
+///   （`leftSummaryRect` / `rightSummaryRect`），文案超宽在芯片内截断——
+///   估算已留余量（宁宽勿裁），截断只是兜底。
+/// - 纯展示：`allowsHitTesting(false)`，点击穿透到下层空白热区（整条
+///   黑色带点击 = 展开抽屉的统一语义），副文案优先于主文案截断。
+/// - 外观常量与宿主宽度估算共享 `SummaryChipMetrics`（单一来源）。
+private struct SummaryChipView: View {
+    let summary: ActivitySummary
+
+    var body: some View {
+        ZStack {
+            // 底衬：半透明胶囊，与紧凑带图标的高亮底衬同族（低饱和白）。
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.08))
+            Capsule(style: .continuous)
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+
+            HStack(spacing: SummaryChipMetrics.symbolTextGap) {
+                if let symbolName = summary.symbolName {
+                    Image(systemName: symbolName)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: SummaryChipMetrics.symbolWidth)
+                }
+                Text(summary.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if let subtitle = summary.subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(0)
+                }
+            }
+            .padding(.horizontal, 7)
+        }
+        // 迷你进度条：芯片底部一条沿刘海方向的细进度（0…1），
+        // 无进度概念的摘要不渲染（GeometryReader 贪婪占宽，先 padding
+        // 收内宽、再 frame 定高、后 padding 抬离底缘）。
+        .overlay(alignment: .bottom) {
+            if summary.progress != nil {
+                SummaryProgressBar(progress: summary.progress ?? 0)
+                    .padding(.horizontal, 3)
+                    .frame(height: 2)
+                    .padding(.bottom, 2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .allowsHitTesting(false)
+        .help(summaryTitleAndSubtitle)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(summaryTitleAndSubtitle)
+    }
+
+    private var summaryTitleAndSubtitle: String {
+        if let subtitle = summary.subtitle, !subtitle.isEmpty {
+            return "\(summary.title) · \(subtitle)"
+        }
+        return summary.title
+    }
+}
+
+/// 芯片底部迷你进度条：静止轨 + 按进度填充的圆头条（轨道同色系低饱和，
+/// 填充略亮，避免在黑色带/胶囊底衬上抢眼）。
+private struct SummaryProgressBar: View {
+    /// 原始进度（0…1，调用方已保证非 nil）。
+    let progress: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let trackWidth = proxy.size.width
+            let clamped = min(max(progress, 0), 1)
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.12))
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.85))
+                    // 进度 0 时宽度也为 0（轨道仍在，看不出"已完成"的错觉）；
+                    // 微小进度至少 1.5pt 可见。
+                    .frame(width: trackWidth == 0 ? 0 : max(trackWidth * clamped, clamped > 0 ? 1.5 : 0))
+            }
+            .frame(width: trackWidth)
         }
     }
 }

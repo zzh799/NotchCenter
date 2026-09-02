@@ -111,6 +111,9 @@ public struct APIVersionRange: Sendable, CustomStringConvertible, Equatable {
 
 /// 当前核心 API 版本（文档 §9.1：「核心当前 API 版本为 NotchCenterKit 中定义的 currentVersion」）。
 public enum NotchCenterKitAPI {
-    /// 第一阶段基线版本。
-    public static let currentVersion = SemanticVersion(major: 1, minor: 0, patch: 0)
+    /// v1.1.0：`HostController` 移除活动岛（showActivityIsland / removeActivityIsland /
+    /// ActivityIslandContent），新增紧凑带活动摘要通道（showActivitySummary /
+    /// removeActivitySummary / ActivitySummary）。属破坏性变更，随插件迁移同版本落地；
+    /// 明细见 docs/api-changelog/（Agent Note 2026-09-03-compact-area-activity-summary）。
+    public static let currentVersion = SemanticVersion(major: 1, minor: 1, patch: 0)
 }

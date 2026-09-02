@@ -55,7 +55,7 @@ NotchCenter/
 │       ├── NotchCenterPlugin.swift
 │       ├── NotchBlock.swift
 │       ├── BlockContext.swift
-│       ├── ActivityIsland.swift
+│       ├── ActivitySummary.swift
 │       ├── BlockSize.swift
 │       ├── PluginSettingsContext.swift
 │       └── ...
@@ -63,7 +63,9 @@ NotchCenter/
 │   ├── NotesPlugin/
 │   ├── ScratchpadPlugin/
 │   ├── CaffeinatePlugin/
-│   └── PomodoroPlugin/
+│   ├── PomodoroPlugin/
+│   ├── MediaControlsPlugin/
+│   └── ...
 ├── Vendor/                        # 可能保留 vendored 依赖（如 MarkdownEngine 供笔记插件使用）
 ├── Resources/
 ├── Tests/
@@ -260,30 +262,33 @@ public protocol NotchCenterPlugin {
 - 插件内部后台任务自行处理，但 UI/状态更新必须回主线程。
 - 核心所有插件交互（加载、调用、布局渲染）均保证主线程执行。
 
-### 4.10 活动岛（Activity Island）
+### 4.10 紧凑带活动摘要（Compact Strip Activity Summary）
 
-插件需要向用户**常驻展示活动状态**（计时器、进行中任务等）时，经 `HostController` 提交活动岛内容，核心在刘海正下方弹出小岛展示插件专属 UI：
+插件进入活动状态（计时中、正在播放等）时，经 `HostController` 提交**结构化摘要**，核心在刘海紧凑带内渲染一行「图标 + 文案 + 迷你进度」芯片——**不新建窗口、不遮挡屏幕内容区**（替代旧活动岛机制，决策见 Agent Note `2026-09-03-compact-area-activity-summary`）：
 
 ```swift
 @MainActor
-public struct ActivityIslandContent: Identifiable {
-    public let id: String          // 活动唯一标识；同 id 重复提交 = 覆盖更新
-    public let maxSize: CGSize     // 整岛（含宿主底衬）最大尺寸
-    public let view: AnyView       // 岛内容（观察插件自身的模型，自由更新）
+public struct ActivitySummary: Identifiable, Sendable, Equatable {
+    public let id: String          // 活动唯一标识；同 id 重复提交 = 原位覆盖更新（新旧次序不变）
+    public let title: String       // 主文案（如「正在播放」/ 曲名）
+    public let subtitle: String?   // 副文案（如「12:34 剩余」「Artist — Track」）
+    public let symbolName: String? // 引导图标（SF Symbol 名称）
+    public let progress: Double?   // 迷你进度 0…1（沿刘海方向）；无进度概念的摘要可不传
 }
 
 extension HostController {
-    func showActivityIsland(_ content: ActivityIslandContent)   // 展示/更新
-    func removeActivityIsland(id: String)                       // 收回
+    func showActivitySummary(_ summary: ActivitySummary)   // 展示/更新
+    func removeActivitySummary(id: String)                 // 收回
 }
 ```
 
-- **多岛堆叠**：多个活动并存时按提交顺序在刘海下方垂直堆叠。
-- **窗口模型**：每屏一个固定尺寸岛窗口（顶缘贴刘海底缘、绕屏幕中线居中），窗口 frame 不参与动画；进出与紧凑/展开变形全部发生在窗口内容内（同抽屉 model.size 模式）。
-- **穿透双机制**：`IslandHostingView.hitTest`（顶缘起 + 水平居中的可见矩形）+ `ignoresMouseEvents` 光标跟踪（30Hz 轮询）；可见尺寸由 SwiftUI 侧逐帧回写 `PanelUIState.islandVisibleSize`，命中区域跟随内容动画。
-- **让位规则**：抽屉展开期间活动岛整体隐藏（可见尺寸归零、全穿透），抽屉收起后自动恢复；`IslandPanel` 永不成为 key/main 窗口（点击岛不抢焦点）。
-- **生命周期**：插件进入活动状态时提交、退出/禁用时按 id 收回；`showActivityIsland` / `removeActivityIsland(id:)` 必须保持为 `HostController` **协议要求**（extension 只提供默认实现），避免存在类型分发的静态遮蔽（同 §4.7 家族坑）。
-- 参考实现：`PomodoroPlugin`（运行中在刘海下方常驻倒计时小岛，微休息自动展开）。
+- **展示排布**：宿主按提交顺序维护摘要序列，同一时刻**每侧各一条**——`visiblePair` 最新在左、次新在右；同 id 覆盖更新不改变新旧次序；收回后回退到次新。
+- **渲染位置**：芯片在刘海紧凑带内、贴刘海一侧（`CompactStripLayout` 的 `leftSummaryRect`/`rightSummaryRect`）；摘要引起的带宽变化沿镜像同步链路（`syncSummaryWidths` → `syncSummaryGeometryMirrors` → `positionCompactPanel` 非动画重摆），**不走** `refreshCompactGeometry()`/`rebuildContent()` 全量路径；带宽取两侧较大值 `sideSummaryBand`，左右面板配平保持刘海居中对称（无摘要一侧的余量落在面板外端）。
+- **让位规则**：抽屉展开期间摘要整体让位，收起自动恢复；芯片纯展示、点击穿透到整条黑色带（点击 = 展开抽屉的统一语义）。
+- **宽度与文案**：副文案优先于主文案截断；芯片宽度由 `SummaryChipMetrics.estimatedWidth` 估算（宁宽勿裁，上限约 180pt），视图只渲染 `title` + 可选 `subtitle`。
+- **动画纪律**：出现/更新/移除的过渡动画一律发生在既有窗口**内容内**（`.transition` 进出场、进度原位刷新），窗口 frame 永不参与动画。
+- **生命周期**：插件进入活动状态提交、退出/禁用时按 id 收回；`showActivitySummary` / `removeActivitySummary(id:)` 必须保持为 `HostController` **协议要求**（extension 只提供默认实现），避免存在类型分发的静态遮蔽（同 §4.7 家族坑）。
+- 参考实现：`PomodoroPlugin`（会话运行中提交「阶段 + 剩余秒 + 进度」）、`MediaControlsPlugin`（播放中提交「曲名 + 艺术家 + 播放进度」，暂停置态、停止收回）。
 
 ---
 

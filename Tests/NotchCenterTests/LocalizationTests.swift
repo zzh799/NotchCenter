@@ -40,7 +40,9 @@ struct LocalizationTests {
         "Plugins/CaffeinatePlugin",
         "Plugins/DshPlugin",
         "Plugins/CalibrePlugin",
-        "Plugins/OpenCodeUsagePlugin"
+        "Plugins/OpenCodeUsagePlugin",
+        "Plugins/PomodoroPlugin",
+        "Plugins/MediaControlsPlugin"
     ]
 
     @Test(arguments: LocalizationTests.modules)
@@ -59,7 +61,7 @@ struct LocalizationTests {
         for (key, value) in zh { #expect(!value.isEmpty, "\(modulePath) zh-Hans 键 \(key) 值为空") }
     }
 
-    @Test(arguments: ["NotesPlugin", "ScratchpadPlugin", "CaffeinatePlugin", "DshPlugin", "CalibrePlugin", "OpenCodeUsagePlugin"])
+    @Test(arguments: ["NotesPlugin", "ScratchpadPlugin", "CaffeinatePlugin", "DshPlugin", "CalibrePlugin", "OpenCodeUsagePlugin", "PomodoroPlugin", "MediaControlsPlugin"])
     func pluginPlistCarriesChineseMetadataLocales(plugin: String) throws {
         let url = repoRoot
             .appendingPathComponent("Plugins/\(plugin)/Plugin.plist")

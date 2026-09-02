@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PluginID</key>
+  <string>com.notchcenter.media-controls</string>
+  <key>Version</key>
+  <string>1.0.0</string>
+  <key>DisplayName</key>
+  <string>Media Controls</string>
+  <key>Description</key>
+  <string>Control the currently playing media (play/pause/previous/next) and show a compact now-playing summary next to the notch.</string>
+  <!-- 元数据本地化：build.sh 按语言键生成 bundle 内的 InfoPlist.strings（en 基准用上面两个字段） -->
+  <key>DisplayNameLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>媒体控制</string>
+  </dict>
+  <key>DescriptionLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>控制系统当前正在播放的媒体（播放/暂停/上一首/下一首），并在刘海内显示正在播放的迷你摘要。</string>
+  </dict>
+</dict>
+</plist>

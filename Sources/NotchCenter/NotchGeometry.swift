@@ -10,17 +10,36 @@ struct NotchLayout: Equatable {
     let compactHeight: CGFloat
 
     /// 指定紧凑图标数下的紧凑区条带几何（宽度随图标数动态伸缩）。
-    func compactStrip(slotCount: Int) -> CompactStripLayout {
+    /// `leftSummaryWidth` / `rightSummaryWidth`：两侧活动摘要芯片宽度
+    /// （>0 时计入带宽，缺省 0 = 纯图标几何）。
+    func compactStrip(
+        slotCount: Int,
+        leftSummaryWidth: CGFloat = 0,
+        rightSummaryWidth: CGFloat = 0
+    ) -> CompactStripLayout {
         CompactStripLayout(
             notchWidth: notchSize.width,
             height: compactHeight,
-            slotCount: max(0, slotCount)
+            slotCount: max(0, slotCount),
+            leftSummaryWidth: max(0, leftSummaryWidth),
+            rightSummaryWidth: max(0, rightSummaryWidth)
         )
     }
 
-    /// 指定紧凑图标数下的紧凑区窗口尺寸。
-    func compactSize(slotCount: Int) -> NSSize {
-        NSSize(width: compactStrip(slotCount: slotCount).windowWidth, height: compactHeight)
+    /// 指定紧凑图标数下的紧凑区窗口尺寸（含摘要带宽）。
+    func compactSize(
+        slotCount: Int,
+        leftSummaryWidth: CGFloat = 0,
+        rightSummaryWidth: CGFloat = 0
+    ) -> NSSize {
+        NSSize(
+            width: compactStrip(
+                slotCount: slotCount,
+                leftSummaryWidth: leftSummaryWidth,
+                rightSummaryWidth: rightSummaryWidth
+            ).windowWidth,
+            height: compactHeight
+        )
     }
 }
 
@@ -29,16 +48,28 @@ struct NotchLayout: Equatable {
 /// 等宽（按较大一侧的实际槽数）保证黑色带绕刘海左右对称、刘海中心恒为
 /// 带宽中心（== 窗口中心，窗口绕屏幕中线居中）。带宽随 `slotCount`
 /// （当前紧凑图标数）动态伸缩，不再固定 3 槽。
+///
+/// 活动摘要芯片（可选）贴刘海两侧、处于各自面板的**内侧**：左摘要位于
+/// 左面板靠刘海一端、右摘要位于右面板靠刘海一端；有摘要的一侧图标被向外
+/// 推移一个芯片带（`leftSummaryWidth` / `rightSummaryWidth` > 0 时生效，
+/// 缺省 0 = 与旧几何完全一致）。两侧面板等宽原则不变：芯片带宽取两侧
+/// 较大值计入两面板（`sideSummaryBand`），无摘要一侧的余量落在面板外端，
+/// 保证刘海恒为带宽中心（决策：Agent Note 2026-09-03-compact-area-activity-summary）。
 struct CompactStripLayout: Equatable {
     let notchWidth: CGFloat
     let height: CGFloat
     /// 当前紧凑图标数（紧凑引用数组长度）。
     let slotCount: Int
+    /// 左侧摘要芯片宽度（0 = 无摘要；含芯片自身全部外观宽度）。
+    var leftSummaryWidth: CGFloat = 0
+    /// 右侧摘要芯片宽度（0 = 无摘要）。
+    var rightSummaryWidth: CGFloat = 0
 
     private var slotSize: NSSize { NotchGeometry.compactSlotSize }
     private var spacing: CGFloat { NotchGeometry.compactSlotSpacing }
     private var padding: CGFloat { NotchGeometry.compactHorizontalPadding }
     private var gap: CGFloat { NotchGeometry.compactNotchGap }
+    private var summaryIconGap: CGFloat { NotchGeometry.summaryIconGap }
 
     /// 左右均衡交替：偶数索引在左、奇数在右，每侧列号 = index / 2。
     var leftSlots: Int { (slotCount + 1) / 2 }
@@ -55,8 +86,55 @@ struct CompactStripLayout: Equatable {
     /// 两面板等宽（按较大一侧实际槽数）：黑色带绕刘海左右对称。
     var sideSlots: Int { max(leftSlots, rightSlots) }
 
-    var leftPanelWidth: CGFloat { panelWidth(slots: sideSlots) }
-    var rightPanelWidth: CGFloat { panelWidth(slots: sideSlots) }
+    // MARK: - 活动摘要带宽
+
+    var hasLeftSummary: Bool { leftSummaryWidth > 0 }
+    var hasRightSummary: Bool { rightSummaryWidth > 0 }
+
+    /// 左侧芯片占用的面板带宽（芯片 + 与图标的间隙）。
+    var leftSummaryBand: CGFloat {
+        hasLeftSummary ? leftSummaryWidth + summaryIconGap : 0
+    }
+
+    /// 右侧芯片占用的面板带宽（芯片 + 与图标的间隙）。
+    var rightSummaryBand: CGFloat {
+        hasRightSummary ? rightSummaryWidth + summaryIconGap : 0
+    }
+
+    /// 两侧面板统一的摘要带宽（取两侧较大值：面板等宽、刘海恒居中）。
+    var sideSummaryBand: CGFloat {
+        max(leftSummaryBand, rightSummaryBand)
+    }
+
+    /// 摘要芯片显示高度（随紧凑带高度自适应，夹在上下留白内）。
+    var summaryHeight: CGFloat {
+        min(NotchGeometry.summaryChipHeight, max(NotchGeometry.summaryChipMinHeight, height - 6))
+    }
+
+    var leftPanelWidth: CGFloat { panelWidth(slots: sideSlots) + sideSummaryBand }
+    var rightPanelWidth: CGFloat { panelWidth(slots: sideSlots) + sideSummaryBand }
+
+    /// 左侧摘要芯片矩形（窗口内容坐标，左上原点）；无摘要返回 nil。
+    var leftSummaryRect: CGRect? {
+        guard hasLeftSummary else { return nil }
+        return CGRect(
+            x: leftPanelWidth - padding - leftSummaryWidth,
+            y: (height - summaryHeight) / 2,
+            width: leftSummaryWidth,
+            height: summaryHeight
+        )
+    }
+
+    /// 右侧摘要芯片矩形（窗口内容坐标，左上原点）；无摘要返回 nil。
+    var rightSummaryRect: CGRect? {
+        guard hasRightSummary else { return nil }
+        return CGRect(
+            x: rightPanelX + padding,
+            y: (height - summaryHeight) / 2,
+            width: rightSummaryWidth,
+            height: summaryHeight
+        )
+    }
 
     /// 右侧面板在黑色带内的水平原点（带内坐标）。
     var rightPanelX: CGFloat {
@@ -92,13 +170,16 @@ struct CompactStripLayout: Equatable {
     }
 
     /// 槽位矩形（窗口内容坐标，左上原点）；越界返回 nil。
+    /// 偶数（左面板）锚定外端、奇数（右面板）锚定靠刘海一端——右侧有摘要
+    /// 芯片时图标整体外移一个芯片带（`rightSummaryBand`），左侧图标不移动
+    /// （左芯片占用的是内侧新增带宽）。
     func slotRect(at index: Int) -> CGRect? {
         guard index >= 0, index < slotCount else { return nil }
         let y = (height - slotSize.height) / 2
         let column = index / 2
         let x: CGFloat = index % 2 == 0
             ? padding + CGFloat(column) * (slotSize.width + spacing)
-            : rightPanelX + padding + CGFloat(column) * (slotSize.width + spacing)
+            : rightPanelX + padding + rightSummaryBand + CGFloat(column) * (slotSize.width + spacing)
         return CGRect(x: x, y: y, width: slotSize.width, height: slotSize.height)
     }
 }
@@ -257,6 +338,14 @@ enum NotchGeometry {
     /// 两侧面板与刘海边缘的间隙。
     nonisolated static let compactNotchGap: CGFloat = 5
 
+    // MARK: 活动摘要芯片
+    /// 摘要芯片与同侧图标的间隙（芯片贴刘海、图标在其外侧）。
+    nonisolated static let summaryIconGap: CGFloat = 6
+    /// 摘要芯片高度上限（紧凑带较矮时随带自适应收缩，见 `summaryMinHeight`）。
+    nonisolated static let summaryChipHeight: CGFloat = 26
+    /// 摘要芯片高度下限。
+    nonisolated static let summaryChipMinHeight: CGFloat = 18
+
     /// 无刘海屏幕的顶部中央回退尺寸。
     nonisolated static let fallbackNotchSize = NSSize(width: 210, height: 32)
 
@@ -280,14 +369,20 @@ enum NotchGeometry {
     }
 
     /// 激活区域（热区）：整个紧凑带（含左右面板与刘海上方区域），
-    /// 高度 = 刘海高度，宽度随当前紧凑图标数动态伸缩。
+    /// 高度 = 刘海高度，宽度随当前紧凑图标数与摘要带宽动态伸缩。
     static func activationFrame(
         for layout: NotchLayout,
         slotCount: Int,
+        leftSummaryWidth: CGFloat = 0,
+        rightSummaryWidth: CGFloat = 0,
         in screenFrame: NSRect
     ) -> NSRect {
         topCenteredFrame(
-            for: layout.compactSize(slotCount: slotCount),
+            for: layout.compactSize(
+                slotCount: slotCount,
+                leftSummaryWidth: leftSummaryWidth,
+                rightSummaryWidth: rightSummaryWidth
+            ),
             topY: screenFrame.maxY,
             in: screenFrame
         )

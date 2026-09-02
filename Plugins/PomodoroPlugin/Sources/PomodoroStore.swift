@@ -4,9 +4,9 @@ import Foundation
 import NotchCenterKit
 import SwiftUI
 
-// MARK: - 番茄钟共享 store（引擎驱动 + 设置持久化 + 活动岛生命周期 + 音效）
+// MARK: - 番茄钟共享 store（引擎驱动 + 设置持久化 + 活动摘要 + 音效）
 
-/// 视图层（活动岛 / 紧凑块 / 抽屉块）观察的展示快照。
+/// 视图层（紧凑块 / 抽屉块）观察的展示快照。
 struct PomodoroDisplay: Equatable {
     var phase: PomodoroPhase = .idle
     /// 当前阶段剩余秒数（向上取整）。
@@ -24,13 +24,13 @@ private struct PomodoroStats: Codable, Equatable {
     var completed: Int
 }
 
-/// 插件内共享模型：所有块与活动岛观察同一份 store（番茄钟是全局单例状态，
+/// 插件内共享模型：所有块观察同一份 store（番茄钟是全局单例状态，
 /// 与放置实例无关，不走 placementStore）。
 @MainActor
 final class PomodoroStore: ObservableObject {
     static let shared = PomodoroStore()
-    /// 活动岛标识（宿主按 id 收回）。
-    static let islandID = "pomodoro.island"
+    /// 活动摘要标识（宿主按 id 覆盖更新 / 收回）。
+    static let summaryID = "pomodoro.summary"
 
     private static let configKey = "config"
     private static let statsKey = "stats"
@@ -71,11 +71,11 @@ final class PomodoroStore: ObservableObject {
         publishDisplay(now: Date())
     }
 
-    /// 插件被禁用：停止引擎、收起活动岛、停表（不卸载数据）。
+    /// 插件被禁用：停止引擎、停表（不卸载数据）；摘要收回由 display 变
+    /// idle 触发的 `syncSummary` 统一处理。
     func suspend() {
         engine.stop()
         stopTicking()
-        removeIsland()
         publishDisplay(now: Date())
     }
 
@@ -87,7 +87,6 @@ final class PomodoroStore: ObservableObject {
             handle(event)
         }
         publishDisplay(now: Date())
-        showIsland()
         startTicking()
     }
 
@@ -95,7 +94,6 @@ final class PomodoroStore: ObservableObject {
         guard engine.phase != .idle else { return }
         engine.stop()
         stopTicking()
-        removeIsland()
         publishDisplay(now: Date())
     }
 
@@ -175,6 +173,7 @@ final class PomodoroStore: ObservableObject {
         if next != display {
             display = next
         }
+        syncSummary()
     }
 
     private var completedToday: Int {
@@ -218,20 +217,38 @@ final class PomodoroStore: ObservableObject {
         tickTimer = nil
     }
 
-    // MARK: 活动岛
+    // MARK: 活动摘要（紧凑带迷你进度；Agent Note 2026-09-03-compact-area-activity-summary）
 
-    private func showIsland() {
+    /// 已提交摘要的快照键：只在「会改变芯片可见内容」的变化上重新提交——
+    /// 阶段 / 暂停 / 剩余整秒任一变化即覆盖更新（同 id 不改变新旧次序），
+    /// 其余 tick（进度在秒内细分）不再打搅宿主。空闲即收回。
+    private var lastSummaryKey: (phase: PomodoroPhase, isPaused: Bool, remainingSeconds: Int)?
+    private var summarySubmitted = false
+
+    /// 依据当前 display 同步摘要：空闲收回、运行中覆盖提交（秒级节流）。
+    private func syncSummary() {
         guard let hostController else { return }
-        hostController.showActivityIsland(
-            ActivityIslandContent(
-                id: Self.islandID,
-                maxSize: PomodoroIslandLayout.maxSize,
-                view: AnyView(PomodoroIslandView(store: self))
+        let d = display
+        guard d.phase != .idle else {
+            if summarySubmitted {
+                summarySubmitted = false
+                lastSummaryKey = nil
+                hostController.removeActivitySummary(id: Self.summaryID)
+            }
+            return
+        }
+        let key = (d.phase, d.isPaused, d.remainingSeconds)
+        if let last = lastSummaryKey, last == key { return }
+        lastSummaryKey = key
+        summarySubmitted = true
+        hostController.showActivitySummary(
+            ActivitySummary(
+                id: Self.summaryID,
+                title: PomodoroTheme.phaseTitle(for: d),
+                subtitle: pomodoroCountdownText(d.remainingSeconds),
+                symbolName: PomodoroTheme.symbol(for: d.phase),
+                progress: d.progress
             )
         )
-    }
-
-    private func removeIsland() {
-        hostController?.removeActivityIsland(id: Self.islandID)
     }
 }
