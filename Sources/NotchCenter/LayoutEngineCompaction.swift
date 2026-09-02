@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - 空洞压实（编辑模式契约：不留空行/空列）
+// MARK: - 空洞压实（编辑模式契约：不留空行、仅压负列）
 
 extension LayoutEngine {
     /// 垂直压实纯函数（编辑模式契约：不留空行）：自上而下找到首个完全空置
@@ -33,10 +33,12 @@ extension LayoutEngine {
         return (blocks, changed)
     }
 
-    /// 水平压实纯函数（编辑模式契约：不留空列）：在占用列区间 [min, max) 内
-    /// 自左向右找到首个完全空置的列，右侧块整体左移一列（空列 ≥ 0 时）；若
-    /// 空列为负（左扩区域内的空洞），左侧块整体右移一列——双向都朝 0 收拢，
-    /// 不产生新重叠。重复直到没有空列。列内的部分留白保留（只消整列空洞）。
+    /// 水平压实纯函数（编辑模式：仅闭合负列空洞，向 0 收拢）：在占用列区间
+    /// [min, max) 内自左向右找到首个完全空置的**负**列（< 0），左侧块整体右移
+    /// 一列——双向中的负向分支，与 compactEmptyRows 对称。**正列（≥ 0）的空洞
+    /// 保留**：两个组件间允许留空列（用户可拖出有意留白），压实不再把右侧块
+    /// 左移闭合；只有左扩区域（originColumn < 0）内的空洞会向 0 收拢，避免负向
+    /// 布局无限外扩。列内的部分留白保留（只消整列空洞）。
     /// 不读写 `model`——修改路径经实例转发调用，预览路径在临时副本上调用
     /// （离线压实，与提交同一算法）。与 compactEmptyRows 对称，加载净化不经
     /// 过这里（无重叠布局的留白受 sanitized 保护）。
@@ -54,18 +56,13 @@ extension LayoutEngine {
                     occupiedColumns.insert(col)
                 }
             }
+            // 仅闭合负列空洞：正列 ≥ 0 的空洞是有意留白，保留不压。
             // 空列必在其左有块（minColumn 内）且其右有块（否则推不出 maxColumn），
-            // 向 0 方向收拢一列，每轮严格减少总跨度——必然终止。
+            // 找到首个负空列后左侧块向 0 右移一列，每轮严格减少负向跨度——必然终止。
             guard let emptyColumn = (minColumn..<maxColumn)
-                .first(where: { !occupiedColumns.contains($0) }) else { break }
-            if emptyColumn >= 0 {
-                for index in blocks.indices where blocks[index].originColumn > emptyColumn {
-                    blocks[index].originColumn -= 1
-                }
-            } else {
-                for index in blocks.indices where blocks[index].originColumn < emptyColumn {
-                    blocks[index].originColumn += 1
-                }
+                .first(where: { $0 < 0 && !occupiedColumns.contains($0) }) else { break }
+            for index in blocks.indices where blocks[index].originColumn < emptyColumn {
+                blocks[index].originColumn += 1
             }
             changed = true
         }

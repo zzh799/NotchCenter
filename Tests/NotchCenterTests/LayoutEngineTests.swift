@@ -578,11 +578,11 @@ final class LayoutEngineTests: XCTestCase {
         XCTAssertEqual(engine.previewColumnRange(origins: preview).max, 2)
         XCTAssertEqual(engine.previewBottomRow(origins: preview), 1)
 
-        // 所见即所得：提交后 a 留在 -1，空列 0 由 b 左移闭合（不留空列）。
+        // 所见即所得：提交后 a 留在 -1，空列 0 保留（两个组件间允许空列）。
         XCTAssertTrue(engine.commitArrangement(preview))
         XCTAssertEqual(engine.drawerBlock(placementID: "a")?.originColumn, -1)
-        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originColumn, 0)
-        XCTAssertEqual(engine.occupiedColumns(), 2)
+        XCTAssertEqual(engine.drawerBlock(placementID: "b")?.originColumn, 1)
+        XCTAssertEqual(engine.occupiedColumns(), 3)
         XCTAssertEqual(engine.gridLeftColumn(), -1)
         XCTAssertTrue(engine.validate().isEmpty)
         try? FileManager.default.removeItem(at: directory)
@@ -613,9 +613,9 @@ final class LayoutEngineTests: XCTestCase {
         placeRaw(engine, id: "b", column: 1, row: 0, width: 1, height: 1)
 
         let preview = engine.previewCommittedArrangement(moving: "a", toColumn: -1, toRow: 0)
-        // 左扩内建：落点列为负；空列 0 由压实闭合（b 左移，与提交一致）。
+        // 左扩内建：落点列为负；空列 0 保留（两个组件间允许空列，与提交一致）。
         XCTAssertEqual(preview["a"], LayoutEngine.GridOrigin(column: -1, row: 0))
-        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 0, row: 0))
+        XCTAssertEqual(preview["b"], LayoutEngine.GridOrigin(column: 1, row: 0))
 
         // 提交侧压实是幂等兜底：预览（已压实）与提交结果逐块严格相等。
         _ = engine.commitArrangement(preview)
