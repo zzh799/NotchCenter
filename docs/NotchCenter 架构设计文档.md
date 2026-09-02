@@ -38,7 +38,7 @@ NotchCenter 核心（主 App）只承担以下基础设施：
 
 ### 2.2 工程结构
 
-```
+```text
 NotchCenter/
 ├── Package.swift
 ├── Sources/
@@ -67,7 +67,7 @@ NotchCenter/
 ├── Vendor/                        # 可能保留 vendored 依赖（如 MarkdownEngine 供笔记插件使用）
 ├── Resources/
 ├── Tests/
-└── Scripts/
+└── scripts/
 ```
 
 主 App target 依赖 `NotchCenterKit`，插件 target 也依赖 `NotchCenterKit`。构建时 `NotchCenterKit` 作为动态 framework 嵌入 App 的 `Frameworks/` 目录，插件 bundle 链接该 framework。
@@ -329,18 +329,19 @@ extension HostController {
   - `compactSlots`：紧凑块引用数组，**长度即当前图标数**（空数组 = 无图标；元素均为块引用，不含 `null` 占位——旧版固定 3 槽文件加载时自动剥除空槽）
   - `drawerBlocks`：`PlacedBlock` 数组
   - `enabledPluginIDs`：已启用插件 ID 列表
-- `PlacedBlock` 结构：
-  ```json
-  {
-    "pluginID": "com.example.notes",
-    "blockID": "notes.drawer",
-    "placementID": "uuid",
-    "originColumn": 0,
-    "originRow": 0,
-    "widthColumns": 2,
-    "heightRows": 1
-  }
-  ```
+`PlacedBlock` 结构：
+
+```json
+{
+  "pluginID": "com.example.notes",
+  "blockID": "notes.drawer",
+  "placementID": "uuid",
+  "originColumn": 0,
+  "originRow": 0,
+  "widthColumns": 2,
+  "heightRows": 1
+}
+```
 - 保存采用原子写入。
 - 核心根据已放置块的最大占用列数/行数计算窗口尺寸，并检测重叠。
 

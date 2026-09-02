@@ -15,9 +15,7 @@
   - **峰谷时钟**：24 小时表盘实时走动，红弧为峰时、绿弧为谷时。
 - **峰谷倒计时开关**：控制卡片底部「峰/谷剩余 HH:MM:SS」行的显隐。
 
-每实例配置持久化在该放置实例的私有存储里（Kit 的 `placementStore`，
-`PluginData/<pluginID>/placements/<placementID>/appearance`），移除块时自动清理；
-缺省值为余量环 + 显示倒计时，与历史单实例视觉一致。
+每实例配置持久化在该放置实例的私有存储里（Kit 的 `placementStore`，`PluginData/<pluginID>/placements/<placementID>/appearance`），移除块时自动清理；缺省值为余量环 + 显示倒计时，与历史单实例视觉一致。
 
 ## 账户设置
 
@@ -27,5 +25,4 @@
 - **Cookie**：登录态凭证，保存后仅展示尾 4 位掩码，绝不写入日志。
 - **Base URL**：数据源地址，默认官方站点。
 
-数据抓取自 opencode.ai 的 SSR 页面；账户配置保存在插件作用域的 `StateStore` 中
-（所有实例共用同一账户）。
+数据抓取自 opencode.ai 的 SSR 页面；账户配置保存在插件作用域的 `StateStore` 中（所有实例共用同一账户）。
