@@ -87,6 +87,8 @@ struct DrawerPageCapsule: View {
     let onMove: (Int, Int) -> Void
     let onShowSettings: (Int, CGRect) -> Void
     let onRemove: (Int) -> Void
+    /// 胶囊拖动回调（聚合至滑动让路）。
+    var onDraggingChanged: (Bool) -> Void = { _ in }
 
     /// 编辑拖动排序预览：被拖页 + 目标槽位，两者同设同清。
     private struct DragPreview {
@@ -169,6 +171,7 @@ struct DrawerPageCapsule: View {
             // 胶囊壳不承载选中态；内容亮度随激活/进度变化，作高光层的"内的呼应"。
             contentActivation: activationWeight(page: page),
             isEditing: isEditing,
+            isSwipeActive: swipe != nil,
             shift: displayedSlot(slot) - slot,
             onSelect: { onSelect(page) },
             onDragTargetChanged: { dragPreview = DragPreview(page: page, target: $0) },
@@ -182,6 +185,7 @@ struct DrawerPageCapsule: View {
                     dragOffset = 0
                 }
             },
+            onDraggingChanged: { isDragging in onDraggingChanged(isDragging) },
             onShowSettings: { onShowSettings(page, $0) },
             onRemove: { onRemove(page) }
         )
@@ -271,6 +275,8 @@ private struct DrawerPagePill: View {
     /// 内容激活程度（0…1）：决定图标/文本亮度，随滑动进度直渲。
     let contentActivation: CGFloat
     let isEditing: Bool
+    /// 滑动中暂停排序。
+    var isSwipeActive: Bool = false
     /// 让位预览的槽位偏移（被拖者恒 0——它跟手靠 `dragOffset`）。
     let shift: Int
     let onSelect: () -> Void
@@ -278,6 +284,7 @@ private struct DrawerPagePill: View {
     /// 跟手位移逐帧上报（**没有** target 越界也要报）：高光在激活页被拖时要随胶囊跟手。
     let onDragOffsetChanged: (CGFloat) -> Void
     let onDragCommit: (Int) -> Void
+    var onDraggingChanged: (Bool) -> Void = { _ in }
     /// 设置角标触发：上报胶囊全局 frame 作为浮窗锚点。
     let onShowSettings: (CGRect) -> Void
     let onRemove: () -> Void
@@ -414,11 +421,15 @@ private struct DrawerPagePill: View {
         // 后退半格"的锯齿（不跟手 + 闪烁）。`.global` 即宿主窗口坐标，拖动期间不动。
         DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onChanged { value in
+                // 滑动进行中不接管胶囊拖动：条带位移由控制器独占，胶囊让位预览
+                // 若同时跟手会与高光进度抢同一份水平位移。
+                guard !isSwipeActive else { return }
                 if !isDragging {
                     guard isEditing,
                           abs(value.translation.width) > DrawerPagePillLayout.dragPickupDistance else { return }
                     isDragging = true
                     reportedTarget = nil
+                    onDraggingChanged(true)
                 }
                 dragOffset = value.translation.width
                 // 逐帧上报（与 target 上报解耦）：位移供高光跟随，越界才换槽。
@@ -436,9 +447,12 @@ private struct DrawerPagePill: View {
                         isDragging = false
                     }
                     reportedTarget = nil
+                    onDraggingChanged(false)
                     onDragCommit(target)
                     return
                 }
+                // 已进入滑动会话的点击忽略：松手时胶囊下的位移可能被 swipe 截断。
+                guard !isSwipeActive else { return }
                 // 未进拖动且位移没越阈才算点击：按下后拖一把再松手不该切页。
                 guard hypot(value.translation.width, value.translation.height)
                         <= DrawerPagePillLayout.dragPickupDistance else { return }

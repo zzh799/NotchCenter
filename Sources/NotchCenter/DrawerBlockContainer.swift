@@ -16,6 +16,8 @@ struct DrawerBlockContainer: View {
     let isDragging: Bool
     /// 插件是否提供设置界面（编辑模式左上角齿轮按钮的显隐条件）。
     let hasSettings: Bool
+    /// 滑动中暂停手势。
+    var isSwipeActive: Bool = false
     /// 缩放预览目标（由父视图持有；nil 表示未在缩放）。
     let previewColumns: Int?
     let previewRows: Int?
@@ -126,7 +128,7 @@ struct DrawerBlockContainer: View {
             .offset(compensation)
             .offset(dragOffset)
             .gesture(
-                isEditing && !isResizing
+                isEditing && !isResizing && !isSwipeActive
                     ? DragGesture(minimumDistance: 2)
                         .onChanged { value in
                             dragOffset = value.translation
@@ -195,9 +197,11 @@ struct DrawerBlockContainer: View {
     private var resizeGesture: some Gesture {
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in
+                guard !isSwipeActive else { return }
                 onResizeChanged(value.translation)
             }
             .onEnded { _ in
+                guard !isSwipeActive else { return }
                 onResizeCommit()
             }
     }

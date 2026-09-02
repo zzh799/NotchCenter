@@ -52,6 +52,9 @@ final class PanelUIState: ObservableObject {
     @Published var drawerPageTitles: [String: String] = [:]
     @Published var drawerPageIcons: [String: String] = [:]
 
+    /// 拖拽/缩放或胶囊排序进行中（供 `canSwipeDrawerPage` 让路），由 DrawerPanelView 聚合写入。
+    @Published var isDrawerInteractionActive = false
+
     /// 一次左右滑动会话（非空 = 正在滑动，目标页正从侧面滑入）。
     /// 跟手期只有 `offset` 与**派生尺寸**在动（`drawerWindowSize` /
     /// `drawerContentSize` 随滑动进度在其起止两端间插值，见

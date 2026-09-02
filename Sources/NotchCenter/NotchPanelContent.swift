@@ -561,11 +561,16 @@ extension NotchPanelController {
         rebuildContent(animated: true)
     }
 
-    /// 滑动切页是否可用：`canSwitchDrawerPage` 之外再排除编辑模式（块的
-    /// 拖拽/缩放预览按激活页计算，中途切页会把预览提交到错的页上，编辑期
-    /// 仍以分页胶囊切页）与落位拍（滑到位动画只有唯一一个 offset 可写）。
+    /// 滑动切页是否可用：`canSwitchDrawerPage` 之外再排除拖拽/缩放预览进行中
+    /// （块的推挤预览按激活页计算，中途切页会把预览提交到错的页上）与落位拍
+    /// （滑到位动画只有唯一一个 offset 可写）。编辑模式本身不再禁用滑动——
+    /// 空隙上的拖拽与触控板轻扫与非编辑态一致跟手切页，块拖拽/缩放期间则暂停
+    /// 切页，松手后恢复（`isDrawerInteractionActive` 由 DrawerPanelView 的
+    /// DrawerInteractionState 经 PanelUIState 同步）。
     private var canSwipeDrawerPage: Bool {
-        !uiState.isEditing && canSwitchDrawerPage && uiState.drawerSwipe?.isLanding != true
+        canSwitchDrawerPage
+            && !uiState.isDrawerInteractionActive
+            && uiState.drawerSwipe?.isLanding != true
     }
 
     /// 位移上限 = 当前页宽（滑到刚好覆盖整页）。

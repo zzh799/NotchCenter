@@ -68,6 +68,9 @@ struct DrawerPanelView: View {
     /// 指针是否悬停在顶栏上：分页加号按钮的显示条件之一。
     @State private var isTopBarHovering = false
 
+    /// 胶囊排序进行中（聚合至 `isDrawerInteractionActive`）。
+    @State private var isCapsuleDragging = false
+
     private let cornerRadius: CGFloat = 18
 
     init(
@@ -134,6 +137,15 @@ struct DrawerPanelView: View {
         // 永远是透明区（命中测试穿透），面板顶缘钉死窗口顶缘、绕屏幕中线
         // 居中——宽度随占用列数自适应时面板始终对准刘海。
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onAppear {
+            syncInteractionActive()
+        }
+        .onChange(of: interaction.phase) { _, _ in
+            syncInteractionActive()
+        }
+        .onChange(of: isCapsuleDragging) { _, _ in
+            syncInteractionActive()
+        }
         .onChange(of: ui.isDrawerExpanded) { _, expanded in
             if expanded {
                 // 先让容器形变启动，内容在后段淡入（形变 commit → 内容到达）。
@@ -216,7 +228,8 @@ struct DrawerPanelView: View {
                 onAdd: actions.onAddPage,
                 onMove: actions.onMovePage,
                 onShowSettings: actions.onShowPageSettings,
-                onRemove: actions.onRemovePage
+                onRemove: actions.onRemovePage,
+                onDraggingChanged: { isCapsuleDragging = $0 }
             )
 
             Spacer(minLength: 0)
@@ -282,7 +295,9 @@ struct DrawerPanelView: View {
     }
 
     /// 目标页预览层：只按格网摆放块视图（`isPreview` 只读副本），
-    /// 无编辑 chrome、无手势——整层 `allowsHitTesting(false)`。
+    /// 无手势——整层 `allowsHitTesting(false)`。编辑态下预览同样呈现编辑
+    /// 视觉（压暗层 + 描边），与正式网格的静态编辑态一致，避免落位那一帧
+    /// 出现“预览素面 → 落位后突然压暗”的闪烁（需求：预览目标页内容也应是编辑状态的）。
     private func previewGrid(_ swipe: PanelUIState.DrawerSwipe) -> some View {
         let previewGeometry = DrawerGridGeometry(
             metrics: GridMetrics.current,
@@ -293,12 +308,11 @@ struct DrawerPanelView: View {
             minimumColumns: ui.drawerGridMinColumns
         )
         let cells = swipe.elements.map { GridCell($0.placement) }
+        let isEditing = ui.isEditing
         return ZStack(alignment: .topLeading) {
             ForEach(swipe.elements) { element in
                 let frame = previewGeometry.frame(GridCell(element.placement))
-                element.view
-                    .frame(width: frame.width, height: frame.height)
-                    .clipped()
+                previewBlock(for: element, frame: frame, isEditing: isEditing)
                     .position(x: frame.midX, y: frame.midY)
             }
         }
@@ -307,6 +321,28 @@ struct DrawerPanelView: View {
             height: previewGeometry.contentHeight(covering: cells),
             alignment: .topLeading
         )
+    }
+
+    /// 预览块编辑壳（静态，不含交互）。
+    private func previewBlock(for element: DrawerElement, frame: CGRect, isEditing: Bool) -> some View {
+        let cornerRadius: CGFloat = 12
+        return element.view
+            .frame(width: frame.width, height: frame.height)
+            .background(isEditing ? Color.white.opacity(0.03) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                if isEditing {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color.black.opacity(0.35))
+                }
+            }
+            .overlay {
+                if isEditing {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(.white.opacity(0.4), lineWidth: 1)
+                }
+            }
+            .clipped()
     }
 
     /// 网格层。两条跟随元素变化的 spring 在**滑动会话挂载期必须关闭**：
@@ -410,11 +446,13 @@ struct DrawerPanelView: View {
             )
         )
         let previewSpan = interaction.previewSpan(for: element.id)
+        let isSwipeActive = ui.drawerSwipe != nil
         return DrawerBlockContainer(
             element: element,
             isEditing: ui.isEditing,
             isDragging: interaction.draggingPlacementID == element.id,
             hasSettings: element.hasSettings,
+            isSwipeActive: isSwipeActive,
             previewColumns: previewSpan?.columns,
             previewRows: previewSpan?.rows,
             onResizeChanged: { translation in
@@ -521,6 +559,11 @@ struct DrawerPanelView: View {
             metrics: GridMetrics.current
         )
         return (target.column, target.row)
+    }
+
+    /// 聚合块/胶囊拖动态写入 `isDrawerInteractionActive`。
+    private func syncInteractionActive() {
+        ui.isDrawerInteractionActive = interaction.phase != .idle || isCapsuleDragging
     }
 
 }
