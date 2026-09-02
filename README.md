@@ -2,11 +2,13 @@
 
 NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标移到或点击屏幕顶部中央的刘海区域展开抽屉，抽屉网格与紧凑刘海区展示各插件提供的“块”。
 
-核心只负责刘海区域交互、窗口管理、插件加载与生命周期、布局引擎与状态存储；笔记、文件暂存、防休眠等功能以官方插件形式提供，第三方插件可动态安装（`.bundle`）。架构基线见 [`docs/NotchCenter 架构设计文档.md`](docs/NotchCenter%20架构设计文档.md)。
+核心只负责刘海区域交互、窗口管理、插件加载与生命周期、布局引擎与状态存储；笔记、文件暂存、防休眠等功能以官方插件形式提供，第三方插件可动态安装（`.bundle`）。架构基线见 [`docs/NotchCenter 架构设计文档.md`](docs/NotchCenter 架构设计文档.md)。
 
-![主界面](/docs/CleanShot%202026-08-24%20at%2015.02.03@2x.png)
+![主界面](/docs/assets/MainView.png)
 
-![编辑演示](/docs/CleanShot%202026-08-24%20at%2015.03.30.gif)
+![基础功能](/docs/assets/Common.gif)
+
+![编辑演示](/docs/assets/Setting.gif)
 
 
 > **引用**：NotchCenter 由 [NotchNotes] 重构而来，原项目承担的笔记 / 暂存 / 防休眠等能力已拆分为本仓库的官方插件，核心交互与视觉规范沿用原项目，详见下方“引用”一节。
@@ -44,14 +46,14 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 ## 本地运行
 
 ```bash
-./Scripts/build.sh dev            # 组装官方插件 bundle 到 dev PlugIns 目录（可选 debug|release）
+./scripts/build.sh dev            # 组装官方插件 bundle 到 dev PlugIns 目录（可选 debug|release）
 swift run NotchCenter
 ```
 
 ## 构建发布包
 
 ```bash
-./Scripts/build.sh package
+./scripts/build.sh package
 open dist.noindex/NotchCenter.app
 ```
 
@@ -60,7 +62,7 @@ open dist.noindex/NotchCenter.app
 ```bash
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 NOTARY_PROFILE="notary-profile" \
-./Scripts/build.sh package
+./scripts/build.sh package
 ```
 
 ## 自动发布
