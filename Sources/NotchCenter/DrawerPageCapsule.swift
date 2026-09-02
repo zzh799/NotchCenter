@@ -110,7 +110,9 @@ struct DrawerPageCapsule: View {
                         pill(page: page, slot: slot)
                     }
                 }
+                .animation(nil, value: pages)
             }
+            .animation(nil, value: pages)
             addButton(.right)
         }
         .frame(height: DrawerPagePillLayout.rowHeight)
@@ -177,13 +179,10 @@ struct DrawerPageCapsule: View {
             onDragTargetChanged: { dragPreview = DragPreview(page: page, target: $0) },
             onDragOffsetChanged: { dragOffset = $0 },
             onDragCommit: { target in
-                // 先提交再清预览：反了会先跳回旧顺序、再动画到新位置（一次回弹）。
-                // 清预览必须与换序（rebuildContent 的基座位移）同一条 spring。
+                // 提交后与预览同帧瞬移：基座 pages 重排与 shift 清零都不加动画，避免与 shift 预览的 spring 叠加成二次排序交换动画
                 onMove(page, target)
-                withAnimation(DrawerAnimation.spring) {
-                    dragPreview = nil
-                    dragOffset = 0
-                }
+                dragPreview = nil
+                dragOffset = 0
             },
             onDraggingChanged: { isDragging in onDraggingChanged(isDragging) },
             onShowSettings: { onShowSettings(page, $0) },
@@ -442,10 +441,9 @@ private struct DrawerPagePill: View {
             .onEnded { value in
                 if isDragging {
                     let target = target(for: value.translation.width)
-                    withAnimation(DrawerAnimation.spring) {
-                        dragOffset = 0
-                        isDragging = false
-                    }
+                    // 与父级的页序提交同帧瞬移，避免二次交换动画；scale/shadow 仍由 .animation(value:isDragging) 的 spring 驱动
+                    dragOffset = 0
+                    isDragging = false
                     reportedTarget = nil
                     onDraggingChanged(false)
                     onDragCommit(target)

@@ -866,9 +866,10 @@ extension NotchPanelController {
     }
 
     /// 拖动排序：把页面移到显示序列的目标槽位。只改次序，块上的 `page` 不动。
+    /// 提交与预览同帧瞬移，避免基座 spring 与让位 spring 叠加成二次排序交换动画（见 DrawerPageCapsule.onDragCommit）。
     func moveDrawerPage(from page: Int, to targetIndex: Int) {
         guard layoutEngine.moveDrawerPage(from: page, to: targetIndex) else { return }
-        rebuildContent(animated: true)
+        rebuildContent(animated: false)
     }
 
     /// 重命名页面（空串 = 清除自定义名，回落为序号）。
