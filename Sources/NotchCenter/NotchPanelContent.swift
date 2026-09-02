@@ -630,8 +630,15 @@ extension NotchPanelController {
             limit: limit
         ) {
             beginDrawerSwipe(frame.side)
-            updateDrawerSwipe(offset: frame.offset)
-            if frame.commits { endDrawerSwipe(commit: true, offset: frame.offset) }
+            if let session = uiState.drawerSwipe {
+                // 触控板累加量是屏幕总位移，需映射到网格位移以保持与鼠标 1:1 一致（面板居中偏移）。
+                let gridOffset = frame.offset * (abs(session.gap) / max(session.limit, 1))
+                updateDrawerSwipe(offset: gridOffset)
+                if frame.commits { endDrawerSwipe(commit: true, offset: gridOffset) }
+            } else {
+                updateDrawerSwipe(offset: frame.offset)
+                if frame.commits { endDrawerSwipe(commit: true, offset: frame.offset) }
+            }
         }
         if phase.contains(.ended) || phase.contains(.cancelled) {
             // 提交门在 endDrawerSwipe 里按"松手位移的意图方向 == 条带方向"
@@ -643,16 +650,39 @@ extension NotchPanelController {
 
     /// 拖拽通路（视图侧背景手势）的跟手帧。
     func drawerSwipeDrag(translation: CGSize) {
+        // 非编辑态全区域拖动需与触控板一致让路：起始点落在横向可滚动块上时不启动切页（探针核实溢出）。
+        if uiState.drawerSwipe == nil, shouldYieldMouseSwipe() { return }
         guard let side = DrawerPageSwipe.side(
             for: translation,
             threshold: DrawerPageSwipe.dragMinDistance
         ) else { return }
         beginDrawerSwipe(side)
         guard let session = uiState.drawerSwipe else { return }
-        updateDrawerSwipe(offset: DrawerPageSwipe.offset(
-            translation: translation.width,
-            limit: session.limit
-        ))
+        // 手指位移是屏幕总位移，需按比例映射到网格位移（gap），否则页宽差异时手指与页面距离不一致（面板居中偏移导致）。
+        let totalOffset = DrawerPageSwipe.offset(translation: translation.width, limit: session.limit)
+        let gridOffset = totalOffset * (abs(session.gap) / max(session.limit, 1))
+        updateDrawerSwipe(offset: gridOffset)
+    }
+
+    /// 鼠标拖动是否应让路给块的横向手势（与 handleDrawerScroll 的探针一致）。
+    private func shouldYieldMouseSwipe() -> Bool {
+        guard let pair = activePair else { return false }
+        let screenPoint = NSEvent.mouseLocation
+        guard let element = drawerElement(at: screenPoint) else { return false }
+        switch element.scrollUsage {
+        case .none:
+            return false
+        case .always:
+            return true
+        case .horizontal:
+            let window = pair.drawerPanel
+            let windowPoint = NSPoint(
+                x: screenPoint.x - window.frame.minX,
+                y: screenPoint.y - window.frame.minY
+            )
+            let scrollable = DrawerScrollProbe.hasHorizontalOverflowUnderCursor(in: window, cursorWindowPoint: windowPoint)
+            return scrollable || !DrawerScrollProbe.refinesNegativeResult
+        }
     }
 
     /// 拖拽通路：松手定夺（过阈值落位，否则弹回）。速度判据经 DragGesture 的
@@ -660,18 +690,16 @@ extension NotchPanelController {
     /// 落位（与触控板通路的 `velocityEstimate` 走同一份 `shouldCommit`）。
     func drawerSwipeDragEnded(translation: CGSize, predictedEndTranslation: CGSize) {
         guard let session = uiState.drawerSwipe else { return }
-        let offset = DrawerPageSwipe.offset(translation: translation.width, limit: session.limit)
-        let predictedOffset = DrawerPageSwipe.offset(
-            translation: predictedEndTranslation.width,
-            limit: session.limit
-        )
+        let totalOffset = DrawerPageSwipe.offset(translation: translation.width, limit: session.limit)
+        let totalPredicted = DrawerPageSwipe.offset(translation: predictedEndTranslation.width, limit: session.limit)
+        let gridOffset = totalOffset * (abs(session.gap) / max(session.limit, 1))
         endDrawerSwipe(
             commit: DrawerPageSwipe.shouldCommit(
-                offset: offset,
+                offset: totalOffset,
                 limit: session.limit,
-                predictedOffset: predictedOffset
+                predictedOffset: totalPredicted
             ),
-            offset: offset
+            offset: gridOffset
         )
     }
 
@@ -700,12 +728,15 @@ extension NotchPanelController {
         }
         let targetContentSize = layoutEngine.drawerContentSize(page: target)
         // gap 与留白都冻结在会话起点：落位途中指标被调整也不改条带几何。
+        let spacing = DrawerPageSwipe.bandSpacing(contentPadding: GridMetrics.current.contentPadding)
         let gap = DrawerPageSwipe.gap(
             side: side,
             gridWidth: uiState.drawerContentSize.width,
             targetWidth: targetContentSize.width,
-            spacing: DrawerPageSwipe.bandSpacing(contentPadding: GridMetrics.current.contentPadding)
+            spacing: spacing
         )
+        // 手指在屏幕上的总位移 = 网格位移 + 面板居中偏移，限位需按总行程（两页平均宽度 + 留白）取，否则页宽差异大时手指与页面 1:1 跟手被打破。
+        let total = (uiState.drawerContentSize.width + targetContentSize.width) / 2 + spacing
         uiState.drawerSwipe = PanelUIState.DrawerSwipe(
             originPage: uiState.drawerActivePage,
             side: side,
@@ -717,10 +748,8 @@ extension NotchPanelController {
             gap: gap,
             startContentSize: uiState.drawerContentSize,
             startWindowSize: uiState.drawerWindowSize,
-            // 位移上限 = 当前条带的揭示距离（|gap|）：右侧 = 原点页宽 + 留白、
-            // 左侧 = 目标页宽 + 留白——按方向取，两侧页宽不同时才算得准（旧实现
-            // 一律用原点页宽，左侧条带会提前触橡皮筋/门槛错位）。
-            limit: abs(gap),
+            // 位移上限 = 屏幕总行程（平均页宽 + 留白），保证手指移动距离 = 页面在屏幕上的总滑动距离（网格位移 + 面板居中偏移），1:1 跟手。
+            limit: total,
             offset: 0
         )
         // 进入滑动「驻留期」：滑动中面板随目标页尺寸收缩，光标可能被甩到
@@ -754,15 +783,14 @@ extension NotchPanelController {
                 side: newSide
             ) {
                 let targetContentSize = layoutEngine.drawerContentSize(page: target)
-                // 上限与 beginDrawerSwipe 同一公式：|gap| = 该侧揭示距离
-                // （右 = 原点页宽 + 留白、左 = 目标页宽 + 留白），两侧页宽
-                // 不同时不能拿目标页宽冒充右束带。
+                let spacing = DrawerPageSwipe.bandSpacing(contentPadding: GridMetrics.current.contentPadding)
                 let gap = DrawerPageSwipe.gap(
                     side: newSide,
                     gridWidth: swipe.startContentSize.width,
                     targetWidth: targetContentSize.width,
-                    spacing: DrawerPageSwipe.bandSpacing(contentPadding: GridMetrics.current.contentPadding)
+                    spacing: spacing
                 )
+                let total = (swipe.startContentSize.width + targetContentSize.width) / 2 + spacing
                 swipe.rebind(
                     side: newSide,
                     targetPage: target,
@@ -771,7 +799,7 @@ extension NotchPanelController {
                     targetWindowSize: drawerWindowSize(for: activePair, page: target),
                     leftColumn: layoutEngine.gridLeftColumn(page: target),
                     gap: gap,
-                    limit: abs(gap)
+                    limit: total
                 )
             } else {
                 // 该侧没有邻居（首/末页）：硬停在原点。

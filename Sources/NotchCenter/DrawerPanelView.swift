@@ -277,7 +277,7 @@ struct DrawerPanelView: View {
     /// 异步 animated 清理才撤：目标页更宽时它会探回裁剪框内，淡出成右侧重影。
     private var pageSlide: some View {
         let offset = ui.drawerSwipe?.offset ?? 0
-        return ZStack(alignment: .topLeading) {
+        let zStack = ZStack(alignment: .topLeading) {
             grid
                 .offset(x: offset)
             if let swipe = ui.drawerSwipe, !swipe.isLanded {
@@ -292,6 +292,24 @@ struct DrawerPanelView: View {
             alignment: .topLeading
         )
         .clipped()
+        // 非编辑态整面可拖动切页（含块上方），编辑态仅空隙可切页（块拖拽优先，由 grid 背景层承载）。
+        // 手势用 .global 坐标：面板宽度在跟手期插值，.local 原点随视图平移会导致 translation 逐帧回跳、形成原/目标尺寸的自激振荡（与缩放握把同源）。
+        // 用 simultaneousGesture 而非 highPriority：让路时块的横向滚动仍可与切页手势并发识别，yield 后块自己处理滚动；外层纵向 ScrollView 与横向切页方向正交，不冲突。
+        if ui.isEditing {
+            return AnyView(zStack)
+        } else {
+            return AnyView(
+                zStack
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: DrawerPageSwipe.dragMinDistance, coordinateSpace: .global)
+                            .onChanged { actions.onSwipeDrag($0.translation) }
+                            .onEnded { value in
+                                actions.onSwipeDragEnded(value.translation, value.predictedEndTranslation)
+                            }
+                    )
+            )
+        }
     }
 
     /// 目标页预览层：只按格网摆放块视图（`isPreview` 只读副本），
@@ -365,7 +383,12 @@ struct DrawerPanelView: View {
             height: gridFrameHeight,
             alignment: .topLeading
         )
-        .background { pageSwipeSurface }
+        .background {
+            // 编辑态仅空隙可切页（块拖拽优先），非编辑态整面可切页由 pageSlide 的 simultaneousGesture 承载，避免空隙与整面双重触发。
+            if ui.isEditing {
+                pageSwipeSurface
+            }
+        }
         .animation(swipeActive ? nil : DrawerAnimation.spring, value: ui.drawerElements.map(\.id))
         .animation(swipeActive ? nil : DrawerAnimation.spring, value: ui.drawerElements.map(\.placement))
         .animation(DrawerAnimation.spring, value: interaction.previewOrigins)
@@ -381,10 +404,11 @@ struct DrawerPanelView: View {
         Color.clear
             .contentShape(Rectangle())
             .highPriorityGesture(
-                DragGesture(minimumDistance: DrawerPageSwipe.dragMinDistance)
+                DragGesture(minimumDistance: DrawerPageSwipe.dragMinDistance, coordinateSpace: .global)
                     .onChanged { actions.onSwipeDrag($0.translation) }
                     .onEnded { value in
                         // 第二个参数 = 预测终点：控制器据此折算松手速度判据。
+                        // 坐标系必须用 .global：面板宽度在跟手期插值，.local 原点随视图平移会导致 translation 逐帧回跳、形成原/目标尺寸的自激振荡（与缩放握把同源）。
                         actions.onSwipeDragEnded(value.translation, value.predictedEndTranslation)
                     }
             )
