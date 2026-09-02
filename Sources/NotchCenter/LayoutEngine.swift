@@ -147,16 +147,23 @@ final class LayoutEngine: ObservableObject {
 
     // MARK: - 持久化（文档 §5.4：单一版本化 JSON，原子写入）
 
+    /// 编码器与上次写盘内容缓存：JSONEncoder 每次构造有固定开销，且部分
+    /// 修改路径在值未变时也会走到保存——内容与上次写盘逐字节一致时直接跳过
+    /// （磁盘上已是同一份内容，跳写不改变任何可见语义）。
+    private let encoder = JSONEncoder()
+    private var lastWrittenData: Data?
+
     func saveToDisk() {
         do {
             try fileManager.createDirectory(
                 at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(model)
+            guard data != lastWrittenData else { return }
             try data.write(to: fileURL, options: .atomic)
+            lastWrittenData = data
         } catch {
             // 布局持久化失败不影响内存中的编辑。
             NSLog("LayoutEngine: failed to persist layout: \(error)")

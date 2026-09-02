@@ -66,6 +66,16 @@ final class NotchPanelController: NSObject {
     var pluginManagerWindowController: PluginManagerWindowController?
     var settingsWindowController: SettingsWindowController?
 
+    /// 上一次内容重建的视图复用键（紧凑按槽位下标、抽屉按 placementID）：
+    /// `rebuildContent` 是编辑提交/切页/展开的高频路径，每次都为**每个块**
+    /// 重新 `makeView` 会把没变的插件视图也整树重挂（AnyView 新实例 →
+    /// SwiftUI 子树全部重渲染）。键 = makeView 可观察输入的完整快照
+    /// （`BlockViewCacheKey`），逐项相等时直接复用上一次的视图值——SwiftUI
+    /// 端等价于"父视图重渲染、子视图输入未变"。每次构建整体替换缓存，
+    /// 被移除的槽位/块自动出表。
+    var compactViewCache: [Int: (key: BlockViewCacheKey, view: AnyView)] = [:]
+    var drawerViewCache: [String: (key: BlockViewCacheKey, view: AnyView)] = [:]
+
     override init() {
         uiState = PanelUIState()
 
@@ -79,6 +89,11 @@ final class NotchPanelController: NSObject {
         pluginManager.onEnabledPluginIDsChanged = { [weak self] _, newIDs in
             guard let self else { return }
             self.layoutEngine.syncEnabledPluginIDs(newIDs)
+            // 启用/禁用（含安装/卸载路径）会改 makeView 依赖的插件全局状态
+            // （如 NotesModel 按 store 重新解析、pluginWasDisabled 清实例数据），
+            // 复用键里的 entry 身份不足以察觉——视图复用缓存整体失效。
+            self.compactViewCache.removeAll()
+            self.drawerViewCache.removeAll()
             self.rebuildContent()
         }
 

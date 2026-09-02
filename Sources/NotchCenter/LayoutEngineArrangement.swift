@@ -156,22 +156,56 @@ extension LayoutEngine {
     /// 不变、永不分离，循环只能靠次数上限退出，会把残留重叠写回布局；
     /// 粘连块对随后每次拖拽提交又被整体再推若干行，行号失控增长（历史 bug）。
     /// （本约束受 AGENTS.md 保护，改动前先读 DragReorderReproTests。）
+    ///
+    /// 查找首个不重叠行用**禁放区间跳跃**而不是逐行 +1：后者每步重扫全部
+    /// 已固定块，密集布局下是 O(n²·行高)——192 块实测 6.5ms/次（拖拽预览
+    /// 每帧都跑，真机会掉帧）。区间跳跃与其逐位等价：对每个列区间相交的
+    /// 已固定块 F，被拖块落在行 r 会重叠 ⟺ r ∈ [F.minRow − h + 1, F.maxRow − 1]，
+    /// 把这些区间按起点排序后从 originRow 起扫，被覆盖就跳到区间终点 +1，
+    /// 终值 = 首个不被任何区间覆盖的行 = 逐行下移的落点。
     static func placeInOrder(_ ordered: [PlacedBlock]) -> [String: GridOrigin] {
         var fixed: [PlacedBlock] = []
-        for var block in ordered {
-            // 终止性：每次迭代 originRow 严格递增，超过当前最深占用行后
-            // 不可能再与任何已固定块重叠，必然退出。
-            while fixed.contains(where: { Self.rectsOverlap(block, $0) }) {
-                block.originRow += 1
-            }
-            fixed.append(block)
+        fixed.reserveCapacity(ordered.count)
+        for block in ordered {
+            var placed = block
+            placed.originRow = firstFreeRow(for: block, among: fixed)
+            fixed.append(placed)
         }
 
         var result: [String: GridOrigin] = [:]
+        result.reserveCapacity(fixed.count)
         for placement in fixed {
             result[placement.placementID] = GridOrigin(column: placement.originColumn, row: placement.originRow)
         }
         return result
+    }
+
+    /// 首个与 `fixed` 中已固定块都不重叠的行（≥ block.originRow，纯函数）。
+    /// 语义与「逐行 +1 直到不重叠」完全一致，复杂度 O(相交块数 × log)。
+    private static func firstFreeRow(for block: PlacedBlock, among fixed: [PlacedBlock]) -> Int {
+        let maxHeight = block.heightRows
+        // 禁放区间（闭区间）：与被安放块列区间相交的已固定块占掉的行。
+        var forbidden: [(lo: Int, hi: Int)] = []
+        forbidden.reserveCapacity(fixed.count)
+        for other in fixed where other.originColumn < block.originColumn + block.widthColumns
+            && block.originColumn < other.originColumn + other.widthColumns {
+            let lo = other.originRow - maxHeight + 1
+            let hi = other.originRow + other.heightRows - 1
+            if hi >= block.originRow {
+                forbidden.append((lo, hi))
+            }
+        }
+        guard !forbidden.isEmpty else { return block.originRow }
+        forbidden.sort { $0.lo < $1.lo }
+
+        var row = block.originRow
+        for interval in forbidden {
+            if interval.lo > row { break }
+            if interval.hi >= row {
+                row = interval.hi + 1
+            }
+        }
+        return row
     }
 
     /// 把推挤结果写回模型（逐个按合法列区间 clamp，左侧可为负——左扩）。

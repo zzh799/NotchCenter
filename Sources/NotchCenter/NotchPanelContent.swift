@@ -2,6 +2,33 @@ import AppKit
 import NotchCenterKit
 import SwiftUI
 
+// MARK: - 块视图复用键
+
+/// `makeView` 可观察输入的完整快照：逐项相等 ⟺ 重新调 `makeView` 必然产出
+/// 等价的视图值。字段清单按 `BlockContext` 反推——`pluginID/blockID/placementID/
+/// stateStore/hostController/layoutInfo`，其中 layoutInfo 的每个字段（region、
+/// frame、origin/跨度、isEditing、slotIndex、isPreview）插件都可能读
+/// （Notes 读 originRow/heightRows/isPreview，Pomodoro/Scratchpad/Caffeinate 读
+/// frame.size）。stateStore 与 hostController 都挂在 entry 上，经
+/// `ObjectIdentifier(entry)` 覆盖（插件重载会换 entry 实例 → 强制重建）。
+/// （模块内可见：控制器存储缓存字典需要这个类型。）
+struct BlockViewCacheKey: Equatable {
+    var pluginID: String
+    var blockID: String
+    var placementID: String
+    var entryID: ObjectIdentifier
+    var region: BlockRegion
+    var frame: CGRect
+    var originColumn: Int?
+    var originRow: Int?
+    var widthColumns: Int?
+    var heightRows: Int?
+    var isEditing: Bool
+    var compactSlotIndex: Int?
+    var isPreview: Bool
+    var hasSettings: Bool
+}
+
 // MARK: - HostController 编辑模式（文档 §4.5）
 
 extension NotchPanelController {
@@ -224,7 +251,10 @@ extension NotchPanelController {
     }
 
     private func buildCompactElements(layout: NotchLayout) -> [CompactElement] {
-        (0..<compactIconCount).map { index in
+        var elements: [CompactElement] = []
+        elements.reserveCapacity(compactIconCount)
+        var cache: [Int: (key: BlockViewCacheKey, view: AnyView)] = [:]
+        for index in 0..<compactIconCount {
             let frame = compactSlotFrame(index: index, layout: layout, slotCount: compactIconCount)
             guard let reference = layoutEngine.compactSlot(at: index),
                   let entry = pluginManager.entry(for: reference.pluginID),
@@ -232,14 +262,15 @@ extension NotchPanelController {
                   let block = pluginManager.block(pluginID: reference.pluginID, blockID: reference.blockID),
                   block.kind == .compact,
                   let store = entry.stateStore else {
-                return CompactElement(
+                elements.append(CompactElement(
                     slotIndex: index,
                     reference: nil,
                     block: nil,
                     view: nil,
                     frame: frame,
                     hasSettings: false
-                )
+                ))
+                continue
             }
             let context = BlockContext(
                 pluginID: reference.pluginID,
@@ -255,16 +286,43 @@ extension NotchPanelController {
                     compactSlotIndex: index
                 )
             )
-            return CompactElement(
+            let hasSettings = block.instanceSettingsView != nil
+                || entry.instance?.settingsView != nil
+            let key = BlockViewCacheKey(
+                pluginID: reference.pluginID,
+                blockID: reference.blockID,
+                placementID: reference.placementID,
+                entryID: ObjectIdentifier(entry),
+                region: .compact,
+                frame: frame,
+                originColumn: nil,
+                originRow: nil,
+                widthColumns: nil,
+                heightRows: nil,
+                isEditing: isEditing,
+                compactSlotIndex: index,
+                isPreview: false,
+                hasSettings: hasSettings
+            )
+            // 键逐项相等 → makeView 必然产出等价视图值，复用上一次的结果。
+            let view: AnyView
+            if let old = compactViewCache[index], old.key == key {
+                view = old.view
+            } else {
+                view = block.makeView(context)
+            }
+            cache[index] = (key, view)
+            elements.append(CompactElement(
                 slotIndex: index,
                 reference: reference,
                 block: block,
-                view: block.makeView(context),
+                view: view,
                 frame: frame,
-                hasSettings: block.instanceSettingsView != nil
-                    || entry.instance?.settingsView != nil
-            )
+                hasSettings: hasSettings
+            ))
         }
+        compactViewCache = cache
+        return elements
     }
 
     /// 构建某页的抽屉块元素；`isPreview` 原样透传给插件（契约见 `BlockLayoutInfo.isPreview`）。
@@ -273,13 +331,16 @@ extension NotchPanelController {
         isPreview: Bool = false
     ) -> [DrawerElement] {
         let targetPage = page ?? uiState.drawerActivePage
-        return layoutEngine.drawerBlocks(onPage: targetPage).compactMap { placement in
+        var elements: [DrawerElement] = []
+        elements.reserveCapacity(layoutEngine.drawerBlocks(onPage: targetPage).count)
+        var cache: [String: (key: BlockViewCacheKey, view: AnyView)] = [:]
+        for placement in layoutEngine.drawerBlocks(onPage: targetPage) {
             guard let entry = pluginManager.entry(for: placement.pluginID),
                   entry.isEnabled,
                   let block = pluginManager.block(pluginID: placement.pluginID, blockID: placement.blockID),
                   block.kind == .drawer,
                   let store = entry.stateStore else {
-                return nil
+                continue
             }
             let frame = layoutEngine.frame(for: placement)
             let currentSpan = GridSpan(columns: placement.widthColumns, rows: placement.heightRows)
@@ -302,18 +363,61 @@ extension NotchPanelController {
                     isPreview: isPreview
                 )
             )
-            return DrawerElement(
+            let hasSettings = block.instanceSettingsView != nil
+                || entry.instance?.settingsView != nil
+            let key = BlockViewCacheKey(
+                pluginID: placement.pluginID,
+                blockID: placement.blockID,
+                placementID: placement.placementID,
+                entryID: ObjectIdentifier(entry),
+                region: .drawer,
+                frame: frame,
+                originColumn: placement.originColumn,
+                originRow: placement.originRow,
+                widthColumns: placement.widthColumns,
+                heightRows: placement.heightRows,
+                isEditing: isEditing,
+                compactSlotIndex: nil,
+                isPreview: isPreview,
+                hasSettings: hasSettings
+            )
+            // 键逐项相等 → 复用上一次的视图值（切页往返、预览层重复构建等
+            // 场景不再反复重挂插件视图；placementID 全局唯一，跨页不会误配）。
+            let view: AnyView
+            if let old = drawerViewCache[placement.placementID], old.key == key {
+                view = old.view
+            } else {
+                view = block.makeView(context)
+            }
+            cache[placement.placementID] = (key, view)
+            elements.append(DrawerElement(
                 placement: placement,
-                view: block.makeView(context),
+                view: view,
                 supportedSpans: block.supportedSpans.sorted { lhs, rhs in
                     lhs.columns == rhs.columns ? lhs.rows < rhs.rows : lhs.columns < rhs.columns
                 },
                 currentSpan: currentSpan,
                 scrollUsage: block.scrollUsage,
-                hasSettings: block.instanceSettingsView != nil
-                    || entry.instance?.settingsView != nil
-            )
+                hasSettings: hasSettings
+            ))
         }
+        // 提交布局（非预览）构建后更新缓存：与旧缓存**并集**保留——切页往返时
+        // 另一页的复用键不被本次页挤掉，往返复用才成立；被删除的 placement
+        // （UUID 全局唯一，无误配风险）按现存集合修剪出表。预览副本的键含
+        // isPreview 不会与真实例互配，且不回写缓存（否则会把激活页真实例的
+        // 键挤掉，落位重建退回全量 makeView）。
+        if !isPreview {
+            var merged = drawerViewCache
+            let alive = Set(layoutEngine.drawerBlocks.map(\.placementID))
+            for placementID in merged.keys where !alive.contains(placementID) {
+                merged.removeValue(forKey: placementID)
+            }
+            for (placementID, entry) in cache {
+                merged[placementID] = entry
+            }
+            drawerViewCache = merged
+        }
+        return elements
     }
 
     /// 槽位矩形（窗口内容坐标，左上原点）；与视图共享同一 strip 布局。
@@ -375,9 +479,9 @@ extension NotchPanelController {
             },
             onTogglePin: { [weak self] in
                 guard let self else { return }
+                // 只翻 @Published：顶栏钉住图标与收起守卫（DrawerStayConditions）
+                // 都直接读 uiState.isPinned，无需全量重建块视图。
                 self.isPinned.toggle()
-                // 立即重建：顶部按钮（钉住图标）与实际状态保持一致。
-                self.rebuildContent()
                 if !self.isPinned, !self.isEditing {
                     self.handleMouseLocation(NSEvent.mouseLocation)
                 }
