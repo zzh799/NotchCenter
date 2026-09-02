@@ -1,0 +1,56 @@
+{
+  "skill": "doc-driven-dev",
+  "skill_version": "3.0.0",
+  "created_at": "2026-09-02T23:19:00+08:00",
+  "probe": {
+    "agent_frameworks": ["generic"],
+    "existing_docs": "partial",
+    "tech_stack": "swift,sh",
+    "is_monorepo": false,
+    "hook_manager": "raw",
+    "ci_target": "github-actions",
+    "notes": {
+      "entries": "git 名 Agents.md(13093 字符,无治理标记);无 CLAUDE.md/GEMINI.md/.agents/.cursor/.claude",
+      "docs": "11 个 md:架构文档/DESIGN/2 插件指南/docs/agents 6 领域子文档 + assets;均无 Changelog 段;2 文件 6 处无语言标注围栏",
+      "gates": "release.yml 无文档 job;无 git hook;无 .rgignore;无 CONTRIBUTING.md",
+      "user_decisions": [
+        "入口瘦身至预算内(同步瘦身,用户确认)",
+        "git 跟踪名统一为 AGENTS.md(用户确认)",
+        "Scripts/ 目录统一为 scripts/(避免 Linux CI 大小写冲突)"
+      ]
+    }
+  },
+  "artifacts": [
+    { "path": "AGENTS.md", "action": "created", "marker": true, "note": "瘦身重写为常驻指令入口(1785 chars ≤ 1900)" },
+    { "path": "docs/agents/宿主开发约定.md", "action": "created", "marker": false, "note": "承载原 AGENTS.md 的代码地图/命令/宿主红线/上手路径" },
+    { "path": "scripts/build.sh", "action": "merged", "marker": false, "note": "目录名 Scripts/ → scripts/ 统一,引用同步" },
+    { "path": "scripts/verify-md-links.sh", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "scripts/verify-md-wrap.sh", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "scripts/verify-agent-note-format.sh", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "scripts/doc-budget-check.sh", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "scripts/verify-code-blocks.sh", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "scripts/verify-terminology.sh", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "scripts/verify-scaffold-manifest.sh", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "scripts/run-doc-checks.sh", "action": "created", "marker": false, "note": "聚合门禁入口(钩子/CI 唯一调用点)" },
+    { "path": "doc-budgets.manifest.json", "action": "created", "marker": false, "note": "schema_version=2;code_block_langs=swift/bash/text/xml;exclude Vendor/**" },
+    { "path": "docs/TERMINOLOGY.md", "action": "created", "marker": true, "note": "术语纪律外置;terms 空,待团队增补" },
+    { "path": "docs/agent-notes/implemented/2026-09-02-doc-driven-dev-governance.md", "action": "created", "marker": false, "note": "首条决策记录:治理落地快照;proposed/rejected/archive 与 postmortem 为空目录(物理存在,未 git 跟踪)" },
+    { "path": "docs/templates/agent-note.md", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "docs/templates/postmortem.md", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "docs/templates/api-changelog.md", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "docs/templates/security-advisory.md", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "docs/templates/benchmarks-result.md", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "docs/templates/TERMINOLOGY.md.tpl", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "docs/templates/doc-budgets.manifest.json.tpl", "action": "created", "marker": false, "note": "复制自技能包" },
+    { "path": "docs/templates/AGENTS.md.root.tpl", "action": "created", "marker": false, "note": "母版存档(保留 .tpl,不参与校验)" },
+    { "path": "docs/templates/AGENTS.md.package.tpl", "action": "created", "marker": false, "note": "母版存档(monorepo 子包用,当前未启用)" },
+    { "path": ".doc-driven-dev/manifest.json", "action": "created", "marker": false, "note": "本落地记录" },
+    { "path": ".github/workflows/docs.yml", "action": "created", "marker": true, "note": "PR/推送文档门禁(Phase 3)" },
+    { "path": ".git/hooks/pre-commit", "action": "created", "marker": true, "note": "raw hook 追加门禁(Phase 3)" },
+    { "path": "README.md", "action": "merged", "marker": false, "note": "%20 链接去编码 + 图片路径修正 + Scripts/→scripts/" },
+    { "path": "docs/NotchCenter 架构设计文档.md", "action": "merged", "marker": false, "note": "结构树 Scripts/→scripts/" },
+    { "path": "docs/插件开发指南.md", "action": "merged", "marker": false, "note": "Scripts/→scripts/ + 无语言围栏标注" },
+    { "path": "docs/agents/测试指南.md", "action": "merged", "marker": false, "note": "无语言围栏标注" },
+    { "path": "docs/agents/抽屉分页与滑动切页.md", "action": "merged", "marker": false, "note": "存量格式修复(如命中)" }
+  ]
+}

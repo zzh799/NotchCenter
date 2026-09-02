@@ -1,0 +1,13 @@
+# managed:doc-driven-dev v3 — PR 文档门禁
+name: docs-gate
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash scripts/run-doc-checks.sh
+        shell: bash
