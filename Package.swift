@@ -123,7 +123,7 @@ var products: [Product] = [
     .executable(name: "NotchCenter", targets: ["NotchCenter"])
 ]
 // 官方插件动态库产品，由上方 Plugin.plist 扫描生成；
-// 构建后由 Scripts/build.sh 组装为独立 .bundle（内置路径 Contents/PlugIns）。
+// 构建后由 scripts/build.sh 组装为独立 .bundle（内置路径 Contents/PlugIns）。
 for name in pluginNames {
     products.append(.library(name: name, type: .dynamic, targets: [name]))
 }
