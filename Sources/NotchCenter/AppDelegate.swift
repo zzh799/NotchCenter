@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController = NotchPanelController()
         panelController?.showDocked()
         maybeRunSmokeTest()
+        maybeRunPlacementProbe()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -63,6 +64,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             NSApp.terminate(nil)
+        }
+    }
+
+    // MARK: - 摆位探针（开发期诊断，非发布路径）
+
+    /// 切页让位诊断（`NOTCHCENTER_PLACEMENT_PROBE=1`）：真实布局 + 真实屏幕上
+    /// 复现「设置打开 → 切到自然高度不同的页」，转储三份几何快照定位共享
+    /// 路径哪一环空转。快照 A = 打开设置后；B = selectDrawerPage 走完真实
+    /// 链路后；C = 手动补调一次 updateSettingsPlacement 后。跑完自动退出。
+    private func maybeRunPlacementProbe() {
+        guard ProcessInfo.processInfo.environment["NOTCHCENTER_PLACEMENT_PROBE"] == "1",
+              let panelController else { return }
+
+        func dump(_ tag: String) {
+            let c = panelController
+            let pair = c.activePair ?? c.pairs.first
+            print("=== 快照 \(tag) ===")
+            print("activePage=\(c.uiState.drawerActivePage) pages=\(c.layoutEngine.drawerPages) expanded=\(c.isDrawerExpanded()) settingsPresented=\(c.isSettingsPresented)")
+            for page in c.layoutEngine.drawerPages {
+                let size = c.layoutEngine.drawerWindowSize(page: page)
+                print("  page \(page): natural \(size)")
+            }
+            if let pair {
+                print("  screen frame=\(pair.screenFrame) visible=\(pair.screen.visibleFrame) compactH=\(pair.layout.compactHeight)")
+                print("  maxDrawerHeight=\(c.maxDrawerHeight(for: pair)) bandH=\(c.settingsWindowBandHeight)")
+            }
+            print("  settingsPlacement=\(String(describing: c.settingsPlacement))")
+            print("  drawerWindowSize(ui)=\(c.uiState.drawerWindowSize)")
+            if let window = c.settingsWindowController?.window {
+                print("  settingsWindow frame=\(window.frame) visible=\(window.isVisible)")
+            } else {
+                print("  settingsWindow=nil")
+            }
+        }
+
+        print("=== 摆位探针启动 ===")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            print("--- showSettings ---")
+            panelController.showSettings()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                dump("A:打开设置后")
+                let pages = panelController.layoutEngine.drawerPages
+                let active = panelController.uiState.drawerActivePage
+                let target = pages
+                    .filter { $0 != active }
+                    .max {
+                        panelController.layoutEngine.drawerWindowSize(page: $0).height
+                            < panelController.layoutEngine.drawerWindowSize(page: $1).height
+                    }
+                guard let target else {
+                    print("!!! 没有第二个页面可切，探针结束")
+                    NSApp.terminate(nil)
+                    return
+                }
+                print("--- selectDrawerPage(\(target)) ---")
+                panelController.selectDrawerPage(target)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                    dump("B:真实切页链路后")
+                    let changed = panelController.updateSettingsPlacement()
+                    print("  手动 updateSettingsPlacement() 返回 changed=\(changed)")
+                    dump("C:手动补裁后")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NSApp.terminate(nil)
+                    }
+                }
+            }
         }
     }
 }

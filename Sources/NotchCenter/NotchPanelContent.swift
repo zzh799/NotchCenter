@@ -536,7 +536,19 @@ extension NotchPanelController {
               page != uiState.drawerActivePage,
               layoutEngine.drawerPages.contains(page) else { return }
         uiState.drawerActivePage = page
-        rebuildContent(animated: true)
+        rebuildContentAfterPageChange()
+    }
+
+    /// 切页/加页后的内容重建：抽屉高度随页变化，设置面板摆位必须**先重裁**
+    /// 再重建（限高读摆位，见 `drawerWindowSize`），新页更高时面板顺带让开。
+    /// 与 `refreshAfterLayoutChange` 的区别：不做抽屉窗口 `setFrame`——切页
+    /// 不改窗口 frame，省掉满高窗口的重绘。
+    func rebuildContentAfterPageChange(animated: Bool = true) {
+        let placementChanged = updateSettingsPlacement()
+        rebuildContent(animated: animated)
+        if placementChanged {
+            positionSettingsWindow(animated: animated)
+        }
     }
 
     /// 滑动切页是否可用：`canSwitchDrawerPage` 之外再排除拖拽/缩放预览进行中
@@ -859,7 +871,7 @@ extension NotchPanelController {
         uiState.drawerSwipe = landed
         DispatchQueue.main.async { [weak self] in
             // 收尾清会话：预览层已在落位帧撤除，这里的 animated 清理无可见层。
-            self?.rebuildContent(animated: true)
+            self?.rebuildContentAfterPageChange()
         }
     }
 
@@ -868,7 +880,7 @@ extension NotchPanelController {
         guard layoutEngine.canAddDrawerPage() else { return }
         let page = layoutEngine.addDrawerPage(side)
         uiState.drawerActivePage = page
-        rebuildContent(animated: true)
+        rebuildContentAfterPageChange()
     }
 
     /// 拖动排序：把页面移到显示序列的目标槽位。只改次序，块上的 `page` 不动。

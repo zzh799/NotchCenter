@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 
 // MARK: - 设置面板（文档 §6.1 / §4.8）
@@ -6,12 +7,15 @@ import SwiftUI
 /// 设置面板窗口：带侧边栏的多页结构（通用 / 组件 / 布局 / 插件 / 调试）。
 ///
 /// 与抽屉的关系：
-/// - 面板**停靠屏幕底部**（`positionSettingsWindow()` 按 visibleFrame 底缘
-///   定位、屏幕水平居中），不随抽屉尺寸变化移动；
+/// - 面板**优先贴抽屉下方**——抽屉下方放得下（含间距、且底缘仍在
+///   visibleFrame 内）就落在抽屉可见底缘之下，放不下才退回屏幕底部停靠
+///   （`updateSettingsPlacement()` 裁定、`positionSettingsWindow()` 落位，
+///   屏幕水平居中）。布局提交（增删块/改列数）会重裁一次，不逐帧跟随
+///   抽屉 spring；
 /// - 面板**置顶**（level 高于抽屉），跨 Space、不随其他应用隐藏；
 /// - 面板可见期间抽屉**常驻展开**且**限高**（`isSettingsPresented` 时
-///   `drawerWindowSize(for:)` 保证抽屉可见底缘不与面板重叠），改设置即可在
-///   抽屉上看到实时效果，也可直接从「组件」页拖块到抽屉/快速区。
+///   `drawerWindowSize(for:)` 按摆位顶缘保证抽屉可见底缘不与面板重叠），
+///   改设置即可在抽屉上看到实时效果，也可直接从「组件」页拖块到抽屉/快速区。
 /// 当前选中的设置页（`@State` 无法从窗口外部驱动，探针/外部切换走这里）。
 @MainActor
 final class SettingsSelection: ObservableObject {
@@ -116,7 +120,8 @@ enum SettingsWindowMetrics {
     static let windowFrameHeight: CGFloat = height + titleBarHeight
     /// 停靠屏幕底部时与 visibleFrame 底缘的间距（visibleFrame 已避开 Dock）。
     static let bottomInset: CGFloat = 12
-    /// 抽屉可见底缘与设置页顶缘的最小间距（限高用）。
+    /// 设置页顶缘与抽屉可见底缘的间距：两种摆位共用——贴抽屉下方时是面板
+    /// 与抽屉的间隙，屏幕底部停靠时是抽屉限高让出的余量。
     static let gapFromSettings: CGFloat = 8
 }
 
@@ -276,9 +281,9 @@ struct SettingsRootView: View {
 // MARK: - 控制器入口
 
 extension NotchPanelController {
-    /// 打开设置面板：抽屉常驻展开（不自动收起）且限高让位于底部停靠的
-    /// 面板；面板停靠屏幕底部并置顶。面板已可见时再触发一次即关闭
-    /// （抽屉顶栏齿轮 = 开关）。
+    /// 打开设置面板：抽屉常驻展开（不自动收起）且限高让位于面板；面板
+    /// 优先贴抽屉下方、放不下则停靠屏幕底部，并置顶。面板已可见时再触发
+    /// 一次即关闭（抽屉顶栏齿轮 = 开关）。
     ///
     /// 编辑态打开 → 直入「组件」页且抽屉保持编辑态（组件页拖块落位依赖
     /// 编辑态）；非编辑态保持现状（沿用上次停留页）。显式传 `page` 可指定
@@ -305,6 +310,9 @@ extension NotchPanelController {
         if isEditing, targetPage != .components {
             stopEditMode()
         }
+        // 摆位必须**先于**展开裁定：抽屉限高读摆位，展开尺寸里就要带上
+        // 让位（弹簧直接收到让位后的高度，不先弹满再回缩）。
+        updateSettingsPlacement()
         if !isExpanded {
             expand(animated: true, activate: false)
         } else {
@@ -312,13 +320,19 @@ extension NotchPanelController {
             // 抽屉弹簧收到让位后的高度。
             refreshAfterLayoutChange(animated: true)
         }
+        // 展开把抽屉搬到了另一块屏（跨屏点击）：摆位按最终屏重裁并重摆。
+        if updateSettingsPlacement() {
+            refreshAfterLayoutChange(animated: true)
+        }
+        // 落位先于 showWindow：窗口不可见时走无动画分支，且首次打开不会把
+        // 窗口初始 frame（原点在屏幕左下）误当"用户拖动后的位置"保留 X。
+        positionSettingsWindow()
         controller.showSettings(page: targetPage)
         // 显式驱动组件页联动：onChange(of: selection.page) 只在视图挂载并
         // 求值后才触发，首次打开（rootView 未求值）或页值未变时不可靠；
         // setComponentsPageActive 自带幂等 guard，与 onChange 双触发也只
         // 生效一次。
         setComponentsPageActive(targetPage == .components)
-        positionSettingsWindow()
     }
 
     /// 关闭设置面板（齿轮按钮 / 抽屉关闭按钮 / 窗口关闭）。
@@ -326,6 +340,7 @@ extension NotchPanelController {
         isSettingsPresented = false
         // 面板关闭即离开组件页：先退出其联动的编辑模式，再按常规逻辑收起。
         setComponentsPageActive(false)
+        settingsPlacement = nil
         settingsWindowController?.close()
         releaseSettingsDrawerHeightCap()
         // 常驻结束：未钉住时按当前鼠标位置决定是否收起抽屉。
@@ -339,6 +354,7 @@ extension NotchPanelController {
         guard isSettingsPresented else { return }
         isSettingsPresented = false
         setComponentsPageActive(false)
+        settingsPlacement = nil
         releaseSettingsDrawerHeightCap()
         if !isPinned {
             handleMouseLocation(NSEvent.mouseLocation)
@@ -351,20 +367,48 @@ extension NotchPanelController {
         refreshAfterLayoutChange(animated: true)
     }
 
-    /// 把设置面板停靠到屏幕底部：visibleFrame 底缘（已避开 Dock）+ 间距，
-    /// 屏幕中线水平居中。位置与抽屉无关——抽屉高度变化不再移动面板，
-    /// 重叠由打开期间的抽屉限高保证（见 `drawerWindowSize(for:)`）。
-    func positionSettingsWindow() {
+    /// 按当前摆位摆放设置面板：优先贴抽屉可见底缘之下（下方放得下），
+    /// 否则停靠 visibleFrame 底缘（已避开 Dock）+ 间距。
+    ///
+    /// **只改 Y 轴位置**：窗口已可见且仍在锚定屏上时保留当前横向位置
+    /// （用户可能手动拖动过面板，切页/布局提交的重摆不得横向归位）；
+    /// 首次定位（窗口不可见）或跨屏（窗口不在锚定屏上，避免"新屏的 Y +
+    /// 旧屏的 X"错位）时水平回屏幕中线，与抽屉同轴对齐。
+    ///
+    /// `animated` 只用于布局提交后的一次性平移（不逐帧跟随抽屉 spring）；
+    /// 首次定位窗口尚未可见，走无动画分支。
+    func positionSettingsWindow(animated: Bool = false, keepX: Bool = true) {
         guard let window = settingsWindowController?.window else { return }
         guard let pair = activePair ?? pairs.first else { return }
-        let originY = pair.screen.visibleFrame.minY + SettingsWindowMetrics.bottomInset
-        let originX = pair.screenFrame.midX - window.frame.width / 2
-        window.setFrameOrigin(NSPoint(x: round(originX), y: round(originY)))
+        let placement = currentSettingsPlacement(for: pair)
+        let centeredX = round(pair.screenFrame.midX - window.frame.width / 2)
+        let onAnchorScreen = window.frame.midX >= pair.screenFrame.minX
+            && window.frame.midX <= pair.screenFrame.maxX
+        let preserveX = keepX && window.isVisible && onAnchorScreen
+        let origin = NSPoint(
+            x: preserveX ? window.frame.minX : centeredX,
+            y: round(placement.frameOriginY(bandHeight: window.frame.height))
+        )
+        guard animated, window.isVisible else {
+            window.setFrameOrigin(origin)
+            return
+        }
+        // 只平移不改尺寸：target-frame 取当前 frame 换原点。**必须经
+        // `animator().setFrame(_:display:)`**——`setFrameOrigin` 不在 NSWindow
+        // 的可动画方法之列，经 animator 代理调用会被静默吞掉（no-op），
+        // 表现为切页/布局提交后摆位已重裁、窗口却纹丝不动（探针实锤）。
+        var targetFrame = window.frame
+        targetFrame.origin = origin
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().setFrame(targetFrame, display: true)
+        }
     }
 
     /// 调试页调整设置窗口尺寸：内容区按 store 当前值（钳制进区间）重设，
-    /// 重新停靠底部，并防抖重算抽屉限高（高度变化改让位带宽；全量重建
-    /// 不能逐滑杆 tick 执行，与网格指标变化同用 100ms 停顿合并）。
+    /// 按新高度重裁摆位并重摆，防抖重算抽屉限高（高度变化改让位带宽；
+    /// 全量重建不能逐滑杆 tick 执行，与网格指标变化同用 100ms 停顿合并）。
     func applySettingsWindowSize() {
         guard let window = settingsWindowController?.window else { return }
         let store = settingsStore
@@ -378,10 +422,12 @@ extension NotchPanelController {
         )
         if width != store.settingsWindowWidth { store.settingsWindowWidth = width }
         if height != store.settingsWindowHeight { store.settingsWindowHeight = height }
-        // setContentSize 保持顶缘不动（origin 随之下移/上移），底部锚定的
-        // origin 必须重摆。
+        // setContentSize 保持顶缘不动（origin 随之下移/上移），锚定的
+        // origin 必须重摆；窗口高度变了，摆位（下方是否还放得下）也要重裁。
+        // 宽度可能变化，横向不做保留、回屏幕中线（keepX: false）。
         window.setContentSize(NSSize(width: width, height: height))
-        positionSettingsWindow()
+        updateSettingsPlacement()
+        positionSettingsWindow(keepX: false)
         settingsResizeTask?.cancel()
         settingsResizeTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 100 * NSEC_PER_MSEC)

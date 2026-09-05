@@ -263,48 +263,180 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(frame.maxY, screenFrame.maxY)
     }
 
-    // MARK: 设置面板底部停靠 → 抽屉限高
+    // MARK: 设置面板摆位（抽屉下方优先 / 屏幕底部兜底）→ 抽屉限高
+
+    /// 982 高屏幕（无 Dock）、刘海 32；窗口 frame 高度 = 内容 425 + 28 titlebar。
+    private enum SettingsFixture {
+        static let screenMaxY: CGFloat = 982
+        static let noDockMinY: CGFloat = 0
+        static let dockMinY: CGFloat = 70
+        static let compactHeight: CGFloat = 32
+        static let bandHeight: CGFloat = SettingsWindowMetrics.windowFrameHeight
+
+        /// 抽屉可见底缘：顶缘钉死屏幕顶，往下让出紧凑带与内容高。
+        static func drawerBottomY(contentHeight: CGFloat) -> CGFloat {
+            NotchGeometry.drawerVisibleBottomY(
+                screenMaxY: screenMaxY,
+                compactHeight: compactHeight,
+                drawerContentHeight: contentHeight
+            )
+        }
+    }
 
     func testDockedSettingsTopYIncludesInsetAndBandHeight() {
         // 停靠顶缘 = visibleFrame 底缘 + 底部间距 + 窗口 frame 高度
         // （内容高度 + 28 透明 titlebar，调试页改高后由调用方现算传入）。
-        let topY = NotchGeometry.dockedSettingsTopY(visibleMinY: 70, bandHeight: 588)
-        XCTAssertEqual(topY, 70 + SettingsWindowMetrics.bottomInset + 588)
+        let bandHeight = SettingsFixture.bandHeight
+        let topY = NotchGeometry.dockedSettingsTopY(visibleMinY: 70, bandHeight: bandHeight)
+        XCTAssertEqual(topY, 70 + SettingsWindowMetrics.bottomInset + bandHeight)
         XCTAssertEqual(
             SettingsWindowMetrics.windowFrameHeight,
             SettingsWindowMetrics.height + SettingsWindowMetrics.titleBarHeight
         )
     }
 
-    func testSettingsCappedDrawerHeightKeepsGapAboveSettingsPanel() {
-        // 982 高屏幕（visibleMinY = 0）、刘海 32、默认窗口带宽 588：顶缘 982，
-        // 设置顶缘 12 + 588 = 600，间距 8 → 抽屉可见内容高度上限 = 982 - 600 - 8 - 32。
-        let capped = NotchGeometry.settingsCappedDrawerHeight(
-            screenMaxY: 982,
-            visibleMinY: 0,
-            bandHeight: SettingsWindowMetrics.windowFrameHeight,
-            compactHeight: 32
+    func testSettingsPlacementPrefersBelowDrawerWhenSpaceSuffices() {
+        // 抽屉内容 200：底缘 982 - 32 - 200 = 750，面板顶缘贴其下 8pt →
+        // 底缘 742 - 453 = 289，仍在 visibleFrame（0）底缘间距之上 → 贴抽屉。
+        let placement = NotchGeometry.settingsPlacement(
+            visibleMinY: SettingsFixture.noDockMinY,
+            drawerBottomY: SettingsFixture.drawerBottomY(contentHeight: 200),
+            bandHeight: SettingsFixture.bandHeight
         )
-        XCTAssertEqual(capped, 982 - 600 - SettingsWindowMetrics.gapFromSettings - 32)
-        XCTAssertEqual(capped, 342)
+        XCTAssertEqual(placement.mode, .belowDrawer)
+        XCTAssertEqual(placement.frameTopY, 750 - SettingsWindowMetrics.gapFromSettings)
+        XCTAssertGreaterThan(
+            placement.frameOriginY(bandHeight: SettingsFixture.bandHeight),
+            SettingsFixture.noDockMinY + SettingsWindowMetrics.bottomInset
+        )
     }
 
-    func testSettingsCappedDrawerHeightAccountsForDockAndShrinksOnShortScreens() {
-        // 有 Dock 的屏幕：visibleMinY 抬高设置面板，限高随之收紧。
-        let docked = NotchGeometry.settingsCappedDrawerHeight(
-            screenMaxY: 982,
-            visibleMinY: 70,
-            bandHeight: SettingsWindowMetrics.windowFrameHeight,
-            compactHeight: 32
+    func testSettingsPlacementFallsBackToScreenBottomWhenSpaceIsTight() {
+        // 抽屉内容 600：底缘 350，面板塞不进 350 与屏幕底之间 → 退回底部停靠
+        // （抽屉再由限高让位，见 `testSettingsCappedDrawerHeight...`）。
+        let placement = NotchGeometry.settingsPlacement(
+            visibleMinY: SettingsFixture.noDockMinY,
+            drawerBottomY: SettingsFixture.drawerBottomY(contentHeight: 600),
+            bandHeight: SettingsFixture.bandHeight
         )
-        XCTAssertEqual(docked, 342 - 70)
+        XCTAssertEqual(placement.mode, .screenBottom)
+        XCTAssertEqual(
+            placement.frameTopY,
+            NotchGeometry.dockedSettingsTopY(
+                visibleMinY: SettingsFixture.noDockMinY,
+                bandHeight: SettingsFixture.bandHeight
+            )
+        )
+    }
+
+    func testSettingsPlacementAccountsForDock() {
+        // 同一抽屉高度（内容 400）在有 Dock 的屏上可贴抽屉，Dock 抬高
+        // visibleFrame 底缘后仍以「窗口完整落在抽屉下方」为准。
+        let noDock = NotchGeometry.settingsPlacement(
+            visibleMinY: SettingsFixture.noDockMinY,
+            drawerBottomY: SettingsFixture.drawerBottomY(contentHeight: 400),
+            bandHeight: SettingsFixture.bandHeight
+        )
+        XCTAssertEqual(noDock.mode, .belowDrawer)
+
+        // 抽屉几乎占满屏幕（内容 900）：两种屏都只能退到底部，Dock 让顶缘更高。
+        let tallDrawerBottom = SettingsFixture.drawerBottomY(contentHeight: 900)
+        let withDock = NotchGeometry.settingsPlacement(
+            visibleMinY: SettingsFixture.dockMinY,
+            drawerBottomY: tallDrawerBottom,
+            bandHeight: SettingsFixture.bandHeight
+        )
+        XCTAssertEqual(withDock.mode, .screenBottom)
+        XCTAssertEqual(
+            withDock.frameTopY,
+            NotchGeometry.dockedSettingsTopY(
+                visibleMinY: SettingsFixture.dockMinY,
+                bandHeight: SettingsFixture.bandHeight
+            )
+        )
+    }
+
+    func testSettingsCappedDrawerHeightIsIdentityWhenDockedBelowDrawer() {
+        // 贴抽屉下方时「限高」必须等于裁定时的抽屉高度（空操作）：抽屉在
+        // 设置页打开期间长高应当触发重裁摆位，而不是被悄悄截断。
+        let contentHeight: CGFloat = 200
+        let placement = NotchGeometry.settingsPlacement(
+            visibleMinY: SettingsFixture.noDockMinY,
+            drawerBottomY: SettingsFixture.drawerBottomY(contentHeight: contentHeight),
+            bandHeight: SettingsFixture.bandHeight
+        )
+        let capped = NotchGeometry.settingsCappedDrawerHeight(
+            screenMaxY: SettingsFixture.screenMaxY,
+            settingsTopY: placement.frameTopY,
+            compactHeight: SettingsFixture.compactHeight
+        )
+        XCTAssertEqual(capped, contentHeight, accuracy: 0.001)
+    }
+
+    func testSettingsCappedDrawerHeightKeepsGapAboveSettingsPanel() {
+        // 底部停靠（抽屉放不下）：抽屉可见底缘 ≥ 面板顶缘 + 间距。
+        let dockedTopY = NotchGeometry.dockedSettingsTopY(
+            visibleMinY: SettingsFixture.noDockMinY,
+            bandHeight: SettingsFixture.bandHeight
+        )
+        let capped = NotchGeometry.settingsCappedDrawerHeight(
+            screenMaxY: SettingsFixture.screenMaxY,
+            settingsTopY: dockedTopY,
+            compactHeight: SettingsFixture.compactHeight
+        )
+        XCTAssertEqual(
+            capped,
+            SettingsFixture.screenMaxY - dockedTopY
+                - SettingsWindowMetrics.gapFromSettings - SettingsFixture.compactHeight
+        )
+        // 让位后的抽屉底缘正好落在面板顶缘之上一个间距。
+        XCTAssertEqual(
+            SettingsFixture.drawerBottomY(contentHeight: capped),
+            dockedTopY + SettingsWindowMetrics.gapFromSettings,
+            accuracy: 0.001
+        )
+        // 切换摆位的临界高度：自然高度超过该上限就只能退到底部停靠。
+        let atLimit = NotchGeometry.settingsPlacement(
+            visibleMinY: SettingsFixture.noDockMinY,
+            drawerBottomY: SettingsFixture.drawerBottomY(contentHeight: capped),
+            bandHeight: SettingsFixture.bandHeight
+        )
+        XCTAssertEqual(atLimit.mode, .belowDrawer)
+        let overLimit = NotchGeometry.settingsPlacement(
+            visibleMinY: SettingsFixture.noDockMinY,
+            drawerBottomY: SettingsFixture.drawerBottomY(contentHeight: capped + 1),
+            bandHeight: SettingsFixture.bandHeight
+        )
+        XCTAssertEqual(overLimit.mode, .screenBottom)
+    }
+
+    func testSettingsCappedDrawerHeightShrinksOnShortScreens() {
+        // 有 Dock 的屏幕：visibleMinY 抬高面板顶缘，限高随之收紧。
+        let noDockTopY = NotchGeometry.dockedSettingsTopY(
+            visibleMinY: SettingsFixture.noDockMinY,
+            bandHeight: SettingsFixture.bandHeight
+        )
+        let dockTopY = NotchGeometry.dockedSettingsTopY(
+            visibleMinY: SettingsFixture.dockMinY,
+            bandHeight: SettingsFixture.bandHeight
+        )
+        let noDock = NotchGeometry.settingsCappedDrawerHeight(
+            screenMaxY: SettingsFixture.screenMaxY,
+            settingsTopY: noDockTopY,
+            compactHeight: SettingsFixture.compactHeight
+        )
+        let withDock = NotchGeometry.settingsCappedDrawerHeight(
+            screenMaxY: SettingsFixture.screenMaxY,
+            settingsTopY: dockTopY,
+            compactHeight: SettingsFixture.compactHeight
+        )
+        XCTAssertEqual(withDock, noDock - SettingsFixture.dockMinY, accuracy: 0.001)
 
         // 极端矮屏返回值 ≤ 0：调用方据此整体放弃限高（允许重叠），不得塌成 0。
         let tiny = NotchGeometry.settingsCappedDrawerHeight(
             screenMaxY: 500,
-            visibleMinY: 0,
-            bandHeight: SettingsWindowMetrics.windowFrameHeight,
-            compactHeight: 32
+            settingsTopY: noDockTopY,
+            compactHeight: SettingsFixture.compactHeight
         )
         XCTAssertLessThanOrEqual(tiny, 0)
     }

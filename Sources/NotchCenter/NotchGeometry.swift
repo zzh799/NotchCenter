@@ -327,6 +327,29 @@ extension NSScreen {
     }
 }
 
+// MARK: - 设置面板摆位
+
+/// 设置面板的垂直摆位模式（见 `NotchGeometry.settingsPlacement`）。
+enum SettingsDockMode: Equatable {
+    /// 抽屉下方：窗口顶缘贴抽屉可见底缘之下一个间距——抽屉下方放得下时
+    /// 优先，面板与抽屉上下咬合，读数视线不离刘海。
+    case belowDrawer
+    /// 屏幕底部：抽屉下方放不下，退回 visibleFrame 底缘停靠（抽屉限高让位）。
+    case screenBottom
+}
+
+/// 设置面板摆位结果（Cocoa 屏幕坐标，y 向上）。
+struct SettingsPlacement: Equatable {
+    let mode: SettingsDockMode
+    /// 设置窗口 **frame** 顶缘 Y（含透明 titlebar 的那条上边）。
+    let frameTopY: CGFloat
+
+    /// 窗口 frame 底缘 Y（AppKit origin）：顶缘下移一个窗口 frame 高度。
+    func frameOriginY(bandHeight: CGFloat) -> CGFloat {
+        frameTopY - bandHeight
+    }
+}
+
 @MainActor
 enum NotchGeometry {
     /// 紧凑区槽位参数（文档 §5.2）：槽位数**不固定**，随添加的图标动态伸缩；
@@ -401,7 +424,17 @@ enum NotchGeometry {
         )
     }
 
-    // MARK: 设置面板底部停靠
+    // MARK: 设置面板摆位
+
+    /// 抽屉可见底缘 Y（Cocoa 屏幕坐标）：抽屉顶缘钉死屏幕顶缘，可见高度
+    /// = 紧凑带 + 抽屉内容高。
+    nonisolated static func drawerVisibleBottomY(
+        screenMaxY: CGFloat,
+        compactHeight: CGFloat,
+        drawerContentHeight: CGFloat
+    ) -> CGFloat {
+        screenMaxY - compactHeight - drawerContentHeight
+    }
 
     /// 停靠屏幕底部的设置面板窗口顶缘 Y：visibleFrame 底缘（避开 Dock）
     /// + 底部间距 + 窗口 frame 高度（内容高度 + 透明 titlebar，调试页可调，
@@ -413,18 +446,43 @@ enum NotchGeometry {
         visibleMinY + SettingsWindowMetrics.bottomInset + bandHeight
     }
 
+    /// 裁定设置面板摆位：**抽屉下方空间足够就贴抽屉底缘**（窗口完整落在
+    /// 抽屉可见底缘之下一个间距、且底缘仍高于 visibleFrame 底缘安全间距），
+    /// 否则退回屏幕底部停靠（由抽屉限高让位，见
+    /// `settingsCappedDrawerHeight`）。
+    ///
+    /// 判据只用**未限高**的抽屉自然高度（`drawerBottomY`）——限高结果依赖
+    /// 摆位、摆位又依赖限高会自激（抽屉越矮越"放得下"，永远停在抽屉下方）。
+    nonisolated static func settingsPlacement(
+        visibleMinY: CGFloat,
+        drawerBottomY: CGFloat,
+        bandHeight: CGFloat
+    ) -> SettingsPlacement {
+        let belowDrawerTopY = drawerBottomY - SettingsWindowMetrics.gapFromSettings
+        let fitsBelowDrawer = belowDrawerTopY - bandHeight
+            >= visibleMinY + SettingsWindowMetrics.bottomInset
+        guard fitsBelowDrawer else {
+            return SettingsPlacement(
+                mode: .screenBottom,
+                frameTopY: dockedSettingsTopY(visibleMinY: visibleMinY, bandHeight: bandHeight)
+            )
+        }
+        return SettingsPlacement(mode: .belowDrawer, frameTopY: belowDrawerTopY)
+    }
+
     /// 设置打开期间抽屉可见内容的高度上限（不含紧凑带）：抽屉顶缘钉死
-    /// `screenMaxY`，可见底缘不得低于底部停靠的设置面板顶缘再留间距。
-    /// 极端矮屏返回值可能 ≤ 0——调用方须先与最小抽屉尺寸比较，放不开时
-    /// 整体放弃限高（允许重叠），不能把抽屉塌成 0。
+    /// `screenMaxY`，可见底缘不得低于设置面板顶缘再留间距。
+    ///
+    /// `settingsTopY` 由 `settingsPlacement` 现算——两种摆位共用同一条不变量，
+    /// 贴抽屉下方时该上限 == 裁定时的抽屉自然高度（限高为空操作，抽屉长高
+    /// 会触发重裁摆位而不是被悄悄截断）。极端矮屏返回值可能 ≤ 0——调用方须
+    /// 先与最小抽屉尺寸比较，放不开时整体放弃限高（允许重叠），不能把抽屉
+    /// 塌成 0。
     nonisolated static func settingsCappedDrawerHeight(
         screenMaxY: CGFloat,
-        visibleMinY: CGFloat,
-        bandHeight: CGFloat,
+        settingsTopY: CGFloat,
         compactHeight: CGFloat
     ) -> CGFloat {
-        screenMaxY - dockedSettingsTopY(visibleMinY: visibleMinY, bandHeight: bandHeight)
-            - SettingsWindowMetrics.gapFromSettings
-            - compactHeight
+        screenMaxY - settingsTopY - SettingsWindowMetrics.gapFromSettings - compactHeight
     }
 }
