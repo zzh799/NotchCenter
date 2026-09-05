@@ -241,4 +241,47 @@ extension NotchPanelController {
             refreshAfterEdit()
         }
     }
+
+    // MARK: 胶囊驻留切页（设置面板拖组件跨页）
+
+    /// 屏幕点命中的分页胶囊（返回页身份）：**仅**供拖拽驻留切页判定。
+    ///
+    /// 纵向命中带取整条顶栏（紧凑带之下、网格顶缘之上）——顶栏本就不收
+    /// 落点（`DrawerDropPolicy.Region.topBar`），驻留目标又是"大致指到
+    /// 某颗胶囊"，命中面宜宽。横向按 `DrawerPagePillLayout` 的定宽槽位
+    /// 数学就近取槽；胶囊行居中于顶栏中线，编辑模式顶栏左侧多一颗
+    /// "一键重排"使行心右移，由 `rowCenterOffset(isEditing:)` 补偿。
+    ///
+    /// 滑动会话期不命中：会话中条带在两页间位移，胶囊行的页身份与
+    /// 屏幕位置都会变，此时驻留切页会把会话踩断。
+    func drawerPageCapsuleHitTest(at point: NSPoint) -> Int? {
+        guard isExpanded, let pair = activePair, uiState.drawerSwipe == nil else {
+            if BlockDragCoordinator.dragProbeLogEnabled {
+                print("[drag-probe] capsuleHit early-nil: expanded=\(isExpanded) pair=\(activePair != nil) swipe=\(uiState.drawerSwipe != nil)")
+            }
+            return nil
+        }
+        let mapper = drawerScreenMapper(for: pair)
+        let bandTop = mapper.visibleFrame.maxY - pair.layout.compactHeight
+        guard point.y >= mapper.gridTopEdgeY, point.y <= bandTop else {
+            if BlockDragCoordinator.dragProbeLogEnabled {
+                print("[drag-probe] capsuleHit band-miss: point=\(point) band=[\(mapper.gridTopEdgeY), \(bandTop)]")
+            }
+            return nil
+        }
+        let pages = uiState.drawerPages
+        let rowWidth = DrawerPagePillLayout.rowWidth(pageCount: pages.count)
+        let centerX = mapper.visibleFrame.midX
+            + DrawerPagePillLayout.rowCenterOffset(isEditing: uiState.isEditing)
+        let slot = DrawerPagePillLayout.hoveredSlot(
+            x: point.x,
+            rowLeft: centerX - rowWidth / 2,
+            pageCount: pages.count
+        )
+        let page = slot.flatMap { pages[$0] }
+        if BlockDragCoordinator.dragProbeLogEnabled {
+            print("[drag-probe] capsuleHit: point=\(point) row=[\(centerX - rowWidth / 2), +\(rowWidth)] center=\(centerX) pages=\(pages) editing=\(uiState.isEditing) slot=\(slot.map(String.init) ?? "nil") page=\(page.map(String.init) ?? "nil")")
+        }
+        return page
+    }
 }

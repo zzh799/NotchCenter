@@ -15,6 +15,8 @@ enum DrawerPagePillLayout {
     static let pillSpacing: CGFloat = 4
     /// 加号在胶囊外，不参与排序数学。
     static let addSpacing: CGFloat = 6
+    /// 行首行尾加号的直径（隐藏时 opacity 0 仍占布局，行宽恒定）。
+    static let addButtonDiameter: CGFloat = 20
     static let badgeSide: CGFloat = 12
     /// 按压位移超过该值才认定是拖动（否则视同点击切页）。
     static let dragPickupDistance: CGFloat = 4
@@ -45,6 +47,39 @@ enum DrawerPagePillLayout {
             return slot + 1
         }
         return slot
+    }
+
+    // MARK: 胶囊行命中（设置面板拖拽的驻留切页）
+
+    /// 胶囊行内容总宽（含两端加号）。加号常驻占位（隐藏只是 opacity 0），
+    /// 行宽与加号显隐无关，命中数学因此恒定。
+    static func rowWidth(pageCount: Int) -> CGFloat {
+        guard pageCount > 0 else { return 0 }
+        return 2 * (addButtonDiameter + addSpacing)
+            + CGFloat(pageCount) * pillWidth
+            + CGFloat(pageCount - 1) * pillSpacing
+    }
+
+    /// 胶囊行中心相对顶栏中线的水平偏移。顶栏两侧 Spacer 均分剩余空间，
+    /// 行心 = 中线 + 左右按钮组宽度差的一半：非编辑左齿轮 = 右钉住（24）
+    /// 偏移 0；编辑模式左侧多一颗"一键重排"（24pt 按钮 + 8pt HStack 间距）
+    /// 行心右移 16pt。与 `DrawerPanelView.topBar` 的布局常量同源，改动须同步。
+    static func rowCenterOffset(isEditing: Bool) -> CGFloat {
+        isEditing ? (24 + 8 + 24 - 24) / 2 : 0
+    }
+
+    /// 屏幕 x → 胶囊槽位（就近取槽）：`rowLeft` 为胶囊行左缘。加号区与
+    /// 胶囊间隙一并计入就近范围（驻留目标是"大致指到某颗胶囊"，命中面
+    /// 宜宽）；行范围外只让出半个间隙（再远返回 nil），行内的超界取整
+    /// 由两端夹紧兜回（尾部加号区就近归末颗胶囊）。
+    static func hoveredSlot(x: CGFloat, rowLeft: CGFloat, pageCount: Int) -> Int? {
+        guard pageCount > 0 else { return nil }
+        let halfGap = pillSpacing / 2
+        guard x >= rowLeft - halfGap, x <= rowLeft + rowWidth(pageCount: pageCount) + halfGap else {
+            return nil
+        }
+        let raw = (x - rowLeft - (addButtonDiameter + addSpacing)) / step
+        return min(max(Int(raw.rounded()), 0), pageCount - 1)
     }
 }
 
@@ -216,7 +251,7 @@ struct DrawerPageCapsule: View {
         return EditCircleButton(
             systemImage: "plus",
             helpText: help,
-            diameter: 20,
+            diameter: DrawerPagePillLayout.addButtonDiameter,
             action: { onAdd(side) }
         )
         .accessibilityLabel(help)

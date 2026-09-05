@@ -521,7 +521,9 @@ extension NotchPanelController {
 
     /// 切页是否安全（分页胶囊与左右滑动共用）：切页会整屏换掉抽屉内容，
     /// 而落位飞行、跨窗口拖拽与设置面板的落点预览都按**当前页**计算，
-    /// 中途换页会让它们把结果写到错的页上。
+    /// 中途换页会让它们把结果写到错的页上。唯一例外是拖拽驻留切页
+    ///（`switchDrawerPageForDrag`）：它只在指针压在胶囊行上触发，此刻
+    /// 落点判定为顶栏、`dropPreview` 已同帧清空，不存在错页写入。
     private var canSwitchDrawerPage: Bool {
         isExpanded
             && !isEditEntryPending
@@ -536,6 +538,36 @@ extension NotchPanelController {
               page != uiState.drawerActivePage,
               layoutEngine.drawerPages.contains(page) else { return }
         uiState.drawerActivePage = page
+        rebuildContentAfterPageChange()
+    }
+
+    /// 组件页拖拽的驻留切页：拖动中指针压在分页胶囊上驻留 0.5s 触发
+    /// （计时与复核在 `BlockDragCoordinator`）。绕过 `canSwitchDrawerPage`
+    /// 的"拖拽进行中"禁令——该禁令防的是落点预览按旧页计算、结果写到
+    /// 错页；而驻留切换只发生在指针压在胶囊行上时，`dropZone` 判顶栏恒无
+    /// 落点、`dropPreview` 已同帧清空，松手落位仍按**切换后的激活页**算。
+    /// 其余守卫（展开 / 编辑入场 / 菜单追踪 / 滑动会话）照常保留。
+    func switchDrawerPageForDrag(_ page: Int) {
+        let guards = (
+            expanded: isExpanded,
+            editEntryPending: isEditEntryPending,
+            dropPreviewNil: uiState.dropPreview == nil,
+            menuTrackingIdle: activeMenuTrackingCount == 0,
+            noSwipe: uiState.drawerSwipe == nil,
+            targetDiffers: page != uiState.drawerActivePage,
+            pageExists: layoutEngine.drawerPages.contains(page)
+        )
+        guard guards.expanded, !guards.editEntryPending, guards.dropPreviewNil,
+              guards.menuTrackingIdle, guards.noSwipe, guards.targetDiffers, guards.pageExists else {
+            if BlockDragCoordinator.dragProbeLogEnabled {
+                print("[drag-probe] switch blocked: target=\(page) \(guards)")
+            }
+            return
+        }
+        uiState.drawerActivePage = page
+        if BlockDragCoordinator.dragProbeLogEnabled {
+            print("[drag-probe] switch done: active=\(page)")
+        }
         rebuildContentAfterPageChange()
     }
 
@@ -1004,6 +1036,17 @@ extension NotchPanelController {
             },
             setReorderPreview: { [weak self] origin, span in
                 self?.updateDrawerReorderPreview(origin, span: span)
+            },
+            capsulePage: { [weak self] point in
+                self?.drawerPageCapsuleHitTest(at: point)
+            },
+            crossPageMove: { [weak self] placementID, column, row, page in
+                self?.moveDraggedBlockCrossPage(
+                    placementID: placementID,
+                    column: column,
+                    row: row,
+                    page: page
+                )
             }
         )
     }

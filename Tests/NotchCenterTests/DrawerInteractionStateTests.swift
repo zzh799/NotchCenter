@@ -15,11 +15,23 @@ final class DrawerInteractionStateTests: XCTestCase {
         contentPadding: 16, topBarHeight: 36
     )
 
+    /// 跨页搬移事件（四元组不具等价性，收进结构体）。
+    private struct CrossPageMove: Equatable {
+        var placementID: String
+        var column: Int
+        var row: Int
+        var page: Int
+    }
+
     /// 假 Bridge：记录事件序列，并能在提交时回读状态机的 phase。
     private final class Recorder {
         var events: [String] = []
         var origins: [String: LayoutEngine.GridOrigin] = [:]
         var phasesAtCommit: [DrawerInteractionState.Phase] = []
+        /// 驻留命中桩：默认不命中（nil），测试按需改写。
+        var capsulePageStub: ((NSPoint) -> Int?)?
+        /// 跨页搬移事件：(placementID, column, row, page)。
+        var crossPageMoves: [CrossPageMove] = []
 
         func bridge() -> DrawerInteractionState.Bridge {
             DrawerInteractionState.Bridge(
@@ -41,6 +53,15 @@ final class DrawerInteractionStateTests: XCTestCase {
                 },
                 setReorderPreview: { [weak self] origin, _ in
                     self?.events.append(origin == nil ? "clearReorderPreview" : "setReorderPreview")
+                },
+                capsulePage: { [weak self] point in
+                    self?.capsulePageStub?(point)
+                },
+                crossPageMove: { [weak self] id, column, row, page in
+                    self?.crossPageMoves.append(
+                        CrossPageMove(placementID: id, column: column, row: row, page: page)
+                    )
+                    self?.events.append("crossPageMove")
                 }
             )
         }
@@ -275,7 +296,9 @@ final class DrawerInteractionStateTests: XCTestCase {
                     _ = engine.commitArrangement(origins)
                 },
                 commitResize: { _, _, _ in },
-                setReorderPreview: { _, _ in }
+                setReorderPreview: { _, _ in },
+                capsulePage: { _ in nil },
+                crossPageMove: { _, _, _, _ in }
             )
         )
 
@@ -328,6 +351,80 @@ final class DrawerInteractionStateTests: XCTestCase {
                     )
                 }
             }
+        }
+    }
+
+    // MARK: - 胶囊驻留切页（跨页拖拽）
+
+    /// 驻留到点 → crossPageMove(被拖块, 最近拖动目标, 目标页) 恰好一次。
+    func testCapsuleDwellFiresCrossPageMoveWithLastDragTarget() {
+        let recorder = Recorder()
+        recorder.origins = ["a": LayoutEngine.GridOrigin(column: 2, row: 0)]
+        recorder.capsulePageStub = { _ in 1 }
+        let state = DrawerInteractionState(
+            bridge: recorder.bridge(),
+            dwellDuration: .milliseconds(30)
+        )
+        let fired = expectation(description: "crossPageMove fired")
+
+        state.beginDrag("a")
+        state.updateDrag("a", column: 2, row: 0, span: GridSpan(columns: 1, rows: 1))
+        state.updateCapsuleDwell(at: NSPoint(x: 700, y: 932), activePage: 0)
+
+        recorder.events.append("marker")   // marker 之后出现的 crossPageMove 才算到点
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { fired.fulfill() }
+        wait(for: [fired], timeout: 2)
+
+        XCTAssertEqual(recorder.crossPageMoves, [CrossPageMove(placementID: "a", column: 2, row: 0, page: 1)])
+        XCTAssertTrue(state.previewOrigins.isEmpty, "跨页搬移前必须清掉本页推挤预览")
+        XCTAssertEqual(state.draggingPlacementID, "a", "搬移不打断拖拽会话")
+    }
+
+    func testCapsuleDwellNeedsActiveDragAndNonActivePage() {
+        // 无拖拽会话 / 命中激活页：都不起计时。
+        let recorder = Recorder()
+        recorder.capsulePageStub = { _ in 1 }
+        let state = DrawerInteractionState(
+            bridge: recorder.bridge(),
+            dwellDuration: .milliseconds(30)
+        )
+        state.updateCapsuleDwell(at: NSPoint(x: 1, y: 1), activePage: 0)
+        XCTAssertEqual(recorder.crossPageMoves, [])
+
+        recorder.capsulePageStub = { _ in 0 }   // 激活页自身
+        state.beginDrag("a")
+        state.updateDrag("a", column: 0, row: 0, span: GridSpan(columns: 1, rows: 1))
+        state.updateCapsuleDwell(at: NSPoint(x: 1, y: 1), activePage: 0)
+        let waited = expectation(description: "no fire window")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { waited.fulfill() }
+        wait(for: [waited], timeout: 2)
+        XCTAssertEqual(recorder.crossPageMoves, [])
+    }
+
+    func testCapsuleDwellCancelledByEndDragAndReset() {
+        // 松手 / 复位必须摘掉计时：拖拽已结束后不得再触发跨页搬移。
+        for finisher in ["endDrag", "reset"] {
+            let recorder = Recorder()
+            recorder.origins = ["a": LayoutEngine.GridOrigin(column: 1, row: 0)]
+            recorder.capsulePageStub = { _ in 1 }
+            let state = DrawerInteractionState(
+                bridge: recorder.bridge(),
+                dwellDuration: .milliseconds(30)
+            )
+
+            state.beginDrag("a")
+            state.updateDrag("a", column: 1, row: 0, span: GridSpan(columns: 1, rows: 1))
+            state.updateCapsuleDwell(at: NSPoint(x: 1, y: 1), activePage: 0)
+            if finisher == "endDrag" {
+                state.endDrag("a", column: 1, row: 0)
+            } else {
+                state.reset()
+            }
+
+            let waited = expectation(description: "\(finisher) cancels dwell")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { waited.fulfill() }
+            wait(for: [waited], timeout: 2)
+            XCTAssertEqual(recorder.crossPageMoves, [], "\(finisher) 后驻留不得触发")
         }
     }
 }

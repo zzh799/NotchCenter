@@ -1123,6 +1123,71 @@ final class LayoutEngineTests: XCTestCase {
         }
         try? FileManager.default.removeItem(at: directory)
     }
+
+    // MARK: 跨页搬移（胶囊驻留切页的落位动作）
+
+    /// 双页布局种子:页 0 三块(keep/moved/below),页 1 一块(other)。
+    private func seedTwoPages(_ engine: LayoutEngine) {
+        var model = engine.modelForTesting
+        model.drawerPages = [0, 1]
+        model.drawerBlocks = [
+            PlacedBlock(pluginID: "p", blockID: "b", placementID: "keep", page: 0, originColumn: 0, originRow: 0, widthColumns: 1, heightRows: 1),
+            PlacedBlock(pluginID: "p", blockID: "b", placementID: "moved", page: 0, originColumn: 1, originRow: 0, widthColumns: 1, heightRows: 1),
+            PlacedBlock(pluginID: "p", blockID: "b", placementID: "below", page: 0, originColumn: 0, originRow: 2, widthColumns: 1, heightRows: 1),
+            PlacedBlock(pluginID: "p", blockID: "b", placementID: "other", page: 1, originColumn: 0, originRow: 0, widthColumns: 1, heightRows: 1)
+        ]
+        engine.modelForTesting = model
+    }
+
+    func testMoveDrawerBlockCrossPagePreservesIdentityAndCompactsSource() throws {
+        let (engine, directory, _) = try makeEngine()
+        seedTwoPages(engine)
+
+        let moved = engine.moveDrawerBlockCrossPage(placementID: "moved", toPage: 1, column: 0, row: 0)
+        XCTAssertNotNil(moved)
+        // placementID 是插件实例状态键,跨页必须原样保留。
+        XCTAssertEqual(moved?.placementID, "moved")
+        XCTAssertEqual(moved?.page, 1)
+        // 请求格 (0,0) 被 other 占 → nearestFreeOrigin 行内先右:(1,0)。
+        XCTAssertEqual(moved?.originColumn, 1)
+        XCTAssertEqual(moved?.originRow, 0)
+
+        let blocks = engine.modelForTesting.drawerBlocks
+        XCTAssertEqual(blocks.count, 4, "搬移不增减块数")
+        // 原页压实:moved 搬走后空行闭合,below 上移一行。
+        XCTAssertEqual(blocks.first { $0.placementID == "keep" }?.originRow, 0)
+        XCTAssertEqual(blocks.first { $0.placementID == "below" }?.originRow, 1)
+        XCTAssertEqual(blocks.first { $0.placementID == "below" }?.page, 0)
+        // 目标页两块不重叠。
+        let page1 = blocks.filter { $0.page == 1 }
+        XCTAssertEqual(page1.count, 2)
+        XCTAssertFalse(LayoutEngine.rectsOverlap(page1[0], page1[1]))
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testMoveDrawerBlockCrossPageLandsAtFreePreferredCell() throws {
+        let (engine, directory, _) = try makeEngine()
+        seedTwoPages(engine)
+        // 页 1 的 (2,0) 空闲 → 精确落在请求格。
+        let moved = engine.moveDrawerBlockCrossPage(placementID: "moved", toPage: 1, column: 2, row: 0)
+        XCTAssertEqual(moved?.originColumn, 2)
+        XCTAssertEqual(moved?.originRow, 0)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testMoveDrawerBlockCrossPageRejectsSamePageAndUnknownID() throws {
+        let (engine, directory, _) = try makeEngine()
+        seedTwoPages(engine)
+        let before = engine.modelForTesting.drawerBlocks
+        // 同页搬移走 moveDrawerBlock 语义,不走这里。
+        XCTAssertNil(engine.moveDrawerBlockCrossPage(placementID: "moved", toPage: 0, column: 3, row: 0))
+        // 未知 placementID。
+        XCTAssertNil(engine.moveDrawerBlockCrossPage(placementID: "nope", toPage: 1, column: 3, row: 0))
+        // 不存在的目标页(页索引恒为身份,从不重编号)。
+        XCTAssertNil(engine.moveDrawerBlockCrossPage(placementID: "moved", toPage: 7, column: 0, row: 0))
+        XCTAssertEqual(engine.modelForTesting.drawerBlocks, before, "拒绝路径不得改写布局")
+        try? FileManager.default.removeItem(at: directory)
+    }
 }
 
 @MainActor

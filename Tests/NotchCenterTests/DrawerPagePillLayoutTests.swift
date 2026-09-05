@@ -148,4 +148,82 @@ final class DrawerPagePillLayoutTests: XCTestCase {
         // 会话异常（目标槽位缺失退化为激活槽位）时高亮纹丝不动。
         XCTAssertEqual(DrawerPagePillLayout.highlightX(fromSlot: 2, toSlot: 2, progress: 0.7), 2 * step)
     }
+
+    // MARK: 胶囊行命中（设置面板拖拽的驻留切页）
+
+    /// 三页胶囊行的参照系：行左缘 100，各胶囊中心 = rowLeft + 52 + slot×step
+    ///（加号 20 + 间距 6 + 半颗胶囊 26），行宽 216，命中范围 ±半个间隙。
+    private let rowLeft: CGFloat = 100
+
+    private func center(_ slot: Int) -> CGFloat {
+        rowLeft + (DrawerPagePillLayout.addButtonDiameter + DrawerPagePillLayout.addSpacing)
+            + CGFloat(slot) * step
+            + DrawerPagePillLayout.pillWidth / 2
+    }
+
+    func testRowWidthMatchesLayoutSum() {
+        // n 颗胶囊 + 间隙 + 两端常驻加号（隐藏也占位）：52 + 56n − 4。
+        XCTAssertEqual(DrawerPagePillLayout.rowWidth(pageCount: 0), 0)
+        XCTAssertEqual(DrawerPagePillLayout.rowWidth(pageCount: 1), 104)
+        XCTAssertEqual(DrawerPagePillLayout.rowWidth(pageCount: 3), 216)
+    }
+
+    func testRowCenterOffsetCompensatesEditTopBar() {
+        // 编辑模式顶栏左侧多一颗"一键重排"（24 + 间距 8），行心右移 16pt。
+        XCTAssertEqual(DrawerPagePillLayout.rowCenterOffset(isEditing: false), 0)
+        XCTAssertEqual(DrawerPagePillLayout.rowCenterOffset(isEditing: true), 16)
+    }
+
+    func testHoveredSlotMapsCapsuleCentersToOwnSlot() {
+        for slot in 0..<3 {
+            XCTAssertEqual(
+                DrawerPagePillLayout.hoveredSlot(x: center(slot), rowLeft: rowLeft, pageCount: 3),
+                slot,
+                "胶囊 \(slot) 的中心必须命中自身槽位"
+            )
+        }
+    }
+
+    func testHoveredSlotNearestCenterIncludesGapsAndAddButtons() {
+        // 间隙取两侧就近；两端加号区就近归首/末颗胶囊（命中面宜宽）。
+        XCTAssertEqual(
+            DrawerPagePillLayout.hoveredSlot(
+                x: (center(0) + center(1)) / 2, rowLeft: rowLeft, pageCount: 3
+            ), 1
+        )
+        XCTAssertEqual(
+            DrawerPagePillLayout.hoveredSlot(x: rowLeft + 10, rowLeft: rowLeft, pageCount: 3), 0
+        )
+        XCTAssertEqual(
+            DrawerPagePillLayout.hoveredSlot(x: rowLeft + 206, rowLeft: rowLeft, pageCount: 3), 2
+        )
+    }
+
+    func testHoveredSlotAcceptsHalfGapBeyondRowAndRejectsFarther() {
+        XCTAssertEqual(
+            DrawerPagePillLayout.hoveredSlot(x: rowLeft - 2, rowLeft: rowLeft, pageCount: 3), 0
+        )
+        XCTAssertNil(
+            DrawerPagePillLayout.hoveredSlot(x: rowLeft - 4, rowLeft: rowLeft, pageCount: 3)
+        )
+        XCTAssertEqual(
+            DrawerPagePillLayout.hoveredSlot(x: rowLeft + 218, rowLeft: rowLeft, pageCount: 3), 2
+        )
+        XCTAssertNil(
+            DrawerPagePillLayout.hoveredSlot(x: rowLeft + 220, rowLeft: rowLeft, pageCount: 3)
+        )
+    }
+
+    func testHoveredSlotSinglePageAndEmptyRow() {
+        // 单页：胶囊命中自身，行右侧远处（多页时是末颗胶囊的地盘）不命中。
+        XCTAssertEqual(
+            DrawerPagePillLayout.hoveredSlot(x: center(0), rowLeft: rowLeft, pageCount: 1), 0
+        )
+        XCTAssertNil(
+            DrawerPagePillLayout.hoveredSlot(x: rowLeft + 306, rowLeft: rowLeft, pageCount: 1)
+        )
+        XCTAssertNil(
+            DrawerPagePillLayout.hoveredSlot(x: rowLeft, rowLeft: rowLeft, pageCount: 0)
+        )
+    }
 }

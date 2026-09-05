@@ -62,4 +62,24 @@ extension NotchPanelController {
         refreshAfterEdit()
         return origins
     }
+
+    /// 胶囊驻留切页的跨页搬移（抽屉内拖拽路径）：清落点占位（切页守卫要求
+    /// `dropPreview` 为空）→ 引擎跨页搬移（保留 placementID，原页压实）→
+    /// 切页。被拖块的 ForEach 身份随 placementID 保留，拖拽手势跨页续走、
+    /// 松手在目标页内精确落位；若框架重建了视图身份，块也已落在目标页
+    /// （光标列的最近可用位置），拖拽静默结束——两种结局都符合"移到该页"。
+    func moveDraggedBlockCrossPage(placementID: String, column: Int, row: Int, page: Int) {
+        guard uiState.drawerActivePage != page else { return }
+        if BlockDragCoordinator.dragProbeLogEnabled {
+            print("[drag-probe] crossPageMove: id=\(placementID) target=(\(column),\(row)) page=\(page)")
+        }
+        updateDrawerReorderPreview(nil, span: nil)
+        guard layoutEngine.moveDrawerBlockCrossPage(
+            placementID: placementID,
+            toPage: page,
+            column: column,
+            row: row
+        ) != nil else { return }
+        switchDrawerPageForDrag(page)
+    }
 }

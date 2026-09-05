@@ -135,6 +135,7 @@ final class BlockDragCoordinator: ObservableObject {
         previewState.update(payload: payload, isValid: zone != nil)
         positionPreview(at: location)
         controller?.updateDropPreview(payload: payload, zone: zone, pointer: location)
+        updateCapsuleDwell(at: location, payload: payload)
     }
 
     /// 松手：有效落点即落位；无效落点静默取消。
@@ -200,6 +201,7 @@ final class BlockDragCoordinator: ObservableObject {
             NSEvent.removeMonitor(monitor)
             self.monitor = nil
         }
+        cancelCapsuleDwell()
         hidePreview()
         payload = nil
         zone = nil
@@ -238,6 +240,43 @@ final class BlockDragCoordinator: ObservableObject {
         }
     }
 
+    // MARK: 胶囊驻留切页（设置面板拖组件跨页）
+
+    /// 诊断日志开关（`NOTCHCENTER_DRAG_PROBE_LOG=1`）：打印命中测试输入输出、
+    /// 驻留状态迁移与切页守卫逐项结果（与 `NOTCHCENTER_SCROLL_PROBE_LOG` 同族）。
+    static let dragProbeLogEnabled = DragProbeLog.enabled
+
+    /// 驻留计时与到点复核共用 `CapsuleDwellTimer`；本路径的落位动作只有
+    /// 切页。紧凑块不参与——它只进快速区，压上胶囊不起计时。
+    private lazy var capsuleDwell = CapsuleDwellTimer(
+        hitPage: { [weak self] point in
+            self?.controller?.drawerPageCapsuleHitTest(at: point)
+        }
+    )
+
+    private func updateCapsuleDwell(at location: NSPoint, payload: Payload) {
+        guard !payload.isCompact else {
+            capsuleDwell.cancel()
+            return
+        }
+        capsuleDwell.update(
+            at: location,
+            activePage: controller?.uiState.drawerActivePage ?? 0,
+            onFire: { [weak self] page in
+                self?.controller?.switchDrawerPageForDrag(page)
+            }
+        )
+    }
+
+    private func cancelCapsuleDwell() {
+        capsuleDwell.cancel()
+    }
+
+    /// 诊断用驻留状态摘要（探针转储，非发布路径）。
+    var dragProbeDwellSummary: String {
+        capsuleDwell.debugSummary
+    }
+
     // MARK: 跟随光标的预览浮窗
 
     private func showPreview() {
@@ -266,6 +305,97 @@ final class BlockDragCoordinator: ObservableObject {
         panel.setFrameOrigin(
             NSPoint(x: location.x - size.width / 2, y: location.y - size.height / 2)
         )
+    }
+}
+
+// MARK: - 分页胶囊驻留计时器（跨页拖拽两条路径共用）
+
+/// 拖拽诊断日志开关（`NOTCHCENTER_DRAG_PROBE_LOG=1`）：命中/驻留/守卫
+/// 各站点共用（与 `NOTCHCENTER_SCROLL_PROBE_LOG` 同族）。
+enum DragProbeLog {
+    static let enabled =
+        ProcessInfo.processInfo.environment["NOTCHCENTER_DRAG_PROBE_LOG"] == "1"
+}
+
+/// 指针压在分页胶囊上驻留 0.5s 即回调——iOS 桌面把图标拖到屏幕边缘自动
+/// 翻页的同款交互。设置目录拖拽（`BlockDragCoordinator`）与抽屉内重排
+/// 拖拽（`DrawerInteractionState`）两条路径共用：命中与落位动作由构造处
+/// 注入，本类型只管「压上 → 驻留 → 到点复核 → 回调一次」的时序。
+///
+/// 为什么用 Task 计时而不是逐事件判 deadline：驻留 = 指针**静止**压在
+/// 胶囊上，此时没有任何鼠标事件流入，纯事件驱动永远不会到点。
+@MainActor
+final class CapsuleDwellTimer {
+    /// 驻留时长：快扫而过（<0.5s）不切，停下即切。
+    private let duration: Duration
+    private let hitPage: (NSPoint) -> Int?
+    private var task: Task<Void, Never>?
+    /// 驻留目标页与最近一次指针位置（到点复核用：驻留期间指针可能有
+    /// 轻微移动，事件间隔里也无人重算命中）。
+    private var target: Int?
+    private var pointer = NSPoint.zero
+
+    init(
+        duration: Duration = .milliseconds(500),
+        hitPage: @escaping (NSPoint) -> Int?
+    ) {
+        self.duration = duration
+        self.hitPage = hitPage
+    }
+
+    /// 诊断用驻留状态摘要（探针转储，非发布路径）。
+    var debugSummary: String {
+        "dwellPage=\(target.map(String.init) ?? "nil") taskPending=\(task != nil)"
+    }
+
+    /// 指针压上非激活页胶囊 → 起计时；移开 / 换目标 / 已在该页 → 取消或重启。
+    /// 同一目标内的轻微移动只刷新复核点，**不重启计时**（否则手抖永远到不了点）。
+    func update(at location: NSPoint, activePage: Int, onFire: @escaping (Int) -> Void) {
+        let page = hitPage(location)
+        guard let page, page != activePage else {
+            cancel()
+            return
+        }
+        guard page != target else {
+            pointer = location
+            return
+        }
+        if DragProbeLog.enabled {
+            print("[drag-probe] dwell start: target=\(page) active=\(activePage) at=\(location)")
+        }
+        cancel()
+        target = page
+        pointer = location
+        let duration = duration
+        task = Task { [weak self] in
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled else { return }
+            self?.fire(onFire)
+        }
+    }
+
+    private func fire(_ onFire: (Int) -> Void) {
+        guard let page = target else { return }
+        // 一次性：无论是否成切，先摘掉目标页，避免残留状态跨进下一轮判定。
+        cancel()
+        // 到点复核：指针仍须压在同一颗胶囊上（驻留期间可能有轻微移动）。
+        let recheck = hitPage(pointer)
+        guard recheck == page else {
+            if DragProbeLog.enabled {
+                print("[drag-probe] dwell fire miss: target=\(page) recheck=\(recheck.map(String.init) ?? "nil")")
+            }
+            return
+        }
+        if DragProbeLog.enabled {
+            print("[drag-probe] dwell fire: page=\(page)")
+        }
+        onFire(page)
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
+        target = nil
     }
 }
 

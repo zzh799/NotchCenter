@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController?.showDocked()
         maybeRunSmokeTest()
         maybeRunPlacementProbe()
+        maybeRunDragProbe()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -129,6 +130,112 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         NSApp.terminate(nil)
                     }
                 }
+            }
+        }
+    }
+
+    // MARK: 拖拽驻留探针（开发期诊断，非发布路径）
+
+    /// 胶囊驻留切页诊断（`NOTCHCENTER_DRAG_PROBE=1`）：真实布局 + 真实屏幕上
+    /// 走一遍「起拖 → 注入指针压上目标页胶囊 → 驻留到点 → 切页」，配合
+    /// `NOTCHCENTER_DRAG_PROBE_LOG=1` 逐步转储命中输入输出与驻留状态，
+    /// 跑完自动退出。注入坐标由命中数学自身同源计算——若几何系统性偏移，
+    /// capsuleHit 日志会直接呈现 miss/错槽，与真实拖拽的失效同源可见。
+    private func maybeRunDragProbe() {
+        guard ProcessInfo.processInfo.environment["NOTCHCENTER_DRAG_PROBE"] == "1",
+              let panelController else { return }
+        print("=== 拖拽驻留探针启动 ===")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            guard let c = self.panelController else { return }
+            if !c.isDrawerExpanded() { c.expand(animated: false, activate: true) }
+            c.showSettings()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                self.runDragProbeSteps(c)
+                // KEEP 模式：不退出、不收尾，会话保持给真实事件接管（外部
+                // 注入 CGEvent 验证真实输入链路）。
+                guard ProcessInfo.processInfo.environment["NOTCHCENTER_DRAG_PROBE_KEEP"] != "1" else {
+                    print("=== KEEP 模式：会话保持，等待真实事件 ===")
+                    return
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+    }
+
+    /// 探针几何转储：命中数学的全部输入 + 逐胶囊中心 + 驻留状态。
+    private func dragProbeDump(_ c: NotchPanelController, tag: String) {
+        guard let pair = c.activePair ?? c.pairs.first else {
+            print("  [\(tag)] pair=nil")
+            return
+        }
+        let mapper = c.drawerScreenMapper(for: pair)
+        let pages = c.uiState.drawerPages
+        let rowWidth = DrawerPagePillLayout.rowWidth(pageCount: pages.count)
+        let centerX = mapper.visibleFrame.midX
+            + DrawerPagePillLayout.rowCenterOffset(isEditing: c.uiState.isEditing)
+        let rowLeft = centerX - rowWidth / 2
+        let bandTop = mapper.visibleFrame.maxY - pair.layout.compactHeight
+        print("  [\(tag)] active=\(c.uiState.drawerActivePage) pages=\(pages) editing=\(c.uiState.isEditing) dwell{\(BlockDragCoordinator.shared.dragProbeDwellSummary)}")
+        print("  [\(tag)] visible=\(mapper.visibleFrame) compactH=\(pair.layout.compactHeight) band=[\(mapper.gridTopEdgeY), \(bandTop)]")
+        print("  [\(tag)] row: left=\(rowLeft) width=\(rowWidth)")
+        for (slot, page) in pages.enumerated() {
+            let x = rowLeft + DrawerPagePillLayout.addButtonDiameter
+                + DrawerPagePillLayout.addSpacing
+                + CGFloat(slot) * DrawerPagePillLayout.step
+                + DrawerPagePillLayout.pillWidth / 2
+            print("  [\(tag)]   slot \(slot) page \(page) centerX=\(x)")
+        }
+    }
+
+    private func runDragProbeSteps(_ c: NotchPanelController) {
+        dragProbeDump(c, tag: "A:展开+设置后")
+        guard let entry = c.pluginManager.entries.first(where: { $0.isEnabled && $0.instance != nil }),
+              let block = entry.blocks.first(where: { $0.kind == .drawer }) else {
+            print("!!! 没有可用抽屉块，探针结束")
+            return
+        }
+        let span = block.defaultSize.map {
+            GridSpan(columns: $0.gridSpan.columns, rows: $0.gridSpan.rows)
+        } ?? GridSpan(columns: 1, rows: 1)
+        let payload = BlockDragCoordinator.Payload(
+            pluginID: entry.id,
+            blockID: block.id,
+            kind: .drawer,
+            displayName: block.displayName,
+            symbolName: block.symbolName,
+            span: span,
+            preview: nil
+        )
+        guard let pair = c.activePair ?? c.pairs.first,
+              let slot = c.uiState.drawerPages.firstIndex(where: { $0 != c.uiState.drawerActivePage }) else {
+            print("!!! 没有第二页可切，探针结束")
+            return
+        }
+        let mapper = c.drawerScreenMapper(for: pair)
+        let pages = c.uiState.drawerPages
+        let rowWidth = DrawerPagePillLayout.rowWidth(pageCount: pages.count)
+        let centerX = mapper.visibleFrame.midX
+            + DrawerPagePillLayout.rowCenterOffset(isEditing: c.uiState.isEditing)
+        let point = NSPoint(
+            x: centerX - rowWidth / 2 + DrawerPagePillLayout.addButtonDiameter
+                + DrawerPagePillLayout.addSpacing + CGFloat(slot) * DrawerPagePillLayout.step
+                + DrawerPagePillLayout.pillWidth / 2,
+            y: (mapper.gridTopEdgeY + mapper.visibleFrame.maxY - pair.layout.compactHeight) / 2
+        )
+        print("--- beginIfNeeded + updatePointer(at: \(point)) ---")
+        BlockDragCoordinator.shared.beginIfNeeded(payload)
+        BlockDragCoordinator.shared.updatePointer(at: point)
+        dragProbeDump(c, tag: "B:注入后即刻")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            self.dragProbeDump(c, tag: "C:驻留中(+0.35s)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            print("  [D:+1.2s] active=\(c.uiState.drawerActivePage) dwell{\(BlockDragCoordinator.shared.dragProbeDwellSummary)}")
+            print("=== 探针结束（active 应等于 dwell 目标页）===")
+            if ProcessInfo.processInfo.environment["NOTCHCENTER_DRAG_PROBE_KEEP"] != "1" {
+                BlockDragCoordinator.shared.cancel()
             }
         }
     }

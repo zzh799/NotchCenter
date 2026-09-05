@@ -511,6 +511,13 @@ struct DrawerPanelView: View {
                         rows: element.placement.heightRows
                     )
                 )
+                // 跨页拖拽：拖动中指针压上分页胶囊驻留即切页（命中与计时
+                // 在 interaction；坐标必须取全局屏幕点，手势 translation
+                // 只对块局部有意义）。
+                interaction.updateCapsuleDwell(
+                    at: NSEvent.mouseLocation,
+                    activePage: ui.drawerActivePage
+                )
             },
             onDragEnded: { translation in
                 let target = dragTarget(for: element, translation: translation)

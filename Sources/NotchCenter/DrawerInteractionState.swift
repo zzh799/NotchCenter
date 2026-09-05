@@ -33,6 +33,10 @@ final class DrawerInteractionState: ObservableObject {
         var commitMove: (_ id: String, _ column: Int, _ row: Int) -> Void
         var commitResize: (_ id: String, _ columns: Int, _ rows: Int) -> Void
         var setReorderPreview: (LayoutEngine.GridOrigin?, GridSpan?) -> Void
+        /// 驻留切页命中：屏幕点命中的分页胶囊（页身份，非激活页才非 nil）。
+        var capsulePage: (NSPoint) -> Int?
+        /// 驻留到点的跨页搬移：清落点占位 → 引擎搬移（保留 placementID）→ 切页。
+        var crossPageMove: (_ id: String, _ column: Int, _ row: Int, _ page: Int) -> Void
     }
 
     @Published private(set) var phase: Phase = .idle
@@ -41,12 +45,24 @@ final class DrawerInteractionState: ObservableObject {
     @Published private(set) var previewOrigins: [String: LayoutEngine.GridOrigin] = [:]
 
     private let bridge: Bridge
+    /// 驻留时长（测试注入短时长，生产 0.5s）。
+    private let dwellDuration: Duration
 
     /// 缩放按下瞬间的跨度：后续所有位移都相对它折算，跨手势事件保持稳定。
     private var resizeBase: GridSpan?
 
-    init(bridge: Bridge) {
+    /// 胶囊驻留计时（跨页拖拽）：拖动中指针压上别的页的胶囊驻留即触发。
+    private lazy var capsuleDwell = CapsuleDwellTimer(
+        duration: dwellDuration,
+        hitPage: { [weak self] point in self?.bridge.capsulePage(point) }
+    )
+
+    /// 最近一次拖动目标（`updateDrag` 逐帧刷新）：驻留到点时跨页搬移的落点。
+    private var lastDragTarget: (column: Int, row: Int)?
+
+    init(bridge: Bridge, dwellDuration: Duration = .milliseconds(500)) {
         self.bridge = bridge
+        self.dwellDuration = dwellDuration
     }
 
     // MARK: 查询
@@ -97,10 +113,12 @@ final class DrawerInteractionState: ObservableObject {
         // 被拖块不在结果里（例如块已被移除）时保持现状，不写半截预览。
         guard let dragged = origins[placementID] else { return }
         previewOrigins = origins
+        lastDragTarget = (column, row)
         bridge.setReorderPreview(dragged, span)
     }
 
     func endDrag(_ placementID: String, column: Int, row: Int) {
+        capsuleDwell.cancel()
         // 无动画清空：缩放 / 推挤遗留的预览不该在落位时闪一下。
         if !previewOrigins.isEmpty { previewOrigins = [:] }
 
@@ -109,6 +127,37 @@ final class DrawerInteractionState: ObservableObject {
         phase = .idle
         bridge.setReorderPreview(nil, nil)
         bridge.commitMove(placementID, column, row)
+    }
+
+    // MARK: 胶囊驻留切页（跨页拖拽）
+
+    /// 拖动中指针驻留判定：视图在每次 `onDragChanged` 末尾喂光标的**屏幕
+    /// 坐标**（`NSEvent.mouseLocation`——拖拽被设置面板/抽屉窗口捕获时它
+    /// 仍是实时的）。压上别的页的胶囊驻留 0.5s → 引擎把被拖块搬到该页
+    ///（保留 placementID）并切页；ForEach 身份随块保留，拖拽手势跨页续走，
+    /// 松手即在目标页内精确落位。
+    func updateCapsuleDwell(at screenPoint: NSPoint, activePage: Int) {
+        guard draggingPlacementID != nil, lastDragTarget != nil else {
+            capsuleDwell.cancel()
+            return
+        }
+        capsuleDwell.update(
+            at: screenPoint,
+            activePage: activePage,
+            onFire: { [weak self] page in
+                guard let self,
+                      let placementID = self.draggingPlacementID,
+                      let target = self.lastDragTarget else { return }
+                // 跨页搬移后本页推挤预览整体失效，先清（块的新落点由切页
+                // 重建呈现）；占位框由 bridge.crossPageMove 内清空。
+                self.previewOrigins = [:]
+                self.bridge.crossPageMove(placementID, target.column, target.row, page)
+            }
+        )
+    }
+
+    func cancelCapsuleDwell() {
+        capsuleDwell.cancel()
     }
 
     // MARK: 缩放
@@ -164,6 +213,7 @@ final class DrawerInteractionState: ObservableObject {
     /// 收起后 `content` 会退出布局，但本对象仍随面板存活——不清的话残留的
     /// 预览原点会让块在下次展开时停在旧预览位置。
     func reset() {
+        capsuleDwell.cancel()
         phase = .idle
         previewOrigins = [:]
         resizeBase = nil

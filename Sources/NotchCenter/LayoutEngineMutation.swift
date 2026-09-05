@@ -436,6 +436,48 @@ extension LayoutEngine {
         saveToDisk()
     }
 
+    /// 跨页搬移抽屉块（胶囊驻留切页的落位动作）：**保留 placementID**
+    /// （插件实例状态键），从原页摘除并压实原页，再按「最近可用位置」
+    /// （`nearestFreeOrigin`，与 `placeDrawerBlock` 同语义）落到目标页。
+    /// 同页搬移不走这里（返回 nil）——页内移动是 `moveDrawerBlock` 的语义。
+    @discardableResult
+    func moveDrawerBlockCrossPage(
+        placementID: String,
+        toPage: Int,
+        column: Int,
+        row: Int
+    ) -> PlacedBlock? {
+        guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }),
+              model.drawerPages.contains(toPage) else { return nil }
+        let block = model.drawerBlocks[index]
+        guard block.page != toPage else { return nil }
+        model.drawerBlocks.remove(at: index)
+        // 原页压实：块搬走留下的整行/整列空洞闭合（与 removeDrawerBlock 同款）。
+        compactEmptyRows()
+        compactEmptyColumns()
+        var placed = block
+        placed.page = toPage
+        if let origin = nearestFreeOrigin(
+            for: (columns: block.widthColumns, rows: block.heightRows),
+            preferredColumn: column,
+            preferredRow: row,
+            page: toPage,
+            excluding: placementID
+        ) {
+            placed.originColumn = origin.column
+            placed.originRow = origin.row
+        } else {
+            // 目标页放不下（极端：跨度超容量）：兜底新起一行，不静默丢弃搬移。
+            placed.originColumn = 0
+            placed.originRow = (occupiedRects(page: toPage, excluding: nil).map(\.maxRow).max() ?? -1) + 1
+        }
+        model.drawerBlocks.append(placed)
+        compactEmptyRows()
+        compactEmptyColumns()
+        saveToDisk()
+        return placed
+    }
+
     /// 一键重排（编辑模式）：按“从上到下、从左到右”的阅读顺序紧密排布抽屉块。
     /// 以当前布局的阅读顺序为优先级，逐块放到首个不重叠位置（行优先
     /// 扫描），消除移动/缩放留下的空洞；块身份与跨度保持不变，仅调整原点。
