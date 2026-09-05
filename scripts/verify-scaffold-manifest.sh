@@ -15,20 +15,38 @@ command -v jq >/dev/null 2>&1 || { echo "verify-scaffold-manifest: 需要 jq"; e
 MARKER="managed:doc-driven-dev"
 FAIL=0
 COUNT=0
+# worktree 的 .git 是指向主仓库公共目录的指针文件：manifest 里的 .git/* 落地物
+# （如 hooks/pre-commit）须按 git-common-dir 解析，字面相对路径只在主仓库成立。
+COMMON_GIT_DIR="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+[[ -n "$COMMON_GIT_DIR" ]] && COMMON_GIT_DIR="$(cd "$COMMON_GIT_DIR" && pwd)"
+resolve_path() {
+  local p="$1"
+  case "$p" in
+    .git/*)
+      if [[ -n "$COMMON_GIT_DIR" ]]; then
+        echo "$COMMON_GIT_DIR/${p#.git/}"
+      else
+        echo "$p"
+      fi
+      ;;
+    *) echo "$p" ;;
+  esac
+}
 while IFS=$'\t' read -r path marker; do
   [[ -z "$path" ]] && continue
   COUNT=$((COUNT + 1))
-  if [[ ! -e "$path" ]]; then
+  target="$(resolve_path "$path")"
+  if [[ ! -e "$target" ]]; then
     echo "MISSING ARTIFACT: $path (manifest 记录存在,磁盘缺失)"
     FAIL=1
     continue
   fi
-  if [[ -f "$path" && ! -s "$path" ]]; then
+  if [[ -f "$target" && ! -s "$target" ]]; then
     echo "EMPTY ARTIFACT: $path"
     FAIL=1
     continue
   fi
-  if [[ "$marker" == "true" ]] && ! grep -qF "$MARKER" "$path" 2>/dev/null; then
+  if [[ "$marker" == "true" ]] && ! grep -qF "$MARKER" "$target" 2>/dev/null; then
     echo "MISSING MARKER: $path (应含 '$MARKER')"
     FAIL=1
   fi
