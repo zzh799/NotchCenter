@@ -179,6 +179,44 @@ final class EditorInteractionState: ObservableObject {
         requestLayoutRefresh()
     }
 
+    /// 应用/切换标题级别：所选行已有同级 `#` 标记则取消，否则替换任意已有
+    /// 标题标记为该级（与 0.12.0 前引擎内置右键菜单 H1–H3 行为对齐）。
+    func applyHeading(_ level: Int) {
+        refreshTextView(searchingIn: containerView)
+
+        guard let textView else { return }
+
+        focusEditor()
+
+        let marker = String(repeating: "#", count: level) + " "
+        let nsString = textView.string as NSString
+        let lineRange = nsString.lineRange(for: safeSelectedRange(in: textView))
+        let original = nsString.substring(with: lineRange)
+        let hasTrailingNewline = original.hasSuffix("\n")
+        var lines = original.components(separatedBy: "\n")
+        if hasTrailingNewline {
+            lines.removeLast()
+        }
+        if lines.isEmpty {
+            lines = [""]
+        }
+
+        let replacementBody: String
+        if lines.allSatisfy({ $0.hasPrefix(marker) }) {
+            replacementBody = lines.map { String($0.dropFirst(marker.count)) }
+                .joined(separator: "\n")
+        } else {
+            replacementBody = lines
+                .map { marker + $0.replacingOccurrences(of: #"^#{1,6} "#, with: "", options: .regularExpression) }
+                .joined(separator: "\n")
+        }
+        let replacement = replacementBody + (hasTrailingNewline ? "\n" : "")
+        let selection = NSRange(location: lineRange.location, length: replacement.utf16.count)
+        replaceText(in: textView, range: lineRange, with: replacement, selectionAfter: selection)
+
+        requestLayoutRefresh()
+    }
+
     func handleMouseEvent(_ event: NSEvent, searchingIn rootView: NSView?) {
         switch event.type {
         case .leftMouseDown:

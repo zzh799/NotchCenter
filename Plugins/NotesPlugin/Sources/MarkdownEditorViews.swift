@@ -120,7 +120,8 @@ struct MarkdownNoteEditor: View {
                 fontSize: 15,
                 documentId: activeTabID.uuidString,
                 isEditable: true,
-                onPasteImage: savePastedImage
+                onPasteImage: savePastedImage,
+                onBuildContextMenu: buildContextMenu
             )
             .background {
                 EditorFocusBinder(state: editorInteractionState, isPreview: isPreview)
@@ -139,6 +140,42 @@ struct MarkdownNoteEditor: View {
 
     private func savePastedImage(_ pasteboard: NSPasteboard) -> String? {
         imageStore.saveImage(from: pasteboard)
+    }
+
+    /// 右键菜单：Format / Heading / Lists（MarkdownEngine 0.12.0 起引擎不再内置
+    /// 菜单，构建责任移交 embedder；动作复用工具栏同一套 EditorInteractionState）。
+    private func buildContextMenu(_ menu: NSMenu, selection: NSRange) -> NSMenu {
+        func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
+            let sub = NSMenu(title: title)
+            items.forEach(sub.addItem)
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.submenu = sub
+            return item
+        }
+        func actionItem(_ title: String, _ run: @escaping () -> Void) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: #selector(MenuActionTarget.fire), keyEquivalent: "")
+            let target = MenuActionTarget { [weak editorInteractionState] in
+                guard let editorInteractionState else { return }
+                run()
+            }
+            item.target = target
+            // NSMenuItem 对 target 的持有不保证强引用，挂一份在 representedObject 保命。
+            item.representedObject = target
+            return item
+        }
+
+        menu.addItem(submenu("Format", [
+            actionItem("Bold") { editorInteractionState.applyMarkdownCommand(.bold) },
+            actionItem("Italic") { editorInteractionState.applyMarkdownCommand(.italic) },
+        ]))
+        menu.addItem(submenu("Heading", (1...3).map { level in
+            actionItem("H\(level)") { editorInteractionState.applyHeading(level) }
+        }))
+        menu.addItem(submenu("Lists", [
+            actionItem("Bullet") { editorInteractionState.applyMarkdownCommand(.unorderedList) },
+            actionItem("Numbered") { editorInteractionState.applyMarkdownCommand(.orderedList) },
+        ]))
+        return menu
     }
 
     private var configuration: MarkdownEditorConfiguration {
@@ -168,5 +205,19 @@ struct MarkdownNoteEditor: View {
             scrollers: .vertical,
             textInsets: TextInsets(horizontal: 12, vertical: 12)
         )
+    }
+}
+
+/// 右键菜单项的动作桥接：NSMenuItem 需要 @objc target，闭包挂在这个壳上。
+/// 引用由 item.representedObject 强持有（见 buildContextMenu）。
+final class MenuActionTarget: NSObject {
+    private let run: () -> Void
+
+    init(_ run: @escaping () -> Void) {
+        self.run = run
+    }
+
+    @objc func fire() {
+        run()
     }
 }
