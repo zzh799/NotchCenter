@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PluginID</key>
+  <string>com.notchcenter.brightness</string>
+  <key>Version</key>
+  <string>1.0.0</string>
+  <key>DisplayName</key>
+  <string>Display Brightness</string>
+  <key>Description</key>
+  <string>Adjust external display brightness per screen over DDC/CI (Apple Silicon via IOAVService, Intel via IOKit IOI2C).</string>
+  <!-- 元数据本地化：build.sh 按语言键生成 bundle 内的 InfoPlist.strings（en 基准用上面两个字段） -->
+  <key>DisplayNameLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>显示器亮度</string>
+  </dict>
+  <key>DescriptionLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>经 DDC/CI 按显示器调节外接屏幕亮度（Apple Silicon 走 IOAVService，Intel 走 IOKit IOI2C）。</string>
+  </dict>
+</dict>
+</plist>

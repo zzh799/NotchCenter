@@ -1,0 +1,7 @@
+/* Display Brightness (en, base key set) */
+
+"block.drawer.name" = "Display Brightness";
+"drawer.empty.title" = "No Adjustable External Display";
+"drawer.empty.hint" = "Connect an external display that supports DDC/CI. Built-in displays are controlled by macOS itself.";
+"display.fallback.name" = "Display %d";
+"a11y.slider.label" = "Brightness of %@";
