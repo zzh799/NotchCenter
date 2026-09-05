@@ -15,18 +15,30 @@ extension NSAttributedString.Key {
     public static let taskCheckbox = NSAttributedString.Key("TaskCheckbox")
 }
 
-enum MarkdownTokenKind {
+enum MarkdownTokenKind: Equatable {
     case italic
     case boldItalic
     case bold
     case link
     case wikiLink
     case heading
+    /// One blockquote line; `markerRanges[0]` is the `>` run, nesting = count of `>`.
+    case blockquote
     case codeBlock
     case inlineCode
     case blockLatex
     case inlineLatex
     case imageEmbed
+    case imageLink
+    case table
+    /// A CommonMark backslash escape; marker is the `\`, content the escaped literal char.
+    case backslashEscape
+    /// A span contributed by a registered `MarkdownExtension`,
+    /// carrying the extension's id (e.g. `.extensionSpan("highlight")`).
+    case extensionSpan(String)
+    /// A fenced block contributed by a registered `MarkdownExtension`,
+    /// carrying the extension's id (e.g. `.extensionBlock("container")`).
+    case extensionBlock(String)
 }
 
 struct MarkdownToken {
@@ -60,7 +72,11 @@ extension MarkdownToken {
             return false
         }
         let paragraphEnd = NSMaxRange(paragraphRange)
-        let isAtLastParagraphEnd = selectionLocation == text.length && paragraphEnd == text.length
+        // Reveal source when caret is at document end right after the image, unless that line ends in a newline.
+        let endsWithNewline = paragraphEnd > paragraphRange.location
+            && (text.character(at: paragraphEnd - 1) == 0x0A || text.character(at: paragraphEnd - 1) == 0x0D)
+        let isAtLastParagraphEnd = selectionLocation == text.length
+            && paragraphEnd == text.length && !endsWithNewline
         return (selectionLocation >= paragraphRange.location && selectionLocation < paragraphEnd)
             || isAtLastParagraphEnd
     }

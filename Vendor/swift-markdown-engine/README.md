@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 # MarkdownEngine
+=======
+<p align="center">                                                                                               
+<img width="128" alt="SwiftMarkdownEngine logo" src="media/logo.png" />
+</p>
+>>>>>>> 0.12.0
 
 [![Swift 5.9](https://img.shields.io/badge/Swift-5.9+-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![Platforms macOS 14+](https://img.shields.io/badge/Platforms-macOS%2014+-lightgrey)](https://developer.apple.com/macos/)
@@ -13,26 +19,25 @@
 </video>
 
 
-A native AppKit Markdown editor for macOS, built on TextKit 2 and bridged to
-SwiftUI. Live styling, wiki-link support, fenced code blocks with syntax
-highlighting, LaTeX rendering, embedded images, and GitHub-style task
+A native AppKit Markdown editor for macOS, built on TextKit 2 and bridged to SwiftUI. It is the editor inside **[Nodes](https://apps.apple.com/app/apple-store/id6745401961?pt=127809373&ct=github&mt=8)**, a macOS notes app. Live styling, wiki-link support, fenced code blocks with syntax highlighting, LaTeX rendering, embedded images, and GitHub-style task
 checkboxes.
-
-## Motivation
-
-When we started building **[Nodes](https://nodes-web.com/#/)** a minimal, beautiful, and fast writing app for macOS, we thought the editor would be the easy part. We were wrong. None of the existing open-source options fit what we needed: a native editor we could drop straight into a Mac app. So we built it on top of TextKit 2. It [wasn't easy](https://blog.krzyzanowskim.com/2025/08/14/textkit-2-the-promised-land/), but the result holds up in production. We're sharing it because we wished something like this had existed when we started.
 
 ## Features
 
-- **Live Markdown styling** — bold, italic, headings, lists, code, links,
-  task checkboxes, horizontal rules
+- **Live Markdown styling** — bold, italic, headings, lists, blockquotes, GFM tables, code, links, task checkboxes, horizontal rules
+- **Extensions** — opt-in constructs beyond CommonMark (`==highlight==`, `~~strikethrough~~`, …); add your own via [`MarkdownExtension`](#extensions)
 - **Wiki-style linking** with two-form storage / display roundtripping
   (`[[Name|<id>]]` ↔ `[[Name]]`)
-- **Image embeds** — `![[Name]]` syntax, embedder supplies the bytes
+- **Image embeds** — both `![[Name]]` (Obsidian-style, embedder supplies the                           
+  bytes) and standard Markdown `![alt](url)`
 - **LaTeX** — both block (`$$ … $$`) and inline (`$…$`), embedder supplies
   the renderer
 - **Code blocks** with embedder-supplied syntax highlighting and overlayable
   copy buttons
+- **Reading column** — opt-in fixed-width centered column, wide tables
+  break out to the full window width (`readingWidth`)
+- **Scroll-away header** — host your own SwiftUI view above the document;
+  it scrolls with the content and collapses to a pinned top row
 - **TextKit 2** layout for accurate, modern text rendering
 - **Writing Tools** integration on macOS 15.1+
 - **Comfortable bottom overscroll** so the caret never pins to the viewport
@@ -119,6 +124,23 @@ configuration.services = MarkdownEditorServices(
 
 Each protocol and its no-op default are documented in DocC.
 
+### Extensions
+
+The core engine parses pure markdown. Extra constructs like `==highlight==`,
+`~~strikethrough~~`, and `::: … :::` container blocks are opt-in extensions:
+
+```swift
+var config = MarkdownEditorConfiguration()
+config.extensions = [HighlightExtension(), StrikethroughExtension(), ContainerExtension()]
+```
+
+Unregistered syntax stays literal text. An extension contributes an inline
+form (`InlineSyntax`), a fenced block form (`BlockSyntax`), or both — plus the
+attributes for its content and an HTML wrapper for rich copy. The parser owns
+all geometry, marker/fence hiding, caret reveal, and incremental restyling, so
+extensions behave identically to built-ins and cannot affect neighboring
+constructs. Conform to `MarkdownExtension` to add your own.
+
 ### Code Blocks
 
 **Recommended path: depend on the `MarkdownEngineCodeBlocks` product
@@ -196,6 +218,7 @@ configuration.codeBlock.fontSizeScale = 0.9
 configuration.headings.fontMultipliers = [2.4, 1.8, 1.4, 1.1, 0.9, 0.75]
 configuration.overscroll.percent = 0.4
 configuration.lists.helpersEnabled = false
+configuration.safeAreaInsets = SafeAreaInsets(top: 56)   // headroom under a translucent toolbar
 ```
 
 ### Wiki-Links & Replacement State
@@ -218,6 +241,58 @@ NativeTextViewWrapper(
   replacement (e.g. an autocomplete result); the engine consumes it
   and clears the binding.
 
+### Height Behavior
+
+By default the editor scrolls internally. Set `heightBehavior` to
+`.fitsContent` to make it grow to fit its content and report that height to
+SwiftUI, so an enclosing `ScrollView` scrolls the page instead:
+
+```swift
+ScrollView {
+    NativeTextViewWrapper(text: $text, configuration: .init(heightBehavior: .fitsContent))
+}
+```
+
+Composes with `readingWidth` and the scrolling header, and is switchable at
+runtime. `.fitsContent` lays out the whole document (no viewport
+virtualization), so prefer it for small-to-medium content. See
+``HeightBehavior`` in DocC for the full behavior.
+
+### Reading Column
+
+Give long documents a fixed-width centered column; wide GFM tables break out
+to the full window width, Google-Docs-style:
+
+```swift
+configuration.readingWidth = 650
+```
+
+Text wraps at `readingWidth` and never re-wraps on resize (only the column's
+position moves), keeping live resize smooth. Leave it `nil` (default) to fill
+the container edge-to-edge.
+
+### Scrolling Header
+
+Host a SwiftUI view above the document body that scrolls away with it —
+metadata, a property table, a contextual toolbar:
+
+```swift
+NativeTextViewWrapper(
+    text: $text,
+    header: AnyView(MyDocumentHeader(document: document)),
+    headerCollapsedHeight: 40,
+    headerExpanded: isHeaderExpanded
+)
+```
+
+The engine hosts it in an `NSHostingView`, reserves its intrinsic height, and
+keeps it fully interactive. `headerExpanded: false` collapses to
+`headerCollapsedHeight` (top row stays, rows below clip away, animated). Inject
+any required environment *before* wrapping in `AnyView`, and give wrapping
+content an explicit height so it doesn't clip at the band's bottom. Composes
+with `readingWidth`; an optional `placeholder:` shows ghost text while empty;
+`header: nil` (default) adds nothing. The demo's **Header** toggle shows it.
+
 ## Demo
 
 A runnable SwiftUI demo lives in [`Demo/`](Demo/MarkdownEngineDemo.xcodeproj).
@@ -230,6 +305,7 @@ a local path, so any engine edit rebuilds into the demo on the next run.
 
 ## Documentation
 
+<<<<<<< HEAD
 Full API documentation is available via DocC:
 
 ```bash
@@ -239,6 +315,11 @@ swift package generate-documentation --target MarkdownEngine
 In Xcode: **Product → Build Documentation** (`⇧⌃⌘D`).
 
 Once the package is hosted on Swift Package Index, the docs will live at
+=======
+Full API docs ship as DocC. In Xcode: **Product → Build Documentation**
+(`⇧⌃⌘D`); for local CLI preview see [CONTRIBUTING.md](CONTRIBUTING.md). Once
+hosted on Swift Package Index, docs will live at
+>>>>>>> 0.12.0
 `https://swiftpackageindex.com/nodes-app/swift-markdown-engine/documentation`.
 
 ## Requirements & Status
@@ -250,6 +331,19 @@ MarkdownEngine is currently **pre-1.0**. The public API may change between
 minor releases as it stabilizes. Production use is fine — pin a specific
 version (`0.x.y`) in your `Package.swift`.
 
+## Who makes it
+
+<a href="https://apps.apple.com/app/apple-store/id6745401961?pt=127809373&ct=github&mt=8">
+  <img align="right" width="96" alt="Nodes" src="media/nodes-app-icon.png" />
+</a>
+
+MarkdownEngine is the editor inside **[Nodes](https://apps.apple.com/app/apple-store/id6745401961?pt=127809373&ct=github&mt=8)**,
+a macOS app for writing, linking and exploring notes. This is not a side project
+we open-sourced and walked away from — it is the editor our own users type in
+every day, and every fix here ships in a real app first.
+
+If it is useful to you, telling someone about it is all we would ask for.
+
 ## Contributing
 
 Bug reports, ideas, and pull requests are welcome. See
@@ -260,3 +354,9 @@ conventions, and PR process.
 
 MarkdownEngine is released under the MIT License. See [LICENSE](LICENSE)
 for the full text.
+<<<<<<< HEAD
+=======
+
+---
+Built by a small team in Munich and Zurich. Day-to-day on [Instagram](https://www.instagram.com/nodes.app).
+>>>>>>> 0.12.0

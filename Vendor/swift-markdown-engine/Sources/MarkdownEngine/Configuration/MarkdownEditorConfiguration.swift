@@ -32,11 +32,12 @@ public struct MarkdownEditorConfiguration: Sendable {
     public var codeBlock: CodeBlockStyle
     public var inlineCode: InlineCodeStyle
     public var lists: ListStyle
+    public var taskCheckbox: TaskCheckboxStyle
     public var headings: HeadingStyle
     public var imageEmbed: ImageEmbedStyle
     public var blockLatex: BlockLatexStyle
     public var inlineLatex: InlineLatexStyle
-    public var checkbox: CheckboxStyle
+    public var blockquote: BlockquoteStyle
     public var link: LinkStyle
     public var paragraph: ParagraphStyle
     public var overscroll: OverscrollPolicy
@@ -44,6 +45,45 @@ public struct MarkdownEditorConfiguration: Sendable {
     public var safeAreaInsets: SafeAreaInsets
     public var scrollers: ScrollersPolicy
     public var textInsets: TextInsets
+    /// Centered reading-column width; wide tables break out to full width. nil = full width (default).
+    public var readingWidth: CGFloat?
+    public var spellChecking: SpellCheckingPolicy
+    /// How the editor resolves its own height.
+    ///
+    /// - `.scrolls` (default): the editor scrolls internally within whatever
+    ///   height SwiftUI gives it. This is the historical behavior.
+    /// - `.fitsContent`: the editor grows to fit its content and reports that
+    ///   height to SwiftUI, so an enclosing `ScrollView` scrolls the page
+    ///   instead of a nested internal scroller. The editor re-reports its
+    ///   height per keystroke as well as after async content changes (image
+    ///   loads, font-size changes, header band resizes).
+    ///
+    /// Switching at runtime is supported; the editor reconfigures immediately
+    /// (scroller visibility, overscroll, inflation, and intrinsic size all
+    /// update in the same SwiftUI update cycle).
+    ///
+    /// - SeeAlso: ``HeightBehavior``
+    public var heightBehavior: HeightBehavior
+    /// Present the document as raw Markdown source: no syntax hiding, no
+    /// styling, no wiki-link display transform (`[[Name|UUID]]` shows verbatim).
+    /// Stays editable, but smart input (list continuation, auto-wrap, ⇧⇥) is off.
+    /// Runtime-switchable; a flip rebuilds immediately and drops the document's
+    /// undo stack (actions from the other mode would replay at stale ranges).
+    public var rawSourceMode: Bool
+    /// Opt-in constructs beyond pure markdown (e.g. `==highlight==`). Empty by
+    /// default: unregistered syntax stays literal text. Order defines match
+    /// precedence among extensions; built-in constructs always win first.
+    public var extensions: [any MarkdownExtension]
+    /// Let the caret and the I-beam take the ink of the extension span they sit
+    /// in, instead of `theme.bodyText` and the plain system pointer.
+    ///
+    /// Off by default. It only matters for an extension that INVERTS its
+    /// content (dark ink on a light block), where both cursors would otherwise
+    /// be drawn in the block's own color and disappear inside it. An extension
+    /// whose `contentAttributes` set no foreground is unaffected either way —
+    /// so this stays the embedder's explicit decision rather than something the
+    /// engine infers from a color it happens to see.
+    public var cursorFollowsSpanInk: Bool
 
     public init(
         theme: MarkdownEditorTheme = .default,
@@ -52,18 +92,25 @@ public struct MarkdownEditorConfiguration: Sendable {
         codeBlock: CodeBlockStyle = .default,
         inlineCode: InlineCodeStyle = .default,
         lists: ListStyle = .default,
+        taskCheckbox: TaskCheckboxStyle = .default,
         headings: HeadingStyle = .default,
         imageEmbed: ImageEmbedStyle = .default,
         blockLatex: BlockLatexStyle = .default,
         inlineLatex: InlineLatexStyle = .default,
-        checkbox: CheckboxStyle = .default,
+        blockquote: BlockquoteStyle = .default,
         link: LinkStyle = .default,
         paragraph: ParagraphStyle = .default,
         overscroll: OverscrollPolicy = .default,
         dragSelection: DragSelectionPolicy = .default,
         safeAreaInsets: SafeAreaInsets = .default,
         scrollers: ScrollersPolicy = .default,
-        textInsets: TextInsets = .default
+        textInsets: TextInsets = .default,
+        readingWidth: CGFloat? = nil,
+        spellChecking: SpellCheckingPolicy = .default,
+        heightBehavior: HeightBehavior = .scrolls,
+        rawSourceMode: Bool = false,
+        extensions: [any MarkdownExtension] = [],
+        cursorFollowsSpanInk: Bool = false
     ) {
         self.theme = theme
         self.services = services
@@ -71,11 +118,12 @@ public struct MarkdownEditorConfiguration: Sendable {
         self.codeBlock = codeBlock
         self.inlineCode = inlineCode
         self.lists = lists
+        self.taskCheckbox = taskCheckbox
         self.headings = headings
         self.imageEmbed = imageEmbed
         self.blockLatex = blockLatex
         self.inlineLatex = inlineLatex
-        self.checkbox = checkbox
+        self.blockquote = blockquote
         self.link = link
         self.paragraph = paragraph
         self.overscroll = overscroll
@@ -83,9 +131,41 @@ public struct MarkdownEditorConfiguration: Sendable {
         self.safeAreaInsets = safeAreaInsets
         self.scrollers = scrollers
         self.textInsets = textInsets
+        self.readingWidth = readingWidth
+        self.spellChecking = spellChecking
+        self.heightBehavior = heightBehavior
+        self.rawSourceMode = rawSourceMode
+        self.extensions = extensions
+        self.cursorFollowsSpanInk = cursorFollowsSpanInk
     }
 
     public static let `default` = MarkdownEditorConfiguration()
+}
+
+// MARK: - Spell checking
+
+/// Initial state for the three "Spelling and Grammar" toggles. Only consulted
+/// at `makeNSView` time; afterwards the user's context-menu choices take
+/// precedence and are surfaced via ``NativeTextViewWrapper/onSpellCheckingPolicyChanged``.
+public struct SpellCheckingPolicy: Sendable {
+    /// Mirrors `NSTextView.isContinuousSpellCheckingEnabled`.
+    public var continuousSpellChecking: Bool
+    /// Mirrors `NSTextView.isGrammarCheckingEnabled`.
+    public var grammarChecking: Bool
+    /// Mirrors `NSTextView.isAutomaticSpellingCorrectionEnabled`.
+    public var automaticSpellingCorrection: Bool
+
+    public init(
+        continuousSpellChecking: Bool = true,
+        grammarChecking: Bool = true,
+        automaticSpellingCorrection: Bool = true
+    ) {
+        self.continuousSpellChecking = continuousSpellChecking
+        self.grammarChecking = grammarChecking
+        self.automaticSpellingCorrection = automaticSpellingCorrection
+    }
+
+    public static let `default` = SpellCheckingPolicy()
 }
 
 // MARK: - Scroll bars
@@ -237,6 +317,33 @@ public struct ListStyle: Sendable {
     public static let `default` = ListStyle()
 }
 
+// MARK: - Task checkboxes
+
+/// SF Symbol names used to draw task-list checkboxes (`- [ ]` / `- [x]`).
+///
+/// Any SF Symbol available on the deployment target can be substituted, for
+/// example `"circle"` / `"checkmark.circle.fill"`. A name that doesn't
+/// resolve falls back to the corresponding default symbol at draw time, so a
+/// typo degrades to the stock look instead of drawing nothing. Tint colors
+/// stay theme-driven (`MarkdownEditorTheme/mutedText` unchecked,
+/// `MarkdownEditorTheme/bodyText` checked).
+public struct TaskCheckboxStyle: Sendable {
+    /// SF Symbol drawn for an unchecked task item (`[ ]`).
+    public var uncheckedSymbolName: String
+    /// SF Symbol drawn for a checked task item (`[x]`).
+    public var checkedSymbolName: String
+
+    public init(
+        uncheckedSymbolName: String = "square",
+        checkedSymbolName: String = "checkmark.square.fill"
+    ) {
+        self.uncheckedSymbolName = uncheckedSymbolName
+        self.checkedSymbolName = checkedSymbolName
+    }
+
+    public static let `default` = TaskCheckboxStyle()
+}
+
 // MARK: - Headings
 
 /// Per-level heading metrics. Defaults follow the historical Nodes ratios,
@@ -336,37 +443,23 @@ public struct InlineLatexStyle: Sendable {
     public static let `default` = InlineLatexStyle()
 }
 
-// MARK: - Task checkboxes
+// MARK: - Blockquote
 
-/// Glyph sizing and spacing for `- [ ]` / `- [x]` task checkboxes.
-public struct CheckboxStyle: Sendable {
-    /// Minimum extra spacing (points) inserted after an unchecked checkbox to
-    /// optically center the rendered glyph.
-    public var minimumExtraSpacing: CGFloat
-    /// Additional spacing as a fraction of the surrounding font's point size.
-    public var extraSpacingPerFontPointFraction: CGFloat
-    /// Checkbox glyph size as a fraction of the line's font height.
-    public var sizeFromFontHeightFactor: CGFloat
-    /// Checkbox glyph size as a fraction of the `[ ]` marker width.
-    public var sizeFromMarkerWidthFactor: CGFloat
-    /// Inset applied inside the checkbox bounding box before drawing the icon.
-    public var iconInsetFraction: CGFloat
+/// Extra line height added to blockquote lines.
+///
+/// By default blockquote lines use the font's natural line height with no
+/// extra spacing. Set `extraLineHeight` to add breathing room, matching
+/// the pattern used by `ListStyle.extraLineHeight` and
+/// `ParagraphStyle.lineHeightExtraSpacing`.
+public struct BlockquoteStyle: Sendable {
+    /// Extra height (points) added to the default line height for blockquote lines.
+    public var extraLineHeight: CGFloat
 
-    public init(
-        minimumExtraSpacing: CGFloat = 2.0,
-        extraSpacingPerFontPointFraction: CGFloat = 0.18,
-        sizeFromFontHeightFactor: CGFloat = 1.2,
-        sizeFromMarkerWidthFactor: CGFloat = 1.2,
-        iconInsetFraction: CGFloat = 0.01
-    ) {
-        self.minimumExtraSpacing = minimumExtraSpacing
-        self.extraSpacingPerFontPointFraction = extraSpacingPerFontPointFraction
-        self.sizeFromFontHeightFactor = sizeFromFontHeightFactor
-        self.sizeFromMarkerWidthFactor = sizeFromMarkerWidthFactor
-        self.iconInsetFraction = iconInsetFraction
+    public init(extraLineHeight: CGFloat = 0) {
+        self.extraLineHeight = extraLineHeight
     }
 
-    public static let `default` = CheckboxStyle()
+    public static let `default` = BlockquoteStyle()
 }
 
 // MARK: - Links
@@ -489,4 +582,77 @@ public struct SafeAreaInsets: Sendable {
     }
 
     public static let `default` = SafeAreaInsets()
+}
+
+// MARK: - Height behavior
+
+extension MarkdownEditorConfiguration {
+    /// How the editor resolves its own height.
+    ///
+    /// ## Usage
+    ///
+    /// ```swift
+    /// // Inline editor inside a page scroll view:
+    /// ScrollView {
+    ///     NativeTextViewWrapper(
+    ///         text: $text,
+    ///         configuration: .init(heightBehavior: .fitsContent)
+    ///     )
+    /// }
+    /// ```
+    ///
+    /// ## Behavior
+    ///
+    /// In `.fitsContent` mode:
+    /// - The editor reports `headerHeight + text content height` to SwiftUI.
+    /// - Typing grows/shrinks the block per keystroke; SwiftUI re-lays-out.
+    /// - An empty document shows at least one body line of height.
+    /// - Scroll-wheel events pass through to the enclosing scroll view.
+    /// - Caret visibility propagates to the enclosing (page-level) scroll
+    ///   view so editing at the bottom of a tall block keeps the caret
+    ///   on-screen.
+    /// - Async content changes (image/LaTeX finishing layout, font-size
+    ///   change) re-report size via `invalidateIntrinsicContentSize`.
+    /// - Switching between `.scrolls` and `.fitsContent` at runtime is
+    ///   supported; the editor reconfigures immediately.
+    ///
+    /// ## Composition
+    ///
+    /// - **Reading column** (`readingWidth`): the centered fixed-width column
+    ///   is preserved; height grows to the column's content height.
+    /// - **Scroll-away header**: a static header's band is included in the
+    ///   reported height. The collapse-on-scroll animation is driven by the
+    ///   inner scroll offset, which is always zero in `.fitsContent`, so the
+    ///   collapse never triggers. Combining a collapsing header with
+    ///   `.fitsContent` is allowed but the collapse behavior is not meaningful.
+    ///
+    /// ## Trade-offs
+    ///
+    /// `.fitsContent` forces full-document layout so the total height is known.
+    /// For small-to-medium documents this is fine; for very large documents it
+    /// forgoes TextKit-2 viewport virtualization.
+    public enum HeightBehavior: Sendable {
+        /// The editor scrolls internally within the height SwiftUI gives it.
+        /// This is the historical behavior and the default.
+        case scrolls
+
+        /// The editor grows to fit its content and reports that height back to
+        /// SwiftUI, so an enclosing scroll view / page scrolls instead of a
+        /// nested scroll view. Internal scrolling and bottom-overscroll slack
+        /// are disabled in this mode.
+        case fitsContent
+
+        /// Whether the vertical scroller should be shown for this height
+        /// behavior and scroller policy combination.
+        ///
+        /// In `.fitsContent` the editor never scrolls internally, so the
+        /// vertical scroller is always hidden regardless of the policy.
+        /// In `.scrolls` the policy's `hasVerticalScroller` is respected.
+        public func wantsVerticalScroller(for scrollers: ScrollersPolicy) -> Bool {
+            switch self {
+            case .fitsContent: return false
+            case .scrolls:     return scrollers.hasVerticalScroller
+            }
+        }
+    }
 }

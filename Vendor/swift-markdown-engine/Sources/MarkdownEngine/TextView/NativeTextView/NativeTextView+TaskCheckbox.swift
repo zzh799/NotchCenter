@@ -12,35 +12,57 @@
 import AppKit
 
 extension NativeTextView {
-    func toggleTaskCheckboxIfHit(event: NSEvent) -> Bool? {
+
+    /// The drawn checkbox square under `containerPoint`, if any.
+    ///
+    /// The `[ ]` chars are collapsed to ~zero width, so their bounding rect sits
+    /// at the content edge; reconstruct the DRAWN square from the shared
+    /// `TaskCheckboxGeometry` (right-aligned to it). `baseFont`, not
+    /// NSTextView.font (see the draw site). `searchRange` bounds the scan —
+    /// the hovered line for cursor checks, nil (whole doc) for clicks.
+    func taskCheckboxHit(at containerPoint: CGPoint, in searchRange: NSRange? = nil) -> (range: NSRange, isChecked: Bool)? {
         guard let textContainer = textContainer,
               let bridge = layoutBridge,
+              let storage = textStorage, storage.length > 0 else { return nil }
+        let boxSize = TaskCheckboxGeometry.size(for: baseFont)
+        let scan = searchRange ?? NSRange(location: 0, length: storage.length)
+        var hit: (range: NSRange, isChecked: Bool)?
+        storage.enumerateAttribute(.taskCheckbox, in: scan, options: []) { value, attrRange, stop in
+            guard let isChecked = value as? Bool else { return }
+            let anchor = bridge.boundingRect(forCharacterRange: attrRange, in: textContainer)
+            let rect = CGRect(
+                x: TaskCheckboxGeometry.boxX(contentX: anchor.minX, size: boxSize),
+                y: anchor.minY,
+                width: boxSize,
+                height: max(anchor.height, boxSize)
+            )
+            if rect.contains(containerPoint) {
+                hit = (attrRange, isChecked)
+                stop.pointee = true
+            }
+        }
+        return hit
+    }
+
+    func toggleTaskCheckboxIfHit(event: NSEvent) -> Bool? {
+        guard let bridge = layoutBridge,
               let storage = textStorage else { return nil }
         let localPoint = convert(event.locationInWindow, from: nil)
         let containerPoint = CGPoint(
             x: localPoint.x - textContainerOrigin.x,
             y: localPoint.y - textContainerOrigin.y
         )
-        var fraction: CGFloat = 0
-        let index = bridge.characterIndex(
-            for: containerPoint,
-            in: textContainer,
-            fractionOfDistanceBetweenInsertionPoints: &fraction
-        )
-        guard index != NSNotFound, index < storage.length else { return nil }
 
-        var effectiveRange = NSRange(location: 0, length: 0)
-        guard let isChecked = storage.attribute(.taskCheckbox, at: index, effectiveRange: &effectiveRange) as? Bool,
-              effectiveRange.length > 0 else { return nil }
+        guard let (effectiveRange, hitIsChecked) = taskCheckboxHit(at: containerPoint) else { return nil }
 
         let nsText = storage.string as NSString
         let checkboxText = nsText.substring(with: effectiveRange)
         guard checkboxText.range(of: #"\[[ xX]\]"#, options: .regularExpression) != nil else { return nil }
 
-        let replacement = isChecked ? "[ ]" : "[x]"
+        let replacement = hitIsChecked ? "[ ]" : "[x]"
         if shouldChangeText(in: effectiveRange, replacementString: replacement) {
             storage.replaceCharacters(in: effectiveRange, with: replacement)
-            storage.addAttribute(.taskCheckbox, value: !isChecked, range: effectiveRange)
+            storage.addAttribute(.taskCheckbox, value: !hitIsChecked, range: effectiveRange)
             storage.addAttribute(.foregroundColor, value: NSColor.clear, range: effectiveRange)
             didChangeText()
             bridge.invalidateDisplay(forCharacterRange: effectiveRange)

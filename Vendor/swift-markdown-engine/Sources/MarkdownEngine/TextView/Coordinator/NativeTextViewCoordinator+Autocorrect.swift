@@ -25,13 +25,13 @@ extension NativeTextViewCoordinator {
         if let codeTokens = codeTokens {
             inCode = MarkdownDetection.isInsideCodeBlock(location: caretLocation, codeTokens: codeTokens)
         } else {
-            inCode = MarkdownDetection.isInsideCodeBlock(location: caretLocation, in: textView.string)
+            inCode = MarkdownDetection.isInsideCodeBlock(location: caretLocation, in: textView.string, registry: configuration.extensionRegistry)
         }
         let inLatex: Bool
         if let latexTokens = latexTokens {
             inLatex = MarkdownDetection.isInsideLatex(location: caretLocation, latexTokens: latexTokens)
         } else {
-            inLatex = MarkdownDetection.isInsideLatex(location: caretLocation, in: textView.string)
+            inLatex = MarkdownDetection.isInsideLatex(location: caretLocation, in: textView.string, registry: configuration.extensionRegistry)
         }
         let inSpellcheckSuppressedToken: Bool
         if let allTokens = allTokens {
@@ -49,9 +49,19 @@ extension NativeTextViewCoordinator {
         }
         cachedSpellingDisabled = shouldDisableSpelling
 
-        textView.isAutomaticSpellingCorrectionEnabled = !shouldDisableSpelling
-        textView.isContinuousSpellCheckingEnabled = !shouldDisableSpelling
-        textView.isGrammarCheckingEnabled = !shouldDisableSpelling
+        // Inside a suppress zone (code/LaTeX/link), force everything off.
+        // Outside, restore to the user's preference — captured via the toggle
+        // overrides in `NativeTextView+SpellingToggles.swift` — so a manual
+        // "off" survives caret movement through suppress zones.
+        textView.isAutomaticSpellingCorrectionEnabled = shouldDisableSpelling
+            ? false
+            : userPrefersAutomaticSpellingCorrection
+        textView.isContinuousSpellCheckingEnabled = shouldDisableSpelling
+            ? false
+            : userPrefersContinuousSpellChecking
+        textView.isGrammarCheckingEnabled = shouldDisableSpelling
+            ? false
+            : userPrefersGrammarChecking
         textView.isAutomaticQuoteSubstitutionEnabled = !shouldDisableSpelling
         textView.isAutomaticDashSubstitutionEnabled = false
     }
@@ -72,7 +82,7 @@ extension NativeTextViewCoordinator {
     func isInsideSpellcheckSuppressedToken(location: Int, in text: String) -> Bool {
         let parsed = parsedDocument(for: text)
         return parsed.tokens.contains { token in
-            guard token.kind == .wikiLink || token.kind == .link || token.kind == .imageEmbed else {
+            guard token.kind == .wikiLink || token.kind == .link || token.kind == .imageEmbed || token.kind == .table else {
                 return false
             }
             return NSLocationInRange(location, token.range)
@@ -82,7 +92,7 @@ extension NativeTextViewCoordinator {
     func isInsideSpellcheckSuppressedToken(range: NSRange, in text: String) -> Bool {
         let parsed = parsedDocument(for: text)
         return parsed.tokens.contains { token in
-            guard token.kind == .wikiLink || token.kind == .link || token.kind == .imageEmbed else {
+            guard token.kind == .wikiLink || token.kind == .link || token.kind == .imageEmbed || token.kind == .table else {
                 return false
             }
             return NSIntersectionRange(token.range, range).length > 0

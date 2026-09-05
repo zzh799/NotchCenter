@@ -10,45 +10,41 @@ import AppKit
 
 enum HeadingHelpers {
 
-    static func headingFontMultiplier(
-        for level: Int,
-        configuration: HeadingStyle = .default
-    ) -> CGFloat {
-        configuration.fontMultiplier(for: level)
-    }
-
-    static func headingTopSpacingEm(
-        for level: Int,
-        configuration: HeadingStyle = .default
-    ) -> CGFloat {
-        configuration.topSpacingEm(for: level)
-    }
-
     /// Use heading context to scale LaTeX font size consistently with surrounding text.
+    /// `headings` is the document's heading tokens, built once per styling pass —
+    /// scanning all tokens per LaTeX token here was O(#latex × #tokens).
     static func latexFontSize(
         for token: MarkdownToken,
-        tokens: [MarkdownToken],
+        headings: [MarkdownToken],
         baseFont: NSFont,
         configuration: HeadingStyle = .default
     ) -> CGFloat {
-        if let headingToken = tokens.first(where: { $0.kind == .heading && NSLocationInRange(token.contentRange.location, $0.contentRange) }) {
+        if let headingToken = headings.first(where: { NSLocationInRange(token.contentRange.location, $0.contentRange) }) {
             let level = headingToken.markerRanges.first?.length ?? 1
             return baseFont.pointSize * configuration.fontMultiplier(for: level)
         }
         return baseFont.pointSize
     }
 
-    static func textWidth(_ text: String, font: NSFont) -> CGFloat {
-        (text as NSString).size(withAttributes: [.font: font]).width
-    }
+    /// Memoized string-width measurement. `size(withAttributes:)` is a full CoreText
+    /// measure (~31µs); the styler calls this thousands of times per open on a small set
+    /// of repeated strings — list markers (`- `, `1. `), the `$`/`$$` latex markers, per
+    /// formula/char slices. Only 2 distinct inline formulas × 4 calls each, 372 list
+    /// items with ~5 distinct markers, etc. Same (text, font) → same width, so the cache
+    /// is byte-identical to the direct call. `NSCache` bounds memory and is thread-safe.
+    private static let widthCache: NSCache<NSString, NSNumber> = {
+        let c = NSCache<NSString, NSNumber>()
+        c.countLimit = 4096
+        return c
+    }()
 
-    static func checkboxExtraSpacing(
-        font: NSFont,
-        configuration: CheckboxStyle = .default
-    ) -> CGFloat {
-        max(
-            configuration.minimumExtraSpacing,
-            ceil(font.pointSize * configuration.extraSpacingPerFontPointFraction)
-        )
+    static func textWidth(_ text: String, font: NSFont) -> CGFloat {
+        let key = "\(font.fontName)|\(font.pointSize)|\(text)" as NSString
+        if let cached = widthCache.object(forKey: key) {
+            return CGFloat(cached.doubleValue)
+        }
+        let width = (text as NSString).size(withAttributes: [.font: font]).width
+        widthCache.setObject(NSNumber(value: Double(width)), forKey: key)
+        return width
     }
 }

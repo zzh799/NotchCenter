@@ -6,156 +6,41 @@
 //
 //  Right-click menu with toggleable Markdown formatting actions.
 //
+//  Two rules here, both learned from silent data loss (25.07.26):
+//
+//  1. Never publish the binding. `didChangeText()` already enqueues the STORAGE
+//     form; a handler enqueueing `self.text = tv.string` lands second on the
+//     same queue and wins — and `tv.string` is the DISPLAY form, where every
+//     `|UUID` has been moved out of the text into metadata.
+//  2. Never rewrite retained text. Rebuilding a span from `tv.string` and
+//     writing it back destroys `.wikiLinkID` on anything inside it, which is the
+//     only copy of a link's UUID once its metadata range shifts. Use
+//     `replacePreservingAttributes` or edit only the characters that change.
+//
 
 import Cocoa
 import SwiftUI
 
 extension NativeTextViewWrapper.Coordinator {
+    // The engine ships no built-in menu (API-only). It hands the default NSMenu + the
+    // current selection to the embedder's onBuildContextMenu hook, which returns the menu
+    // to show. The didMarkdown* actions below stay so embedders can drive them via the bus.
     public func textView(_ textView: NSTextView,
-                  menu: NSMenu,
-                  for event: NSEvent,
-                  at charIndex: Int) -> NSMenu? {
-        let customMenu = menu.copy() as? NSMenu ?? NSMenu()
-        insertImageAssetItemsIfNeeded(into: customMenu, textView: textView, charIndex: charIndex)
-
-        if let fontIndex = customMenu.items.firstIndex(where: { $0.title == "Font" }) {
-            customMenu.removeItem(at: fontIndex)
-            let formatItem = NSMenuItem(title: "Format", action: nil, keyEquivalent: "")
-            let formatSubmenu = NSMenu(title: "Format")
-            let boldItem = NSMenuItem(title: "Bold", action: #selector(didMarkdownBold(_:)), keyEquivalent: "")
-            boldItem.target = self
-            formatSubmenu.addItem(boldItem)
-            let italicItem = NSMenuItem(title: "Italic", action: #selector(didMarkdownItalic(_:)), keyEquivalent: "")
-            italicItem.target = self
-            formatSubmenu.addItem(italicItem)
-            formatItem.submenu = formatSubmenu
-            customMenu.insertItem(formatItem, at: fontIndex)
-
-            let headingItem = NSMenuItem(title: "Heading", action: nil, keyEquivalent: "")
-            let headingSubmenu = NSMenu(title: "Heading")
-            for level in 1...3 {
-                let item = NSMenuItem(title: "H\(level)", action: #selector(didMarkdownHeading(_:)), keyEquivalent: "")
-                item.target = self
-                item.tag = level
-                headingSubmenu.addItem(item)
-            }
-            headingItem.submenu = headingSubmenu
-            customMenu.insertItem(headingItem, at: fontIndex + 1)
-
-            let listItem = NSMenuItem(title: "Lists", action: nil, keyEquivalent: "")
-            let listSubmenu = NSMenu(title: "Lists")
-            let unorderedItem = NSMenuItem(title: "Bullet", action: #selector(didMarkdownUnorderedList(_:)), keyEquivalent: "")
-            unorderedItem.target = self
-            listSubmenu.addItem(unorderedItem)
-            let orderedItem = NSMenuItem(title: "Numbered", action: #selector(didMarkdownOrderedList(_:)), keyEquivalent: "")
-            orderedItem.target = self
-            listSubmenu.addItem(orderedItem)
-            listItem.submenu = listSubmenu
-            customMenu.insertItem(listItem, at: fontIndex + 2)
-            customMenu.insertItem(NSMenuItem.separator(), at: fontIndex + 3)
+                         menu: NSMenu,
+                         for event: NSEvent,
+                         at charIndex: Int) -> NSMenu? {
+        // Drop the system rich-text "Font" submenu (Bold/Italic/Show Colors…). Those apply
+        // NSFont traits/colors that do nothing in a markdown editor (the engine owns styling),
+        // so showing them would mislead. Identified by its font-panel action (locale-independent),
+        // with a title fallback.
+        if let fontIndex = menu.items.firstIndex(where: { item in
+            if item.title == "Font" { return true }
+            return item.submenu?.items.contains { $0.action == Selector("orderFrontFontPanel:") } ?? false
+        }) {
+            menu.removeItem(at: fontIndex)
         }
-
-        return customMenu
-    }
-
-    private func insertImageAssetItemsIfNeeded(into menu: NSMenu, textView: NSTextView, charIndex: Int) {
-        guard let provider = configuration.services.images as? any EmbeddedImageFileProvider,
-              let imageReference = imageReference(at: charIndex, in: textView) else {
-            return
-        }
-
-        let request = imageReference.providerRequest
-        let storedURL = provider.storedFileURL(for: request)
-        let originalURL = provider.originalFileURL(for: request)
-
-        let copyImageItem = NSMenuItem(title: "复制图片", action: #selector(didCopyEmbeddedImage(_:)), keyEquivalent: "")
-        copyImageItem.target = self
-        copyImageItem.representedObject = request
-        copyImageItem.isEnabled = configuration.services.images.image(for: request) != nil
-
-        let copyStoredFileItem = NSMenuItem(title: "复制图片文件", action: #selector(didCopyEmbeddedImageFile(_:)), keyEquivalent: "")
-        copyStoredFileItem.target = self
-        copyStoredFileItem.representedObject = storedURL
-        copyStoredFileItem.isEnabled = storedURL != nil
-
-        let copyOriginalFileItem = NSMenuItem(title: "复制原始文件", action: #selector(didCopyEmbeddedImageFile(_:)), keyEquivalent: "")
-        copyOriginalFileItem.target = self
-        copyOriginalFileItem.representedObject = originalURL
-        copyOriginalFileItem.isEnabled = originalURL != nil
-
-        let revealStoredItem = NSMenuItem(title: "在 Finder 中显示副本", action: #selector(didRevealEmbeddedImageFile(_:)), keyEquivalent: "")
-        revealStoredItem.target = self
-        revealStoredItem.representedObject = storedURL
-        revealStoredItem.isEnabled = storedURL != nil
-
-        let revealOriginalItem = NSMenuItem(title: "在 Finder 中显示原始文件", action: #selector(didRevealEmbeddedImageFile(_:)), keyEquivalent: "")
-        revealOriginalItem.target = self
-        revealOriginalItem.representedObject = originalURL
-        revealOriginalItem.isEnabled = originalURL != nil
-
-        let copyMarkdownItem = NSMenuItem(title: "复制 Markdown 引用", action: #selector(didCopyEmbeddedImageMarkdown(_:)), keyEquivalent: "")
-        copyMarkdownItem.target = self
-        copyMarkdownItem.representedObject = imageReference.markdown
-
-        [
-            copyImageItem,
-            copyStoredFileItem,
-            copyOriginalFileItem,
-            revealStoredItem,
-            revealOriginalItem,
-            copyMarkdownItem,
-            NSMenuItem.separator()
-        ].reversed().forEach { item in
-            menu.insertItem(item, at: 0)
-        }
-    }
-
-    private func imageReference(at charIndex: Int, in textView: NSTextView) -> ImageEmbedReference? {
-        let text = textView.string as NSString
-        guard text.length > 0 else { return nil }
-
-        let fallbackLocation = min(textView.selectedRange().location, text.length)
-        let clickLocation = charIndex >= 0 ? min(charIndex, text.length) : fallbackLocation
-        let parsed = parsedDocument(for: textView.string)
-
-        let token = parsed.imageEmbedTokens.first { token in
-            token.containsSelectionOrStandaloneParagraph(clickLocation, in: text)
-                || token.containsSelectionOrStandaloneParagraph(fallbackLocation, in: text)
-        }
-
-        guard let token else { return nil }
-        let content = text.substring(with: token.contentRange)
-        return ImageEmbedReference(content: content)
-    }
-
-    @objc private func didCopyEmbeddedImage(_ sender: NSMenuItem) {
-        guard let request = sender.representedObject as? EmbeddedImageRequest,
-              let image = configuration.services.images.image(for: request) else {
-            return
-        }
-
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.writeObjects([image])
-    }
-
-    @objc private func didCopyEmbeddedImageFile(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.writeObjects([url as NSURL])
-    }
-
-    @objc private func didRevealEmbeddedImageFile(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
-    @objc private func didCopyEmbeddedImageMarkdown(_ sender: NSMenuItem) {
-        guard let markdown = sender.representedObject as? String else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(markdown, forType: .string)
+        guard let build = onBuildContextMenu else { return menu }
+        return build(menu, textView.selectedRange())
     }
 
     /// Returns the smallest bold or boldItalic token that fully contains the selection, or nil when the selection isn't enclosed by emphasis with a bold trait.
@@ -182,24 +67,105 @@ extension NativeTextViewWrapper.Coordinator {
         return enclosingItalicToken(for: range, in: nsText as String) != nil
     }
 
+    /// Returns the smallest highlight token that fully contains the selection, or nil.
+    /// Highlight is extension-supplied; without a registered `HighlightExtension`
+    /// no such token exists and the toggle only wraps/unwraps literal `==`.
+    func enclosingHighlightToken(for selection: NSRange, in text: String) -> MarkdownToken? {
+        enclosingToken(of: .extensionSpan(HighlightExtension.identifier), for: selection, in: text)
+    }
+
+    func isSelectionHighlight(in nsText: NSString, range: NSRange) -> Bool {
+        return enclosingHighlightToken(for: range, in: nsText as String) != nil
+    }
+
+    /// Strikethrough is extension-supplied; without a registered
+    /// `StrikethroughExtension` no such token exists and the toggle only
+    /// wraps/unwraps literal `~~`.
+    func isSelectionStrikethrough(in nsText: NSString, range: NSRange) -> Bool {
+        return enclosingToken(of: .extensionSpan(StrikethroughExtension.identifier), for: range, in: nsText as String) != nil
+    }
+
+    func isSelectionInlineCode(in nsText: NSString, range: NSRange) -> Bool {
+        return enclosingToken(of: .inlineCode, for: range, in: nsText as String) != nil
+    }
+
+    /// Returns the smallest token of `kind` that fully contains the selection, or nil.
+    private func enclosingToken(of kind: MarkdownTokenKind, for selection: NSRange, in text: String) -> MarkdownToken? {
+        let tokens = parsedDocument(for: text).tokens
+        return tokens.first { $0.kind == kind && tokenEncloses($0, selection: selection) }
+    }
+
+    /// Expands the given text location outward to the nearest alphanumeric
+    /// + underscore word boundaries. Returns nil when no word characters
+    /// are adjacent to the location.
+    private func wordRange(at location: Int, in nsText: NSString) -> NSRange? {
+        guard location >= 0, location <= nsText.length else { return nil }
+        let charSet = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
+        var start = location
+        while start > 0 {
+            let ch = nsText.character(at: start - 1)
+            guard let scalar = Unicode.Scalar(ch), charSet.contains(scalar) else { break }
+            start -= 1
+        }
+        var end = location
+        while end < nsText.length {
+            let ch = nsText.character(at: end)
+            guard let scalar = Unicode.Scalar(ch), charSet.contains(scalar) else { break }
+            end += 1
+        }
+        let length = end - start
+        return length > 0 ? NSRange(location: start, length: length) : nil
+    }
+
     private func tokenEncloses(_ token: MarkdownToken, selection: NSRange) -> Bool {
         return selection.location >= token.range.location
             && NSMaxRange(selection) <= NSMaxRange(token.range)
     }
 
-    /// Replaces the marker characters of an emphasis token with `replacement` on each side, preserving the inner content.
+    /// Replace `range` with `newText`, carrying the attributes of `retained`
+    /// onto its new home at `newOffset` within `newText`.
+    ///
+    /// `retained` is a subrange of the CURRENT storage whose characters survive
+    /// verbatim. See the file header for why a plain replacement is unsafe.
+    /// Returns false when the text view refused the edit, so callers can skip
+    /// their selection update.
+    @discardableResult
+    private func replacePreservingAttributes(
+        in range: NSRange,
+        with newText: String,
+        retaining retained: NSRange,
+        at newOffset: Int
+    ) -> Bool {
+        guard let tv = textView, let storage = tv.textStorage else { return false }
+        guard tv.shouldChangeText(in: range, replacementString: newText) else { return false }
+
+        let replacement = NSMutableAttributedString(string: newText, attributes: tv.typingAttributes)
+        let carried = storage.attributedSubstring(from: retained)
+        let target = NSRange(location: newOffset, length: carried.length)
+        // Defensive: a caller that miscomputes the offset would corrupt the
+        // document rather than merely lose styling, so fall back to the plain
+        // replacement instead of trapping on a bad range.
+        if NSMaxRange(target) <= replacement.length {
+            replacement.replaceCharacters(in: target, with: carried)
+        }
+        storage.replaceCharacters(in: range, with: replacement)
+        tv.didChangeText()
+        return true
+    }
+
     private func unwrapToken(_ token: MarkdownToken, leftReplacement: String, rightReplacement: String) {
         guard let tv = textView else { return }
         let nsText = tv.string as NSString
         let content = nsText.substring(with: token.contentRange)
         let newText = leftReplacement + content + rightReplacement
-        if tv.shouldChangeText(in: token.range, replacementString: newText) {
-            tv.replaceCharacters(in: token.range, with: newText)
-            tv.didChangeText()
-            let newSelectionLocation = token.range.location + leftReplacement.count
-            tv.setSelectedRange(NSRange(location: newSelectionLocation, length: content.count))
-            DispatchQueue.main.async { self.text = tv.string }
-        }
+        guard replacePreservingAttributes(
+            in: token.range,
+            with: newText,
+            retaining: token.contentRange,
+            at: (leftReplacement as NSString).length
+        ) else { return }
+        let newSelectionLocation = token.range.location + leftReplacement.count
+        tv.setSelectedRange(NSRange(location: newSelectionLocation, length: content.count))
     }
 
     func isSelectionHeading(level: Int, in nsText: NSString, range: NSRange) -> Bool {
@@ -212,7 +178,14 @@ extension NativeTextViewWrapper.Coordinator {
     func isSelectionList(in nsText: NSString, range: NSRange) -> Bool {
         let lineRange = nsText.lineRange(for: range)
         let line = nsText.substring(with: lineRange)
-        return line.hasPrefix("\t• ") || line.hasPrefix("1. ")
+        return line.hasPrefix("- ") || line.hasPrefix("* ") || line.hasPrefix("+ ")
+            || line.hasPrefix("\t• ") || line.hasPrefix("1. ")
+    }
+
+    func isSelectionBlockquote(in nsText: NSString, range: NSRange) -> Bool {
+        let lineRange = nsText.lineRange(for: range)
+        let line = nsText.substring(with: lineRange)
+        return line.hasPrefix("> ")
     }
 
     private func applyHeading(level: Int) {
@@ -220,19 +193,31 @@ extension NativeTextViewWrapper.Coordinator {
         let nsText = tv.string as NSString
         let range = tv.selectedRange()
         let lineRange = nsText.lineRange(for: range)
-        let rawLine = nsText.substring(with: lineRange).trimmingCharacters(in: .whitespacesAndNewlines)
+        let originalLine = nsText.substring(with: lineRange)
+        let rawLine = originalLine.trimmingCharacters(in: .whitespacesAndNewlines)
         var content = rawLine
         while content.hasPrefix("#") { content.removeFirst() }
         content = content.trimmingCharacters(in: .whitespaces)
         let prefix = String(repeating: "#", count: level) + " "
-        let newLine = prefix + content
-        if tv.shouldChangeText(in: lineRange, replacementString: newLine) {
-            tv.replaceCharacters(in: lineRange, with: newLine)
-            tv.didChangeText()
-            let newSel = NSRange(location: lineRange.location + prefix.count, length: content.count)
-            tv.setSelectedRange(newSel)
-            DispatchQueue.main.async { self.text = tv.string }
-        }
+        // lineRange(for:) includes the trailing line terminator; preserve it so
+        // applying a heading to a non-final line doesn't swallow the newline and
+        // merge the line with the next one (mirrors applyList's suffix handling).
+        let suffix = originalLine.hasSuffix("\n") ? "\n" : ""
+        let newLine = prefix + content + suffix
+        // `content` is a verbatim slice of the line — locate it so its styling,
+        // and any wiki link inside it, survives the rewrite.
+        let contentRange = (originalLine as NSString).range(of: content)
+        let retained = contentRange.location == NSNotFound
+            ? NSRange(location: lineRange.location, length: 0)
+            : NSRange(location: lineRange.location + contentRange.location, length: contentRange.length)
+        guard replacePreservingAttributes(
+            in: lineRange,
+            with: newLine,
+            retaining: retained,
+            at: (prefix as NSString).length
+        ) else { return }
+        let newSel = NSRange(location: lineRange.location + prefix.count, length: content.count)
+        tv.setSelectedRange(newSel)
     }
 
     @objc func didMarkdownHeading(_ sender: NSMenuItem) {
@@ -253,17 +238,24 @@ extension NativeTextViewWrapper.Coordinator {
         let newLine = prefix + content
         let suffix = originalLine.hasSuffix("\n") ? "\n" : ""
         let replacement = newLine + suffix
-        if tv.shouldChangeText(in: startLine, replacementString: replacement) {
-            tv.replaceCharacters(in: startLine, with: replacement)
-            tv.didChangeText()
-            let newSel = NSRange(location: startLine.location + prefix.count, length: content.count)
-            tv.setSelectedRange(newSel)
-            DispatchQueue.main.async { self.text = tv.string }
-        }
+        // See applyHeading: `content` survives verbatim, so its attributes must
+        // travel with it or a wiki link on this line loses its UUID.
+        let contentRange = (originalLine as NSString).range(of: content)
+        let retained = contentRange.location == NSNotFound
+            ? NSRange(location: startLine.location, length: 0)
+            : NSRange(location: startLine.location + contentRange.location, length: contentRange.length)
+        guard replacePreservingAttributes(
+            in: startLine,
+            with: replacement,
+            retaining: retained,
+            at: (prefix as NSString).length
+        ) else { return }
+        let newSel = NSRange(location: startLine.location + prefix.count, length: content.count)
+        tv.setSelectedRange(newSel)
     }
 
     @objc func didMarkdownUnorderedList(_ sender: Any?) {
-        applyList(prefix: "\t• ")
+        applyList(prefix: "- ")
     }
 
     @objc func didMarkdownOrderedList(_ sender: Any?) {
@@ -278,6 +270,12 @@ extension NativeTextViewWrapper.Coordinator {
             // Toggle off: bold → plain, boldItalic → italic.
             let (left, right) = token.kind == .boldItalic ? ("*", "*") : ("", "")
             unwrapToken(token, leftReplacement: left, rightReplacement: right)
+            return
+        }
+
+        if range.length == 0, let wr = wordRange(at: range.location, in: tv.string as NSString), wr.length > 0 {
+            let cursorOffset = range.location - wr.location
+            wrapWordRange(wr, with: "**", cursorOffset: cursorOffset)
             return
         }
 
@@ -300,12 +298,195 @@ extension NativeTextViewWrapper.Coordinator {
             return
         }
 
+        if range.length == 0, let wr = wordRange(at: range.location, in: tv.string as NSString), wr.length > 0 {
+            let cursorOffset = range.location - wr.location
+            wrapWordRange(wr, with: "*", cursorOffset: cursorOffset)
+            return
+        }
+
         if range.length == 0 {
             insertEmptyMarkers("*")
             return
         }
 
         wrapSelection(with: "*")
+    }
+
+    @objc func didMarkdownHighlight(_ sender: Any?) {
+        guard let tv = textView else { return }
+        let range = tv.selectedRange()
+
+        if let token = enclosingHighlightToken(for: range, in: tv.string) {
+            unwrapToken(token, leftReplacement: "", rightReplacement: "")
+            return
+        }
+
+        if range.length == 0 {
+            insertEmptyMarkers("==")
+            return
+        }
+
+        wrapSelection(with: "==")
+    }
+
+    @objc func didMarkdownStrikethrough(_ sender: Any?) {
+        guard let tv = textView else { return }
+        let range = tv.selectedRange()
+
+        if let token = enclosingToken(of: .extensionSpan(StrikethroughExtension.identifier), for: range, in: tv.string) {
+            unwrapToken(token, leftReplacement: "", rightReplacement: "")
+            return
+        }
+
+        if range.length == 0, let wr = wordRange(at: range.location, in: tv.string as NSString), wr.length > 0 {
+            let cursorOffset = range.location - wr.location
+            wrapWordRange(wr, with: "~~", cursorOffset: cursorOffset)
+            return
+        }
+
+        if range.length == 0 {
+            insertEmptyMarkers("~~")
+            return
+        }
+
+        wrapSelection(with: "~~")
+    }
+
+    @objc func didMarkdownInlineCode(_ sender: Any?) {
+        guard let tv = textView else { return }
+        let range = tv.selectedRange()
+
+        if let token = enclosingToken(of: .inlineCode, for: range, in: tv.string) {
+            unwrapToken(token, leftReplacement: "", rightReplacement: "")
+            return
+        }
+
+        if range.length == 0, let wr = wordRange(at: range.location, in: tv.string as NSString), wr.length > 0 {
+            let cursorOffset = range.location - wr.location
+            wrapWordRange(wr, with: "`", cursorOffset: cursorOffset)
+            return
+        }
+
+        if range.length == 0 {
+            insertEmptyMarkers("`")
+            return
+        }
+
+        wrapSelection(with: "`")
+    }
+
+    /// Toggles the `> ` prefix by editing only the prefix, leaving every
+    /// attribute on the rest of the line untouched. It used to replace the whole
+    /// line to add two characters, which is how it stripped wiki-link UUIDs.
+    @objc func didMarkdownBlockquote(_ sender: Any?) {
+        guard let tv = textView else { return }
+        let nsText = tv.string as NSString
+        let range = tv.selectedRange()
+        let lineRange = nsText.lineRange(for: range)
+        let originalLine = nsText.substring(with: lineRange)
+
+        if originalLine.hasPrefix("> ") {
+            let prefixRange = NSRange(location: lineRange.location, length: 2)
+            if tv.shouldChangeText(in: prefixRange, replacementString: "") {
+                tv.replaceCharacters(in: prefixRange, with: "")
+                tv.didChangeText()
+                let newLoc = max(lineRange.location, range.location - 2)
+                tv.setSelectedRange(NSRange(location: newLoc, length: 0))
+            }
+        } else {
+            let insertRange = NSRange(location: lineRange.location, length: 0)
+            if tv.shouldChangeText(in: insertRange, replacementString: "> ") {
+                tv.replaceCharacters(in: insertRange, with: "> ")
+                tv.didChangeText()
+                tv.setSelectedRange(NSRange(location: range.location + 2, length: range.length))
+            }
+        }
+    }
+
+    @objc func didMarkdownLink(_ sender: Any?) {
+        guard let tv = textView else { return }
+        let range = tv.selectedRange()
+        let url = (sender as? NSNotification)?.userInfo?["url"] as? String ?? ""
+
+        if range.length > 0 {
+            let nsText = tv.string as NSString
+            let selected = nsText.substring(with: range)
+            let newText = "[\(selected)](\(url))"
+            // The selected text becomes the link label and survives verbatim.
+            guard replacePreservingAttributes(
+                in: range,
+                with: newText,
+                retaining: range,
+                at: 1 // past the opening "["
+            ) else { return }
+            tv.setSelectedRange(NSRange(location: range.location + newText.count, length: 0))
+        } else {
+            let insertion = "[](\(url))"
+            if tv.shouldChangeText(in: range, replacementString: insertion) {
+                tv.replaceCharacters(in: range, with: insertion)
+                tv.didChangeText()
+                tv.setSelectedRange(NSRange(location: range.location + 1, length: 0))
+            }
+        }
+    }
+
+    @objc func didMarkdownCodeBlock(_ sender: Any?) {
+        guard let tv = textView else { return }
+        let range = tv.selectedRange()
+        let nsText = tv.string as NSString
+        let lineRange = nsText.lineRange(for: range)
+        let prefix = range.location > lineRange.location ? "\n" : ""
+        let insertion = "\(prefix)```\n\n```\n"
+        if tv.shouldChangeText(in: range, replacementString: insertion) {
+            tv.replaceCharacters(in: range, with: insertion)
+            tv.didChangeText()
+            let cursorLoc = range.location + prefix.count + 4
+            tv.setSelectedRange(NSRange(location: cursorLoc, length: 0))
+        }
+    }
+
+    @objc func didMarkdownHorizontalRule(_ sender: Any?) {
+        guard let tv = textView else { return }
+        let range = tv.selectedRange()
+        let nsText = tv.string as NSString
+        let lineRange = nsText.lineRange(for: range)
+        let prefix = range.location > lineRange.location ? "\n" : ""
+        let insertion = "\(prefix)---\n"
+        if tv.shouldChangeText(in: range, replacementString: insertion) {
+            tv.replaceCharacters(in: range, with: insertion)
+            tv.didChangeText()
+            let cursorLoc = range.location + insertion.count
+            tv.setSelectedRange(NSRange(location: cursorLoc, length: 0))
+        }
+    }
+
+    @objc func didMarkdownImage(_ sender: Any?) {
+        guard let tv = textView else { return }
+        let range = tv.selectedRange()
+        let url = (sender as? NSNotification)?.userInfo?["url"] as? String ?? ""
+        let insertion = "![](\(url))"
+        if tv.shouldChangeText(in: range, replacementString: insertion) {
+            tv.replaceCharacters(in: range, with: insertion)
+            tv.didChangeText()
+            tv.setSelectedRange(NSRange(location: range.location + insertion.count, length: 0))
+        }
+    }
+
+    /// Wraps the range with markers while preserving the cursor's relative
+    /// offset within the original text. For example `wo|rd` with `**`
+    /// becomes `**wo|rd**`.
+    private func wrapWordRange(_ range: NSRange, with marker: String, cursorOffset: Int) {
+        guard let tv = textView else { return }
+        let nsText = tv.string as NSString
+        let original = nsText.substring(with: range)
+        let newText = marker + original + marker
+        guard replacePreservingAttributes(
+            in: range,
+            with: newText,
+            retaining: range,
+            at: (marker as NSString).length
+        ) else { return }
+        tv.setSelectedRange(NSRange(location: range.location + marker.count + cursorOffset, length: 0))
     }
 
     private func insertEmptyMarkers(_ marker: String) {
@@ -316,7 +497,6 @@ extension NativeTextViewWrapper.Coordinator {
             tv.replaceCharacters(in: range, with: insertion)
             tv.didChangeText()
             tv.setSelectedRange(NSRange(location: range.location + marker.count, length: 0))
-            DispatchQueue.main.async { self.text = tv.string }
         }
     }
 
@@ -333,43 +513,21 @@ extension NativeTextViewWrapper.Coordinator {
         let leading = String(original[..<coreStart])
         let trailing = String(original[coreEnd...])
         let newText = leading + marker + core + marker + trailing
-        if tv.shouldChangeText(in: range, replacementString: newText) {
-            tv.replaceCharacters(in: range, with: newText)
-            tv.didChangeText()
-            let newRange = NSRange(location: range.location + leadingWS + marker.count, length: core.count)
-            tv.setSelectedRange(newRange)
-            DispatchQueue.main.async { self.text = tv.string }
-        }
+        // Only the markers are new; `core` is the user's text and keeps its
+        // attributes, including a wiki link's UUID if the selection spans one.
+        let coreOldRange = NSRange(location: range.location + (leading as NSString).length,
+                                   length: (core as NSString).length)
+        guard replacePreservingAttributes(
+            in: range,
+            with: newText,
+            retaining: coreOldRange,
+            at: (leading as NSString).length + (marker as NSString).length
+        ) else { return }
+        let newRange = NSRange(location: range.location + leadingWS + marker.count, length: core.count)
+        tv.setSelectedRange(newRange)
     }
 }
 
-// MARK: - Menu Item Validation
-extension NativeTextViewWrapper.Coordinator: NSMenuItemValidation {
-    public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        guard let tv = textView else { return true }
-        let nsText = tv.string as NSString
-        let range = tv.selectedRange()
-        switch menuItem.action {
-        case #selector(didMarkdownBold(_:)):
-            menuItem.state = enclosingBoldToken(for: range, in: tv.string) != nil ? .on : .off
-            return true
-        case #selector(didMarkdownItalic(_:)):
-            menuItem.state = enclosingItalicToken(for: range, in: tv.string) != nil ? .on : .off
-            return true
-        case #selector(didMarkdownHeading(_:)):
-            return !isSelectionHeading(level: menuItem.tag, in: nsText, range: range)
-        case #selector(didMarkdownUnorderedList(_:)),
-             #selector(didMarkdownOrderedList(_:)):
-            return !isSelectionList(in: nsText, range: range)
-        case #selector(didCopyEmbeddedImage(_:)):
-            return menuItem.representedObject is EmbeddedImageRequest
-        case #selector(didCopyEmbeddedImageFile(_:)),
-             #selector(didRevealEmbeddedImageFile(_:)):
-            return menuItem.representedObject is URL
-        case #selector(didCopyEmbeddedImageMarkdown(_:)):
-            return menuItem.representedObject is String
-        default:
-            return true
-        }
-    }
-}
+// Menu Item Validation (checkmark state) removed together with the built-in menu —
+// engine ships no UI. Expose the isSelection* checks as a query API if embedders
+// need menu state.

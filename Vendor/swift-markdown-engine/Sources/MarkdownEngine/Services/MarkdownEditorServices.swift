@@ -31,6 +31,20 @@ public protocol WikiLinkResolver: Sendable {
     ///   - range: The character range the link occupies in the document.
     /// - Returns: A resolution if the link points at known content; `nil` otherwise.
     func resolve(displayName: String, range: NSRange) -> WikiLinkResolution?
+
+    /// Returns the target's CURRENT display name for a stable id, nil if unknown
+    /// (renderer falls back to the stored label).
+    func name(forID id: String) -> String?
+
+    /// Coarse fingerprint of the resolver's known targets (typically IDs + names).
+    /// A different value triggers a wiki-link restyle, so a rename refreshes link
+    /// clickability/display without waiting for the next keystroke.
+    func fingerprint() -> AnyHashable
+}
+
+public extension WikiLinkResolver {
+    func fingerprint() -> AnyHashable { 0 }
+    func name(forID id: String) -> String? { nil }
 }
 
 /// The result of resolving a wiki-link.
@@ -198,33 +212,108 @@ public struct MarkdownEditorBus: Sendable {
     /// Posted by the host UI to request the engine apply a heading level.
     /// Expected `userInfo["level"] as? Int`.
     public var applyHeadingRequest: Notification.Name?
+    /// Posted by the host UI to request the engine apply highlight styling.
+    public var applyHighlightRequest: Notification.Name?
+    /// Posted by the host UI to request the engine apply strikethrough styling.
+    public var applyStrikethroughRequest: Notification.Name?
+    /// Posted by the host UI to request the engine apply inline code styling.
+    public var applyInlineCodeRequest: Notification.Name?
+    /// Posted by the host UI to request the engine apply blockquote styling.
+    public var applyBlockquoteRequest: Notification.Name?
+    /// Posted by the host UI to request the engine apply unordered list styling.
+    public var applyUnorderedListRequest: Notification.Name?
+    /// Posted by the host UI to request the engine apply ordered list styling.
+    public var applyOrderedListRequest: Notification.Name?
+    /// Posted by the host UI to insert a Markdown link.
+    /// Expected `userInfo["url"] as? String`.
+    public var applyLinkRequest: Notification.Name?
+    /// Posted by the host UI to insert a fenced code block at the cursor.
+    public var applyCodeBlockRequest: Notification.Name?
+    /// Posted by the host UI to insert a horizontal rule (`---`) at the cursor.
+    public var applyHorizontalRuleRequest: Notification.Name?
+    /// Posted by the host UI to insert an image embed.
+    /// Expected `userInfo["url"] as? String`.
+    public var applyImageRequest: Notification.Name?
     /// Posted by the engine after every selection change with `userInfo["isBold"] as? Bool`.
     public var selectionBoldDidChange: Notification.Name?
     /// Posted by the engine after every selection change with `userInfo["isItalic"] as? Bool`.
     public var selectionItalicDidChange: Notification.Name?
+    /// Posted by the engine after every selection change with `userInfo["isHighlight"] as? Bool`.
+    public var selectionHighlightDidChange: Notification.Name?
     /// Posted by the host UI to scroll an in-document find match into view
     /// and highlight all matches. Expected `userInfo["range"] as? NSRange`,
     /// `userInfo["currentIndex"] as? Int`, `userInfo["allRanges"] as? [NSRange]`.
     public var findScrollToRange: Notification.Name?
     /// Posted by the host UI to clear all in-document find highlights.
     public var findClearHighlights: Notification.Name?
+    /// Posted by the host UI to run an in-document find against the engine's OWN displayed
+    /// text. Expected `userInfo["query"] as? String`, optional `userInfo["currentIndex"] as? Int`.
+    /// The engine matches in DISPLAY coordinates, so highlights land correctly even where the
+    /// displayed text differs from the source (e.g. node links rendered shorter than
+    /// `[[Name|UUID]]`, LaTeX, images). Preferred over `findScrollToRange`, which trusts
+    /// host-computed (source-coordinate) ranges.
+    public var findQuery: Notification.Name?
+    /// Posted by the engine in response to `findQuery` with `userInfo["count"] as? Int`
+    /// (number of matches in the displayed text), so the host can show "x of y".
+    public var findResults: Notification.Name?
+    /// Posted by the host UI to replace the current find match. Expected
+    /// `userInfo["query"] as? String`, `userInfo["replacement"] as? String`,
+    /// optional `userInfo["currentIndex"] as? Int`. The engine edits its own
+    /// displayed text (with undo), re-highlights the remaining matches, and
+    /// posts `findResults` with the new count.
+    public var replaceCurrent: Notification.Name?
+    /// Posted by the host UI to replace every find match in one undo step.
+    /// Expected `userInfo["query"] as? String`, `userInfo["replacement"] as? String`.
+    /// The engine posts `findResults` with the count still matching afterward
+    /// (non-zero only if the replacement itself contains the query).
+    public var replaceAll: Notification.Name?
 
     public init(
         applyBoldRequest: Notification.Name? = nil,
         applyItalicRequest: Notification.Name? = nil,
         applyHeadingRequest: Notification.Name? = nil,
+        applyHighlightRequest: Notification.Name? = nil,
+        applyStrikethroughRequest: Notification.Name? = nil,
+        applyInlineCodeRequest: Notification.Name? = nil,
+        applyBlockquoteRequest: Notification.Name? = nil,
+        applyUnorderedListRequest: Notification.Name? = nil,
+        applyOrderedListRequest: Notification.Name? = nil,
+        applyLinkRequest: Notification.Name? = nil,
+        applyCodeBlockRequest: Notification.Name? = nil,
+        applyHorizontalRuleRequest: Notification.Name? = nil,
+        applyImageRequest: Notification.Name? = nil,
         selectionBoldDidChange: Notification.Name? = nil,
         selectionItalicDidChange: Notification.Name? = nil,
+        selectionHighlightDidChange: Notification.Name? = nil,
         findScrollToRange: Notification.Name? = nil,
-        findClearHighlights: Notification.Name? = nil
+        findClearHighlights: Notification.Name? = nil,
+        findQuery: Notification.Name? = nil,
+        findResults: Notification.Name? = nil,
+        replaceCurrent: Notification.Name? = nil,
+        replaceAll: Notification.Name? = nil
     ) {
         self.applyBoldRequest = applyBoldRequest
         self.applyItalicRequest = applyItalicRequest
         self.applyHeadingRequest = applyHeadingRequest
+        self.applyHighlightRequest = applyHighlightRequest
+        self.applyStrikethroughRequest = applyStrikethroughRequest
+        self.applyInlineCodeRequest = applyInlineCodeRequest
+        self.applyBlockquoteRequest = applyBlockquoteRequest
+        self.applyUnorderedListRequest = applyUnorderedListRequest
+        self.applyOrderedListRequest = applyOrderedListRequest
+        self.applyLinkRequest = applyLinkRequest
+        self.applyCodeBlockRequest = applyCodeBlockRequest
+        self.applyHorizontalRuleRequest = applyHorizontalRuleRequest
+        self.applyImageRequest = applyImageRequest
         self.selectionBoldDidChange = selectionBoldDidChange
         self.selectionItalicDidChange = selectionItalicDidChange
+        self.selectionHighlightDidChange = selectionHighlightDidChange
         self.findScrollToRange = findScrollToRange
         self.findClearHighlights = findClearHighlights
+        self.findQuery = findQuery
+        self.findResults = findResults
+        self.replaceCurrent = replaceCurrent
+        self.replaceAll = replaceAll
     }
 
     public static let `default` = MarkdownEditorBus()

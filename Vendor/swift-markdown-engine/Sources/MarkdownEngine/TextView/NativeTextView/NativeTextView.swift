@@ -21,7 +21,16 @@ final class NativeTextView: NSTextView {
     var baseContentHeight: CGFloat = 0
     var activeBottomOverscroll: CGFloat = 0
     var isApplyingManagedFrameSize = false
+    /// Set on switch/resize to force full-layout height measurement until the cascade settles.
+    var pendingFullLayoutMeasure = false
+    /// Coalesces wide-table overlay updates to once per runloop (resize fires many per frame).
+    var pendingWideTableOverlayUpdate = false
     var suppressAutoRevealOnce: Bool = false
+    // Set by clickedOnLink during a mouseDown: did the delegate fire (so
+    // mouseDown can re-dispatch a click AppKit dropped), and did it navigate
+    // (so the pre-click caret is restored — a link click isn't caret placement).
+    var linkClickDidFire = false
+    var linkClickDidNavigate = false
 
     // MARK: Configuration
     var configuration: MarkdownEditorConfiguration = .default {
@@ -48,27 +57,47 @@ final class NativeTextView: NSTextView {
     // MARK: Drag-select state
     var dragStartMouseScreenLoc: NSPoint?
 
+    // MARK: Placeholder state
+    /// Click-through ghost-text label shown while the document is empty;
+    /// managed by `NativeTextView+Placeholder.swift`.
+    weak var placeholderView: PlaceholderLabelView?
+
+    // MARK: Cursor exclusion
+    /// Embedder-supplied predicate that suppresses the I-beam cursor in edit mode.
+    /// Called on every mouse-move with the event location in window coordinates.
+    /// Return `true` to show the arrow cursor instead of the edit-mode I-beam.
+    var isCursorExcluded: ((CGPoint) -> Bool)?
+
+    // MARK: Wide-table overlay state
+    /// Live NSScrollView per wide table; keyed by source-ID hash.
+    var wideTableOverlays: [Int: WideTableOverlay] = [:]
+    /// Persisted horizontal scroll offset per wide table; survives restyles.
+    var tableHorizontalScrollOffsets: [Int: CGFloat] = [:]
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        // Forward appearance changes to the embedder-supplied syntax highlighter
-        // via the notification name it registered. The engine doesn't know any
-        // app-specific notification names; this hook is opt-in per highlighter.
+        // Forward appearance changes to the embedder's highlighter via its registered notification.
         if let name = configuration.services.syntaxHighlighter.appearanceDidChangeNotification {
             NotificationCenter.default.post(name: name, object: self)
         }
     }
 
-    // AppKit doesn't fire textDidChange for setMarkedText mutations, so Apple's inline-prediction inserts the completion with base typingAttributes and heading lines flicker to body font; restyle the paragraph here to reapply heading font.
+    // setMarkedText skips textDidChange, so restyle the marked paragraph to apply markdown attrs.
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
         guard hasMarkedText(),
               let coord = delegate as? NativeTextViewCoordinator else { return }
         let marked = markedRange()
         guard marked.location != NSNotFound, marked.length > 0 else { return }
+        // The composition mutated the storage without textDidChange, and
+        // shouldChangeTextIn's own parse re-cached the PRE-edit string at the
+        // current generation — bump so the restyle below reparses instead of
+        // serving that stale document (same-length composition updates).
+        coord.parseGeneration &+= 1
+        // Census bookkeeping never saw this mutation → next census full-scans.
+        coord.backtickCensusNeedsRescan = true
         let nsText = self.string as NSString
         let paragraph = nsText.paragraphRange(for: marked)
-        let line = nsText.substring(with: nsText.lineRange(for: NSRange(location: paragraph.location, length: 0)))
-        guard line.hasPrefix("#") else { return }
         coord.restyleParagraphs([paragraph], in: self)
     }
 
