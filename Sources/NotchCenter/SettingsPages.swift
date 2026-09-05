@@ -744,3 +744,81 @@ struct SettingsSection<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
+
+// MARK: 调试
+
+/// 调试页：调整设置面板窗口尺寸（即时生效、跨启动持久化）。滑杆 + 数字
+/// 输入框交互与布局页 MetricsSlider 同款——连续滑杆 + setter 内取整的
+/// 性能结论也一并沿用（`Slider(step:)` 的 tick marks 挂载成本）。
+struct DebugSettingsPage: View {
+    let controller: NotchPanelController
+    @ObservedObject var settingsStore: SettingsStore
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                SettingsSection(title: L("settings.debug.windowSize")) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        sizeSlider(
+                            title: L("settings.debug.width"),
+                            range: SettingsWindowMetrics.widthRange,
+                            value: $settingsStore.settingsWindowWidth
+                        )
+                        sizeSlider(
+                            title: L("settings.debug.height"),
+                            range: SettingsWindowMetrics.heightRange,
+                            value: $settingsStore.settingsWindowHeight
+                        )
+                        Text(L("settings.debug.hint"))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func sizeSlider(
+        title: String,
+        range: ClosedRange<CGFloat>,
+        value: Binding<CGFloat>
+    ) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.72))
+                .frame(width: 76, alignment: .leading)
+            Slider(
+                value: Binding(
+                    get: { Double(value.wrappedValue) },
+                    set: {
+                        value.wrappedValue = CGFloat($0.rounded())
+                        controller.applySettingsWindowSize()
+                    }
+                ),
+                in: Double(range.lowerBound)...Double(range.upperBound)
+            )
+            // 显式 Binding<Double>：`TextField(_:value:format:)` 有多个
+            // 重载，不标注会被推到 Optional 变体（setter 收到 Double?）。
+            TextField(
+                "",
+                value: Binding<Double>(
+                    get: { Double(value.wrappedValue) },
+                    set: { newValue in
+                        // 输入框放行任意输入，钳制统一在
+                        // applySettingsWindowSize 内做（含写回 store）。
+                        value.wrappedValue = CGFloat(newValue)
+                    }
+                ),
+                format: .number.precision(.fractionLength(0))
+            )
+            .multilineTextAlignment(.trailing)
+            .frame(width: 48)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(size: 11).monospacedDigit())
+            .onSubmit { controller.applySettingsWindowSize() }
+        }
+    }
+}

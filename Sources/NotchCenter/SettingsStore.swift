@@ -34,6 +34,23 @@ final class SettingsStore: ObservableObject {
 
     private static let triggerModeKey = "notchCenter.triggerMode"
 
+    // MARK: 设置面板窗口尺寸（调试页可调，即时生效并持久化）
+
+    @Published var settingsWindowWidth: CGFloat {
+        didSet {
+            UserDefaults.standard.set(Double(settingsWindowWidth), forKey: Self.settingsWindowWidthKey)
+        }
+    }
+
+    @Published var settingsWindowHeight: CGFloat {
+        didSet {
+            UserDefaults.standard.set(Double(settingsWindowHeight), forKey: Self.settingsWindowHeightKey)
+        }
+    }
+
+    private static let settingsWindowWidthKey = "notchCenter.settingsWindowWidth"
+    private static let settingsWindowHeightKey = "notchCenter.settingsWindowHeight"
+
     // MARK: 语言覆盖（多语言方案）
     // 只写偏好，不立即生效：已加载的 bundle 在启动时完成 lproj 选择，
     // 所以切换语言后需要重启。启动入口在 main.swift 最先调 applyLanguageOverrideAtLaunch()。
@@ -74,5 +91,21 @@ final class SettingsStore: ObservableObject {
         triggerMode = TriggerMode(rawValue: rawMode) ?? .hover
         let rawLanguage = defaults.string(forKey: Self.languageOverrideKey) ?? ""
         languageOverride = LanguageOverride(rawValue: rawLanguage) ?? .system
+        // 持久值钳制进调试页区间：越界/缺失（double 缺键返回 0）回退默认尺寸。
+        settingsWindowWidth = Self.clamped(
+            defaults.double(forKey: Self.settingsWindowWidthKey),
+            fallback: SettingsWindowMetrics.width,
+            range: SettingsWindowMetrics.widthRange
+        )
+        settingsWindowHeight = Self.clamped(
+            defaults.double(forKey: Self.settingsWindowHeightKey),
+            fallback: SettingsWindowMetrics.height,
+            range: SettingsWindowMetrics.heightRange
+        )
+    }
+
+    private static func clamped(_ raw: Double, fallback: CGFloat, range: ClosedRange<CGFloat>) -> CGFloat {
+        let value = raw > 0 ? CGFloat(raw) : fallback
+        return min(max(value, range.lowerBound), range.upperBound)
     }
 }

@@ -400,4 +400,31 @@ enum NotchGeometry {
             height: size.height
         )
     }
+
+    // MARK: 设置面板底部停靠
+
+    /// 停靠屏幕底部的设置面板窗口顶缘 Y：visibleFrame 底缘（避开 Dock）
+    /// + 底部间距 + 窗口 frame 高度（内容高度 + 透明 titlebar，调试页可调，
+    /// 由调用方从 SettingsStore 现算传入）。
+    nonisolated static func dockedSettingsTopY(
+        visibleMinY: CGFloat,
+        bandHeight: CGFloat
+    ) -> CGFloat {
+        visibleMinY + SettingsWindowMetrics.bottomInset + bandHeight
+    }
+
+    /// 设置打开期间抽屉可见内容的高度上限（不含紧凑带）：抽屉顶缘钉死
+    /// `screenMaxY`，可见底缘不得低于底部停靠的设置面板顶缘再留间距。
+    /// 极端矮屏返回值可能 ≤ 0——调用方须先与最小抽屉尺寸比较，放不开时
+    /// 整体放弃限高（允许重叠），不能把抽屉塌成 0。
+    nonisolated static func settingsCappedDrawerHeight(
+        screenMaxY: CGFloat,
+        visibleMinY: CGFloat,
+        bandHeight: CGFloat,
+        compactHeight: CGFloat
+    ) -> CGFloat {
+        screenMaxY - dockedSettingsTopY(visibleMinY: visibleMinY, bandHeight: bandHeight)
+            - SettingsWindowMetrics.gapFromSettings
+            - compactHeight
+    }
 }

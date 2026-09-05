@@ -20,11 +20,18 @@
 "settings.pluginManager" = "Plugin Manager…";
 "settings.quit" = "Quit NotchCenter";
 
-/* Settings sidebar pages */
+/* Settings top-bar pages */
 "settings.tab.general" = "General";
 "settings.tab.components" = "Components";
 "settings.tab.layout" = "Layout";
 "settings.tab.plugins" = "Plugins";
+"settings.tab.debug" = "Debug";
+
+/* Settings → Debug */
+"settings.debug.windowSize" = "Settings Window Size";
+"settings.debug.width" = "Width";
+"settings.debug.height" = "Height";
+"settings.debug.hint" = "Applies live and persists; height also drives the drawer's height-cap band.";
 
 /* Settings → Components */
 "settings.components.groups" = "Plugins";

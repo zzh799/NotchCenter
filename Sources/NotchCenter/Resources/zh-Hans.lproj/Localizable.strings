@@ -20,11 +20,18 @@
 "settings.pluginManager" = "插件管理…";
 "settings.quit" = "退出 NotchCenter";
 
-/* 设置侧边栏分页 */
+/* 设置顶栏分页 */
 "settings.tab.general" = "通用";
 "settings.tab.components" = "组件";
 "settings.tab.layout" = "布局";
 "settings.tab.plugins" = "插件";
+"settings.tab.debug" = "调试";
+
+/* 设置 → 调试 */
+"settings.debug.windowSize" = "设置面板窗口尺寸";
+"settings.debug.width" = "宽度";
+"settings.debug.height" = "高度";
+"settings.debug.hint" = "改动即时生效并持久化；高度同时决定抽屉限高的让位带宽。";
 
 /* 设置 → 组件 */
 "settings.components.groups" = "插件";

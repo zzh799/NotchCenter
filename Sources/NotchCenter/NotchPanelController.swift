@@ -36,7 +36,7 @@ final class NotchPanelController: NSObject {
     /// 抽屉是否处于展开状态（纯控制器逻辑，不进 UI 状态）。
     private(set) var isExpanded = false
 
-    /// 设置面板是否可见：期间抽屉常驻展开，面板贴挂抽屉下方并置顶。经 uiState 发布。
+    /// 设置面板是否可见：期间抽屉常驻展开且限高让位于底部停靠的面板。经 uiState 发布。
     var isSettingsPresented: Bool {
         get { uiState.isSettingsPresented }
         set { uiState.isSettingsPresented = newValue }
@@ -60,6 +60,8 @@ final class NotchPanelController: NSObject {
     var collapseTask: DispatchWorkItem?
     /// 网格指标变化的重建合并任务（滑杆拖动逐格通知 → 停顿后重建一次）。
     var metricsRebuildTask: Task<Void, Never>?
+    /// 调试页改设置窗口尺寸后的抽屉限高重算合并任务（同上防抖策略）。
+    var settingsResizeTask: Task<Void, Never>?
     var mousePollingTimer: Timer?
     var globalMouseDownMonitor: Any?
     var globalMouseUpMonitor: Any?
@@ -120,8 +122,8 @@ final class NotchPanelController: NSObject {
         observeMenuTracking()
     }
 
-    /// 网格指标变化后重建内容：抽屉几何全部由 `NotchGridMetrics` 推导，
-    /// 设置面板也要跟着重新贴挂到新的抽屉底缘。
+    /// 网格指标变化后重建内容：抽屉几何全部由 `NotchGridMetrics` 推导。
+    /// （设置面板停靠屏幕底部、位置与抽屉无关，无需跟随重定位。）
     @objc private func gridMetricsDidChange(_ notification: Notification) {
         // 滑杆拖动逐格发通知，全量重建合并到停顿 100ms 后执行一次；
         // store 侧每格仍即时持久化，设置页预览即时刷新，不受合并影响。
@@ -130,9 +132,6 @@ final class NotchPanelController: NSObject {
             try? await Task.sleep(nanoseconds: 100 * NSEC_PER_MSEC)
             guard !Task.isCancelled, let self else { return }
             self.refreshAfterLayoutChange()
-            if self.isSettingsPresented {
-                self.positionSettingsWindow()
-            }
         }
     }
 
@@ -412,7 +411,8 @@ final class NotchPanelController: NSObject {
 
     // MARK: - 几何
 
-    /// 抽屉窗口内容尺寸（不含岛顶紧凑带），超出屏幕可用高度时封顶（文档 §5.3）。
+    /// 抽屉窗口内容尺寸（不含岛顶紧凑带）：先按屏幕可用高度封顶
+    /// （文档 §5.3），设置面板打开时再按底部停靠的面板顶缘限高。
     /// `previewRows` / `previewColumns` 用于拖拽/缩放预览的临时增高/增宽；
     /// `page` 缺省 = 当前激活页。
     func drawerWindowSize(
@@ -426,15 +426,30 @@ final class NotchPanelController: NSObject {
             contentColumns: previewColumns,
             page: page ?? uiState.drawerActivePage
         )
-        if let pair {
-            let maxHeight = pair.screenFrame.height - 8 - pair.layout.compactHeight
-            if size.height > maxHeight {
-                size.height = maxHeight
+        guard let pair else { return size }
+        var maxHeight = pair.screenFrame.height - 8 - pair.layout.compactHeight
+        // 设置面板停靠屏幕底部：打开期间抽屉限高，可见底缘与面板顶缘之间
+        // 留出间距。放不开最小抽屉时整体放弃限高（允许重叠），不能塌成 0；
+        // 被截掉的内容走既有的 ScrollView 滚动路径（见 DrawerPanelView.content）。
+        if isSettingsPresented {
+            let minimumDrawerHeight = layoutEngine.drawerWindowSize(
+                contentRows: layoutEngine.minimumRowCount()
+            ).height
+            let capped = NotchGeometry.settingsCappedDrawerHeight(
+                screenMaxY: pair.screenFrame.maxY,
+                visibleMinY: pair.screen.visibleFrame.minY,
+                bandHeight: settingsStore.settingsWindowHeight + SettingsWindowMetrics.titleBarHeight,
+                compactHeight: pair.layout.compactHeight
+            )
+            if capped >= minimumDrawerHeight {
+                maxHeight = min(maxHeight, capped)
             }
+        }
+        if size.height > maxHeight {
+            size.height = maxHeight
         }
         return size
     }
-
     /// 抽屉窗口（方案 E：固定满高满宽）：顶缘钉死屏幕顶端；宽度固定为
     /// 屏幕能容纳的最大列数（不受用户列数配置约束），可见面板在窗口内
     /// 自适应收缩并居中，多出部分靠 hitTest + `ignoresMouseEvents` 双机制

@@ -262,4 +262,50 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(frame.midX, screenFrame.midX)
         XCTAssertEqual(frame.maxY, screenFrame.maxY)
     }
+
+    // MARK: 设置面板底部停靠 → 抽屉限高
+
+    func testDockedSettingsTopYIncludesInsetAndBandHeight() {
+        // 停靠顶缘 = visibleFrame 底缘 + 底部间距 + 窗口 frame 高度
+        // （内容高度 + 28 透明 titlebar，调试页改高后由调用方现算传入）。
+        let topY = NotchGeometry.dockedSettingsTopY(visibleMinY: 70, bandHeight: 588)
+        XCTAssertEqual(topY, 70 + SettingsWindowMetrics.bottomInset + 588)
+        XCTAssertEqual(
+            SettingsWindowMetrics.windowFrameHeight,
+            SettingsWindowMetrics.height + SettingsWindowMetrics.titleBarHeight
+        )
+    }
+
+    func testSettingsCappedDrawerHeightKeepsGapAboveSettingsPanel() {
+        // 982 高屏幕（visibleMinY = 0）、刘海 32、默认窗口带宽 588：顶缘 982，
+        // 设置顶缘 12 + 588 = 600，间距 8 → 抽屉可见内容高度上限 = 982 - 600 - 8 - 32。
+        let capped = NotchGeometry.settingsCappedDrawerHeight(
+            screenMaxY: 982,
+            visibleMinY: 0,
+            bandHeight: SettingsWindowMetrics.windowFrameHeight,
+            compactHeight: 32
+        )
+        XCTAssertEqual(capped, 982 - 600 - SettingsWindowMetrics.gapFromSettings - 32)
+        XCTAssertEqual(capped, 342)
+    }
+
+    func testSettingsCappedDrawerHeightAccountsForDockAndShrinksOnShortScreens() {
+        // 有 Dock 的屏幕：visibleMinY 抬高设置面板，限高随之收紧。
+        let docked = NotchGeometry.settingsCappedDrawerHeight(
+            screenMaxY: 982,
+            visibleMinY: 70,
+            bandHeight: SettingsWindowMetrics.windowFrameHeight,
+            compactHeight: 32
+        )
+        XCTAssertEqual(docked, 342 - 70)
+
+        // 极端矮屏返回值 ≤ 0：调用方据此整体放弃限高（允许重叠），不得塌成 0。
+        let tiny = NotchGeometry.settingsCappedDrawerHeight(
+            screenMaxY: 500,
+            visibleMinY: 0,
+            bandHeight: SettingsWindowMetrics.windowFrameHeight,
+            compactHeight: 32
+        )
+        XCTAssertLessThanOrEqual(tiny, 0)
+    }
 }
