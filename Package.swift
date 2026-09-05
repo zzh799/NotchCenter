@@ -18,6 +18,7 @@ import PackageDescription
 // - 清单阶段报错只能用 fatalError（SPM 会原样打印消息），所以这里给出尽量可操作的错误文案。
 // - 新增插件目录后若 SPM 未重新扫描（清单按内容哈希缓存），改动本文件任意一行即可触发重新求值
 //   （新增插件目录形如 Plugins/MediaControlsPlugin/，含 Plugin.plist 与 Sources/、Resources/）。
+//   2026-09-05 新增 ClipboardHistoryPlugin，触发一次重扫。
 
 func manifestFatal(_ message: String) -> Never {
     fatalError("Package.swift 插件发现失败：\(message)")

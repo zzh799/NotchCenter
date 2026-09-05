@@ -1,0 +1,42 @@
+/* 剪贴板历史（zh-Hans，键集合必须与 en 一致——LocalizationTests 强制校验） */
+
+/* 块名 */
+"block.drawer.name" = "剪贴板历史";
+"block.compact.name" = "剪贴板";
+
+/* 抽屉列表 */
+"drawer.search.placeholder" = "搜索历史";
+"drawer.section.pinned" = "置顶";
+"drawer.section.recent" = "最近";
+"drawer.empty.title" = "还没有剪贴板历史";
+"drawer.empty.hint" = "复制文本后会显示在这里，点击条目可将其写回剪贴板。";
+"drawer.paused.banner" = "记录已暂停";
+"drawer.search.empty" = "没有匹配结果";
+
+/* 行按钮（图标按钮的无障碍标签与悬停提示） */
+"drawer.button.copy" = "复制条目";
+"drawer.button.copied" = "已复制";
+"drawer.button.pin" = "置顶条目";
+"drawer.button.unpin" = "取消置顶";
+"drawer.button.delete" = "删除条目";
+
+/* 清空二次确认 */
+"drawer.clear.title" = "清空历史";
+"drawer.clear.message" = "删除所有未置顶条目？置顶条目会保留。";
+"drawer.clear.confirm" = "清空未置顶";
+"drawer.clear.cancel" = "取消";
+
+/* 状态栏菜单 */
+"menu.pause" = "暂停记录";
+"menu.resume" = "恢复记录";
+"menu.clear" = "清空未置顶条目";
+
+/* 实例设置 */
+"settings.displayCount" = "显示条数";
+"settings.showTimestamps" = "显示时间";
+
+/* 相对时间（printf 风格 %d 占位） */
+"time.relative.seconds" = "%d 秒前";
+"time.relative.minutes" = "%d 分钟前";
+"time.relative.hours" = "%d 小时前";
+"time.relative.days" = "%d 天前";

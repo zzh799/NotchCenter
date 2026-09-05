@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PluginID</key>
+  <string>com.notchcenter.clipboard</string>
+  <key>Version</key>
+  <string>1.0.0</string>
+  <key>DisplayName</key>
+  <string>Clipboard History</string>
+  <key>Description</key>
+  <string>Remembers recent plain-text copies; click an entry to copy it back.</string>
+  <!-- 元数据本地化：build.sh 按语言键生成 bundle 内的 InfoPlist.strings（en 基准用上面两个字段） -->
+  <key>DisplayNameLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>剪贴板历史</string>
+  </dict>
+  <key>DescriptionLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>记住最近复制的纯文本，点击条目即可写回剪贴板。</string>
+  </dict>
+</dict>
+</plist>
