@@ -1,0 +1,20 @@
+/* QuickButtonBoxPlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 块名与空态 */
+"block.name" = "Button Box";
+"block.empty" = "Empty Box";
+"block.empty.hint" = "Open Settings → Components and drag quick actions here.";
+
+/* 确认与公共 */
+"confirm.run" = "Run";
+"confirm.message" = "This action can change system state.";
+"common.cancel" = "Cancel";
+"action.unavailable" = "Unavailable";
+
+/* 无障碍 */
+"a11y.on" = "On";
+"a11y.off" = "Off";
+
+/* 管理面板 */
+"panel.title" = "Button Box";
+"panel.capacity" = "%d / %d actions";

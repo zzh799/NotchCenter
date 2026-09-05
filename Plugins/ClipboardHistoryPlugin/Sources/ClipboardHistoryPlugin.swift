@@ -23,16 +23,6 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
     public static var blocks: [NotchBlock] {
         [
             NotchBlock(
-                id: "clipboard.tray",
-                displayName: L("block.compact.name"),
-                kind: .compact,
-                // 默认交互：点击展开抽屉（宿主处理，插件纯展示 + 暂停态变灰）。
-                symbolName: "clipboard",
-                makeView: { context in
-                    AnyView(ClipboardTrayView(context: context))
-                }
-            ),
-            NotchBlock(
                 id: "clipboard.history",
                 displayName: L("block.drawer.name"),
                 kind: .drawer,
@@ -82,8 +72,9 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
         super.init()
     }
 
-    public func attachServices(stateStore: StateStore, hostController _: any HostController) {
+    public func attachServices(stateStore: StateStore, hostController: any HostController) {
         self.stateStore = stateStore
+        self.hostController = hostController
         ClipboardHistoryStore.shared.attach(stateStore: stateStore)
     }
 
@@ -109,5 +100,42 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
 
     private func clearUnpinned() {
         ClipboardHistoryStore.shared.clearUnpinned()
+    }
+
+    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+
+    private var quickActionCache: [QuickAction]?
+    private weak var hostController: (any HostController)?
+
+    public var quickActions: [QuickAction] {
+        if let quickActionCache { return quickActionCache }
+        let store = ClipboardHistoryStore.shared
+        let actions = [
+            QuickAction(
+                id: "clipboard.tray",
+                displayName: L("block.compact.name"),
+                systemImage: "clipboard",
+                kind: .action,
+                // 前身即默认进带的 `clipboard.tray` 紧凑块：点击 = 展开抽屉
+                // 打开剪贴板历史（与原宿主默认交互一致）。
+                defaultInStrip: true,
+                execute: { [weak self] in
+                    self?.hostController?.expandDrawer()
+                }
+            ),
+            QuickAction(
+                id: "clipboard.clearUnpinned",
+                displayName: L("menu.clear"),
+                systemImage: "trash",
+                kind: .action,
+                // 清空有副作用：盒内点击先确认（与抽屉块内清空交互一致）。
+                requiresConfirmation: true,
+                execute: { [weak store] in
+                    store?.clearUnpinned()
+                }
+            ),
+        ]
+        quickActionCache = actions
+        return actions
     }
 }

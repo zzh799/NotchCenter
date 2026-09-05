@@ -1,7 +1,6 @@
 import AppKit
 import NotchCenterKit
 import SwiftUI
-
 /// MediaControlsPlugin（官方媒体控制插件）：控制系统当前正在播放的媒体
 /// （Spotify / Music / 浏览器等任意 App 的全局 Now Playing 会话），以抽屉块
 /// 承载控制面（封面 / 标题 / 进度 / 播放暂停与上下曲），并把「正在播放」的
@@ -41,5 +40,45 @@ public final class MediaControlsPlugin: NSObject, NotchCenterPlugin, NotchCenter
 
     public func pluginWasDisabled() {
         MediaPlayerController.shared.suspend()
+    }
+
+    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+
+    private var quickActionCache: [QuickAction]?
+
+    public var quickActions: [QuickAction] {
+        if let quickActionCache { return quickActionCache }
+        let controller = MediaPlayerController.shared
+        let actions = [
+            QuickAction(
+                id: "media.playPause",
+                displayName: L("help.togglePlayPause"),
+                systemImage: "playpause.fill",
+                kind: .action,
+                execute: { [weak controller] in
+                    controller?.togglePlayPause()
+                }
+            ),
+            QuickAction(
+                id: "media.previous",
+                displayName: L("help.previous"),
+                systemImage: "backward.end.fill",
+                kind: .action,
+                execute: { [weak controller] in
+                    controller?.previousTrack()
+                }
+            ),
+            QuickAction(
+                id: "media.next",
+                displayName: L("help.next"),
+                systemImage: "forward.end.fill",
+                kind: .action,
+                execute: { [weak controller] in
+                    controller?.nextTrack()
+                }
+            ),
+        ]
+        quickActionCache = actions
+        return actions
     }
 }

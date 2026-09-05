@@ -40,11 +40,17 @@ final class BlockDragCoordinator: ObservableObject {
         /// 跟手浮窗内容：真实组件视图 + 1:1 尺寸。
         /// 为 nil 时浮窗回退到名称胶囊、落位不做飞行。
         let preview: DragPreviewContent?
+        /// 快捷动作拖拽：非 nil 表示这张卡还携带一个**动作**身份（可被收纳进
+        /// 快捷按钮盒）。可以是纯动作卡（pluginID/blockID/span/preview 为空占位）
+        /// 或「块+动作」合一卡（块身份决定拖到快速区/抽屉的摆块行为，动作身份
+        /// 决定拖到盒上的装填行为）。落点/提交按「落点是否容器盒 + 是否有动作
+        /// 身份」分流，见 `BlockDropTargeting`。
+        let actionID: String?
 
         var isCompact: Bool { kind == .compact }
 
-        /// 显式初始化器（`preview` 带默认值）：`let` 属性即使声明了默认值
-        /// 也不会进入自动成员初始化器，而探针构造 payload 时不提供视图。
+        /// 显式初始化器（`preview`、`actionID` 带默认值）：`let` 属性即使声明了
+        /// 默认值也不会进入自动成员初始化器，而探针构造 payload 时不提供视图。
         init(
             pluginID: String,
             blockID: String,
@@ -52,7 +58,8 @@ final class BlockDragCoordinator: ObservableObject {
             displayName: String,
             symbolName: String?,
             span: GridSpan,
-            preview: DragPreviewContent? = nil
+            preview: DragPreviewContent? = nil,
+            actionID: String? = nil
         ) {
             self.pluginID = pluginID
             self.blockID = blockID
@@ -61,6 +68,26 @@ final class BlockDragCoordinator: ObservableObject {
             self.symbolName = symbolName
             self.span = span
             self.preview = preview
+            self.actionID = actionID
+        }
+
+        /// 快捷动作载荷（统一快捷按钮卡，无块身份）：无真实视图（跟手浮窗走
+        /// 名称胶囊）。`pluginID` 为动作**来源插件**（落快速区时槽位要按插件
+        /// 解析），`blockID` 空——落点只接受「快速区插入」或「容器盒装填」。
+        init(
+            pluginID: String,
+            quickActionID: String,
+            displayName: String,
+            symbolName: String?
+        ) {
+            self.pluginID = pluginID
+            self.blockID = ""
+            self.kind = .drawer
+            self.displayName = displayName
+            self.symbolName = symbolName
+            self.span = GridSpan(columns: 1, rows: 1)
+            self.preview = nil
+            self.actionID = quickActionID
         }
 
         /// 手写相等：只比身份，忽略 `preview`。
@@ -74,6 +101,7 @@ final class BlockDragCoordinator: ObservableObject {
                 && lhs.displayName == rhs.displayName
                 && lhs.symbolName == rhs.symbolName
                 && lhs.span == rhs.span
+                && lhs.actionID == rhs.actionID
         }
     }
 
@@ -165,10 +193,19 @@ final class BlockDragCoordinator: ObservableObject {
         var landedID: String?
 
         if let zone {
-            controller.performBlockDrop(payload, to: zone) { placementID in
-                // 早于 refreshAfterEdit：让重建出的元素以 opacity(0) 出生。
-                controller.uiState.landingPlacementID = placementID
-                landedID = placementID
+            // 提交按落点分派：块+动作合一卡拖到快速区/空白格是「摆块」，只有
+            // 落在可收纳容器（盒）上才「装动作」。
+            let containerHit = controller.zoneIsQuickActionContainer(zone)
+            if containerHit, payload.actionID != nil {
+                // 快捷动作装填：无真实视图、不做飞行——接受方（容器块所属插件）
+                // 自行持久化并触发宿主刷新；拒绝（如已满）时由控制器提示。
+                controller.performQuickActionDrop(payload, to: zone)
+            } else {
+                controller.performBlockDrop(payload, to: zone) { placementID in
+                    // 早于 refreshAfterEdit：让重建出的元素以 opacity(0) 出生。
+                    controller.uiState.landingPlacementID = placementID
+                    landedID = placementID
+                }
             }
         }
         teardown()

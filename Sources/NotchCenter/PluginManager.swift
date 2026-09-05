@@ -91,16 +91,22 @@ final class PluginManager: ObservableObject {
     private let builtInDirectoryOverride: URL?
     private let userDirectoryOverride: URL?
 
+    /// 快捷动作注册表（文档 §4.11）：启用即入册、禁用即注销。宿主控制器与
+    /// 编辑目录经它取动作；初始化注入以便宿主与测试共享同一实例。
+    let quickActionStore: QuickActionStore
+
     init(
         hostController: any HostController,
         fileManager: FileManager = .default,
         builtInDirectory: URL? = nil,
-        userDirectory: URL? = nil
+        userDirectory: URL? = nil,
+        quickActionStore: QuickActionStore = QuickActionStore()
     ) {
         self.hostController = hostController
         self.fileManager = fileManager
         self.builtInDirectoryOverride = builtInDirectory
         self.userDirectoryOverride = userDirectory
+        self.quickActionStore = quickActionStore
         rescan()
     }
 
@@ -199,6 +205,7 @@ final class PluginManager: ObservableObject {
             try load(entry)
         } else {
             (entry.instance as? any NotchCenterPluginServices)?.pluginWasDisabled()
+            quickActionStore.unregister(pluginID: pluginID)
             entry.markEnabled(false)
         }
 
@@ -283,6 +290,8 @@ final class PluginManager: ObservableObject {
             services.attachServices(stateStore: stateStore, hostController: hostController)
         }
         entry.markLoaded(instance: instance, stateStore: stateStore)
+        // 启用即入册：动作实例缓存于插件实例上，宿主只存引用（文档 §4.11）。
+        quickActionStore.register(pluginID: entry.id, actions: instance.quickActions)
     }
 
     // MARK: - 安装 / 卸载（文档 §8.2）
@@ -357,6 +366,7 @@ final class PluginManager: ObservableObject {
 
         if entry.isEnabled {
             (entry.instance as? any NotchCenterPluginServices)?.pluginWasDisabled()
+            quickActionStore.unregister(pluginID: pluginID)
         }
         let bundleURL = entry.metadata.bundleURL
         try? fileManager.removeItem(at: bundleURL)

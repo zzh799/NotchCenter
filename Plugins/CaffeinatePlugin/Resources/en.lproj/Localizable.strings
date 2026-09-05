@@ -19,3 +19,6 @@
 /* 错误信息（管理员权限） */
 "caffeinate.error.adminRequired.restore" = "Administrator permission is required to restore normal sleep.";
 "caffeinate.error.adminRequired.lidClosed" = "Administrator permission is required to prevent sleep when the lid is closed.";
+
+/* 快捷动作 */
+"quick.toggle.name" = "Toggle Keep Awake";

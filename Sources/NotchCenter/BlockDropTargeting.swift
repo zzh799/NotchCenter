@@ -8,8 +8,13 @@ extension NotchPanelController {
     /// 屏幕坐标 → 落点。未展开、落在面板之外或种类不匹配时返回 nil
     /// （拖拽浮窗显示无效样式）。
     ///
-    /// 判定顺序：先快速区（岛顶紧凑带），再抽屉网格——抽屉展开时两者在屏幕
-    /// 上上下相邻、互不重叠（紧凑带位于可见面板顶部），先判上层的紧凑带。
+    /// 判定顺序：先查是否命中**可收纳容器**（实现了 `NotchCenterQuickActionSink`
+    /// 的抽屉容器块，即快捷按钮盒）——命中时只有带动作身份的载荷能落（装填
+    /// 动作），纯块卡拖到盒上无效（红叉），避免"拖到盒上却被宽松塞进快速区"。
+    /// 未命中容器再按块身份走常规区域判定：先快速区（岛顶紧凑带），再抽屉网格
+    /// ——抽屉展开时两者在屏幕上上下相邻、互不重叠（紧凑带位于可见面板顶部）。
+    /// 纯动作卡（无块身份）未命中容器即无效，任何区域都不接收。
+    ///
     /// 区域判定见 `DrawerDropPolicy`，网格换算见 `DrawerScreenMapper`。
     func dropZone(
         at point: NSPoint,
@@ -19,6 +24,21 @@ extension NotchPanelController {
         let mapper = drawerScreenMapper(for: pair)
         let policy = DrawerDropPolicy(mapper: mapper, compactHeight: pair.layout.compactHeight)
 
+        // 1) 命中可收纳容器（盒）整格：虚线占位框恰好框住容器块。有动作身份
+        //    才放行（装填动作）；纯块卡拖到盒上无效（红叉，不宽松塞进快速区）。
+        if let box = quickActionBoxDropZone(at: point, mapper: mapper) {
+            return payload.actionID != nil ? box : nil
+        }
+        // 2) 纯动作卡（统一快捷按钮、无块身份）未命中容器：只能进快速区——
+        //    作为标准快捷按钮槽位插入；抽屉空白格/顶栏/面板外一律无效。
+        guard !payload.blockID.isEmpty else {
+            if case .compact = policy.region(of: point) {
+                return .compact(index: compactScreenInsertionIndex(atX: point.x, pair: pair))
+            }
+            return nil
+        }
+
+        // 3) 块身份：常规区域判定。
         switch policy.region(of: point) {
         case .outside, .topBar:
             return nil
@@ -27,7 +47,7 @@ extension NotchPanelController {
             guard payload.isCompact else { return nil }
             return .compact(index: compactScreenInsertionIndex(atX: point.x, pair: pair))
         case .grid:
-            // 快捷按钮（紧凑块）拖到抽屉区域：宽松处理为追加到快速区末尾
+            // 快捷按钮（紧凑块）拖到抽屉空白区域：宽松处理为追加到快速区末尾
             // （紧凑块无法放进抽屉网格，但“往面板上放”的意图应当被接住）。
             if payload.isCompact {
                 return .compact(index: layoutEngine.compactSlots.count)
@@ -40,6 +60,55 @@ extension NotchPanelController {
                 rows: cell.rowSpan
             )
         }
+    }
+
+    /// 光标所在处是否是一个「可收纳快捷动作的抽屉容器块」：是则把它整格
+    /// 作为落点（虚线占位框恰好框住该块）。判定只认插件实例实现了
+    /// `NotchCenterQuickActionSink`（宿主零块 ID 硬编码）。未命中容器返回 nil。
+    private func quickActionBoxDropZone(
+        at point: NSPoint,
+        mapper: DrawerScreenMapper
+    ) -> BlockDragCoordinator.DropZone? {
+        guard let element = uiState.drawerElements.first(where: { element in
+            mapper.screenRect(for: GridCell(element.placement)).contains(point)
+        }) else { return nil }
+        guard let entry = pluginManager.entry(for: element.placement.pluginID),
+              entry.isEnabled,
+              entry.instance is any NotchCenterQuickActionSink else { return nil }
+        let p = element.placement
+        return .drawer(
+            column: p.originColumn,
+            row: p.originRow,
+            columns: p.widthColumns,
+            rows: p.heightRows
+        )
+    }
+
+    /// 落点是否命中「可收纳快捷动作的抽屉容器块」整格（.drawer 格坐标精确
+    /// 匹配当前页元素，且该放置实例所属插件实现 `NotchCenterQuickActionSink`）。
+    /// 提交分派用（`commit()`：只有容器落点 + 动作身份才走动作装填，
+    /// 快速区/空白格一律走块逻辑）。
+    func zoneIsQuickActionContainer(_ zone: BlockDragCoordinator.DropZone) -> Bool {
+        sinkContainer(at: zone) != nil
+    }
+
+    /// 反查落点所在的容器放置实例（当前页、.drawer 格坐标精确匹配）；
+    /// 该格无元素或非可收纳容器时返回 nil。
+    private func sinkContainer(
+        at zone: BlockDragCoordinator.DropZone
+    ) -> (placement: PlacedBlock, span: GridSpan, sink: any NotchCenterQuickActionSink)? {
+        guard case let .drawer(column, row, columns, rows) = zone else { return nil }
+        guard let element = uiState.drawerElements.first(where: { element in
+            let p = element.placement
+            return p.originColumn == column && p.originRow == row
+                && p.widthColumns == columns && p.heightRows == rows
+        }) else { return nil }
+        guard let entry = pluginManager.entry(for: element.placement.pluginID),
+              entry.isEnabled,
+              let sink = entry.instance as? any NotchCenterQuickActionSink else { return nil }
+        let p = element.placement
+        let span = GridSpan(columns: max(p.widthColumns, 1), rows: max(p.heightRows, 1))
+        return (p, span, sink)
     }
 
     /// 快速区落点：屏幕坐标先转成紧凑带内容坐标（各屏的槽位布局一致），
@@ -204,6 +273,15 @@ extension NotchPanelController {
         refreshAfterEdit()
     }
 
+    /// 「组件」页快捷按钮卡的快捷添加路径：追加一个快捷动作槽位到快速区
+    /// 末尾（与旧「紧凑块单击追加」同一心智；拖拽仍是装盒/精确定位的手段）。
+    func addQuickAction(pluginID: String, actionID: String) {
+        guard pluginManager.entry(for: pluginID)?.isEnabled == true else { return }
+        _ = layoutEngine.addQuickActionSlot(pluginID: pluginID, actionID: actionID)
+        refreshCompactGeometry()
+        refreshAfterEdit()
+    }
+
     // MARK: 落位
 
     /// 提交拖拽结果：快速区插入（随后同步条带几何与热区窗口），
@@ -220,6 +298,19 @@ extension NotchPanelController {
     ) {
         switch zone {
         case let .compact(index):
+            // 纯动作卡（统一快捷按钮、无块身份）→ 快捷动作槽位；块卡照旧走
+            // 紧凑块校验插入（第三方插件仍可注册自带视图的紧凑块）。
+            if payload.blockID.isEmpty, let actionID = payload.actionID {
+                guard layoutEngine.insertQuickActionSlot(
+                    pluginID: payload.pluginID,
+                    actionID: actionID,
+                    atScreenPosition: index
+                ) else { return }
+                // 快速区不做落位飞行：沿用现有的插入动画。
+                refreshCompactGeometry()
+                refreshAfterEdit()
+                return
+            }
             guard layoutEngine.insertCompactBlock(
                 pluginID: payload.pluginID,
                 blockID: payload.blockID,
@@ -283,5 +374,34 @@ extension NotchPanelController {
             print("[drag-probe] capsuleHit: point=\(point) row=[\(centerX - rowWidth / 2), +\(rowWidth)] center=\(centerX) pages=\(pages) editing=\(uiState.isEditing) slot=\(slot.map(String.init) ?? "nil") page=\(page.map(String.init) ?? "nil")")
         }
         return page
+    }
+
+    /// 提交「快捷动作」拖拽落位：把动作交给目标容器块所属插件实例
+    /// （`NotchCenterQuickActionSink.acceptQuickAction`），由它自行校验容量并
+    /// 持久化到该放置实例的作用域存储；接受与否不改变布局（虚线框整格套住
+    /// 容器块只是目标指示）。被拒（盒已满等）时系统提示音。
+    ///
+    /// 落点 zone 是 `.drawer(…容器块整格…)`：用当前页渲染元素反查放置实例，
+    /// 与 `quickActionBoxDropZone` 同一数据源（`uiState.drawerElements`）。
+    func performQuickActionDrop(
+        _ payload: BlockDragCoordinator.Payload,
+        to zone: BlockDragCoordinator.DropZone
+    ) {
+        guard let actionID = payload.actionID,
+              let container = sinkContainer(at: zone) else { return }
+        // 交给容器块所属插件实例自行校验容量并持久化到该放置实例的作用域存储；
+        // 接受与否不改变布局（虚线框整格套住容器块只是目标指示）。
+        let accepted = container.sink.acceptQuickAction(
+            actionID,
+            placementID: container.placement.placementID,
+            span: container.span
+        )
+        if accepted {
+            // 动作集已变：内容重建（动画）刷新盒视图；布局与窗口尺寸不变。
+            refreshAfterEdit()
+        } else {
+            // 盒已满等拒绝：提示音，不做任何改动。
+            NSSound.beep()
+        }
     }
 }

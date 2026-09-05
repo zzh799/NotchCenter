@@ -50,6 +50,14 @@ extension NotchPanelController {
                 _ = layoutEngine.addCompactBlock(pluginID: entry.id, blockID: block.id)
             }
         }
+        // 官方「快捷按钮」默认布局：声明 `defaultInStrip` 的动作补进快速区
+        // （它们的前身正是默认进带的紧凑块，动作化后以动作槽位入带）。
+        for entry in enabledEntries {
+            guard let actions = entry.instance?.quickActions else { continue }
+            for action in actions where action.defaultInStrip {
+                _ = layoutEngine.addQuickActionSlot(pluginID: entry.id, actionID: action.id)
+            }
+        }
         for entry in enabledEntries {
             for block in entry.blocks where block.kind == .drawer {
                 _ = layoutEngine.autoPlaceDrawerBlock(pluginID: entry.id, blockID: block.id)
@@ -231,8 +239,6 @@ extension NotchPanelController {
             guard let reference = layoutEngine.compactSlot(at: index),
                   let entry = pluginManager.entry(for: reference.pluginID),
                   entry.isEnabled,
-                  let block = pluginManager.block(pluginID: reference.pluginID, blockID: reference.blockID),
-                  block.kind == .compact,
                   let store = entry.stateStore else {
                 elements.append(CompactElement(
                     slotIndex: index,
@@ -244,54 +250,85 @@ extension NotchPanelController {
                 ))
                 continue
             }
-            let context = BlockContext(
+            // 解析槽位身份：优先插件声明的 compact 块（第三方插件自带视图）；
+            // 没有则回退到**快捷动作**——官方一键入口已统一为快捷按钮，动作 id
+            // 与旧紧凑块 id 同名，旧布局槽位无需迁移即指向动作。动作解析用
+            // 注册表实例（identity 稳定、可观察 isActive），不复用插件 computed
+            // 属性（每次新建实例会破坏状态同步）。
+            if let block = pluginManager.block(
                 pluginID: reference.pluginID,
-                blockID: reference.blockID,
-                placementID: reference.placementID,
-                stateStore: store,
-                hostController: self,
-                layoutInfo: BlockLayoutInfo(
-                    region: .compact,
+                blockID: reference.blockID
+            ), block.kind == .compact {
+                let context = BlockContext(
+                    pluginID: reference.pluginID,
+                    blockID: reference.blockID,
                     placementID: reference.placementID,
-                    frame: frame,
-                    isEditing: isEditing,
-                    compactSlotIndex: index
+                    stateStore: store,
+                    hostController: self,
+                    layoutInfo: BlockLayoutInfo(
+                        region: .compact,
+                        placementID: reference.placementID,
+                        frame: frame,
+                        isEditing: isEditing,
+                        compactSlotIndex: index
+                    )
                 )
-            )
-            let hasSettings = block.instanceSettingsView != nil
-                || entry.instance?.settingsView != nil
-            let key = BlockViewCacheKey(
-                pluginID: reference.pluginID,
-                blockID: reference.blockID,
-                placementID: reference.placementID,
-                entryID: ObjectIdentifier(entry),
-                region: .compact,
-                frame: frame,
-                originColumn: nil,
-                originRow: nil,
-                widthColumns: nil,
-                heightRows: nil,
-                isEditing: isEditing,
-                compactSlotIndex: index,
-                isPreview: false,
-                hasSettings: hasSettings
-            )
-            // 键逐项相等 → makeView 必然产出等价视图值，复用上一次的结果。
-            let view: AnyView
-            if let old = compactViewCache[index], old.key == key {
-                view = old.view
+                let hasSettings = block.instanceSettingsView != nil
+                    || entry.instance?.settingsView != nil
+                let key = BlockViewCacheKey(
+                    pluginID: reference.pluginID,
+                    blockID: reference.blockID,
+                    placementID: reference.placementID,
+                    entryID: ObjectIdentifier(entry),
+                    region: .compact,
+                    frame: frame,
+                    originColumn: nil,
+                    originRow: nil,
+                    widthColumns: nil,
+                    heightRows: nil,
+                    isEditing: isEditing,
+                    compactSlotIndex: index,
+                    isPreview: false,
+                    hasSettings: hasSettings
+                )
+                // 键逐项相等 → makeView 必然产出等价视图值，复用上一次的结果。
+                let view: AnyView
+                if let old = compactViewCache[index], old.key == key {
+                    view = old.view
+                } else {
+                    view = block.makeView(context)
+                }
+                cache[index] = (key, view)
+                elements.append(CompactElement(
+                    slotIndex: index,
+                    reference: reference,
+                    block: block,
+                    view: view,
+                    frame: frame,
+                    hasSettings: hasSettings
+                ))
+            } else if let action = quickActionStore.action(id: reference.blockID) {
+                // 统一快捷按钮：宿主标准外观 + 点击/确认由动作驱动（无块设置）。
+                elements.append(CompactElement(
+                    slotIndex: index,
+                    reference: reference,
+                    block: nil,
+                    view: AnyView(
+                        QuickActionStripCell(action: action, slotSize: frame.size)
+                    ),
+                    frame: frame,
+                    hasSettings: false
+                ))
             } else {
-                view = block.makeView(context)
+                elements.append(CompactElement(
+                    slotIndex: index,
+                    reference: reference,
+                    block: nil,
+                    view: nil,
+                    frame: frame,
+                    hasSettings: false
+                ))
             }
-            cache[index] = (key, view)
-            elements.append(CompactElement(
-                slotIndex: index,
-                reference: reference,
-                block: block,
-                view: view,
-                frame: frame,
-                hasSettings: hasSettings
-            ))
         }
         compactViewCache = cache
         return elements

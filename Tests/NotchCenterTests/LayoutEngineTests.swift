@@ -1188,6 +1188,50 @@ final class LayoutEngineTests: XCTestCase {
         XCTAssertEqual(engine.modelForTesting.drawerBlocks, before, "拒绝路径不得改写布局")
         try? FileManager.default.removeItem(at: directory)
     }
+
+    // MARK: 快捷动作槽位（统一快捷按钮，文档 §4.11）
+
+    /// 快捷动作槽位不需要插件注册紧凑块：动作卡（目录/落点已校验动作存在）
+    /// 直接入槽，动作 id 以 blockID 名义存放、由宿主解析回退到动作。
+    func testQuickActionSlotInsertAndAppendBypassBlockRegistry() throws {
+        let (engine, directory, _) = try makeEngine()
+
+        XCTAssertTrue(engine.addQuickActionSlot(pluginID: "com.test.plugin", actionID: "caffeinate.toggle"))
+        XCTAssertEqual(engine.compactSlots.count, 1)
+        XCTAssertEqual(engine.compactSlot(at: 0)?.pluginID, "com.test.plugin")
+        XCTAssertEqual(engine.compactSlot(at: 0)?.blockID, "caffeinate.toggle")
+
+        XCTAssertTrue(engine.insertQuickActionSlot(
+            pluginID: "com.test.plugin",
+            actionID: "media.playPause",
+            atScreenPosition: 0
+        ))
+        XCTAssertEqual(engine.compactSlot(at: 0)?.blockID, "media.playPause")
+        XCTAssertEqual(engine.compactSlot(at: 1)?.blockID, "caffeinate.toggle")
+        // 每个槽位独立 placementID。
+        XCTAssertNotEqual(
+            engine.compactSlot(at: 0)?.placementID,
+            engine.compactSlot(at: 1)?.placementID
+        )
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 动作槽位可随既有紧凑槽位一起重排、持久化重启后仍在。
+    func testQuickActionSlotPersistsThroughReload() throws {
+        let (engine, directory, fileURL) = try makeEngine()
+        register(blockID: "legacy.compact", kind: .compact)
+        XCTAssertTrue(engine.addCompactBlock(pluginID: "com.test.plugin", blockID: "legacy.compact"))
+        XCTAssertTrue(engine.addQuickActionSlot(pluginID: "com.test.plugin", actionID: "notes.compact"))
+        XCTAssertTrue(engine.moveCompactSlot(from: 1, toScreenPosition: 0))
+
+        let restored = LayoutEngine(fileURL: fileURL, blockResolver: { [weak self] pluginID, blockID in
+            self?.registry["\(pluginID)|\(blockID)"]
+        })
+        XCTAssertEqual(restored.compactSlots.count, 2)
+        XCTAssertEqual(restored.compactSlot(at: 0)?.blockID, "notes.compact")
+        XCTAssertEqual(restored.compactSlot(at: 1)?.blockID, "legacy.compact")
+        try? FileManager.default.removeItem(at: directory)
+    }
 }
 
 @MainActor

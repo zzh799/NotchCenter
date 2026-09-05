@@ -182,6 +182,45 @@ extension LayoutEngine {
         return true
     }
 
+    /// 在**屏幕位置**插入「快捷动作」槽位（统一快捷按钮：动作 ID 以
+    /// `blockID` 名义入槽，解析时优先查插件块、查不到回退到快捷动作——
+    /// 见 `NotchPanelContent.buildCompactElements`）。官方紧凑块动作化后
+    /// 旧布局里同 ID 的槽位无需迁移即指向动作。
+    ///
+    /// 不做块校验：目录/落点（`SettingsPages`、`BlockDropTargeting`）已保证
+    /// 动作真实存在；引擎只负责持久化槽位。
+    @discardableResult
+    func insertQuickActionSlot(
+        pluginID: String,
+        actionID: String,
+        atScreenPosition position: Int
+    ) -> Bool {
+        let clamped = min(max(position, 0), model.compactSlots.count)
+        model.compactSlots = CompactSlotOrder.inserting(
+            CompactSlotReference(
+                pluginID: pluginID,
+                blockID: actionID,
+                placementID: UUID().uuidString
+            ),
+            into: model.compactSlots,
+            atScreenPosition: clamped
+        )
+        saveToDisk()
+        return true
+    }
+
+    /// 追加「快捷动作」槽位到末尾（语义同 `insertQuickActionSlot`，目录单击用）。
+    @discardableResult
+    func addQuickActionSlot(pluginID: String, actionID: String) -> Bool {
+        model.compactSlots.append(CompactSlotReference(
+            pluginID: pluginID,
+            blockID: actionID,
+            placementID: UUID().uuidString
+        ))
+        saveToDisk()
+        return true
+    }
+
     // MARK: 抽屉页面
 
     /// 是否还能新增页面（封顶见 `LayoutModel.maxDrawerPageCount`）。

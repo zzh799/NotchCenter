@@ -497,3 +497,50 @@ struct GlobalFrameReader: View {
         }
     }
 }
+
+// MARK: - 快速区快捷按钮单元格（统一标准样式）
+
+/// 快速区里的统一快捷按钮：宿主标准外观（`QuickActionTile`）+ 点击执行动作。
+/// 开关类经 `@ObservedObject` 观察 `isActive` 实时点亮；重动作先弹确认；
+/// 悬停提示显示动作名（与旧紧凑块 help 同款体验）。
+struct QuickActionStripCell: View {
+    @ObservedObject var action: QuickAction
+    let slotSize: CGSize
+    @State private var confirmRequested = false
+
+    var body: some View {
+        Button {
+            if action.requiresConfirmation {
+                confirmRequested = true
+            } else {
+                action.execute()
+            }
+        } label: {
+            QuickActionTile(
+                systemImage: action.systemImage,
+                isActive: action.kind == .toggle && action.isActive,
+                symbolSize: 13,
+                sideLength: min(slotSize.width, slotSize.height)
+            )
+        }
+        .buttonStyle(.plain)
+        // 紧凑面板是 canBecomeKey 的 NSPanel：点击后按钮成为 first responder
+        // 会画系统蓝色焦点环，禁用（与既有紧凑块视图同一处理）。
+        .focusable(false)
+        .focusEffectDisabled(true)
+        .help(action.displayName)
+        .accessibilityLabel(action.displayName)
+        .confirmationDialog(
+            action.displayName,
+            isPresented: $confirmRequested,
+            titleVisibility: .visible
+        ) {
+            Button(L("quick.confirm.run")) {
+                action.execute()
+            }
+            Button(L("common.cancel"), role: .cancel) {}
+        } message: {
+            Text(L("quick.confirm.body"))
+        }
+    }
+}

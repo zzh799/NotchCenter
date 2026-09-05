@@ -16,6 +16,12 @@ public protocol NotchCenterPlugin: AnyObject {
     var settingsView: (@MainActor (PluginSettingsContext) -> AnyView)? { get }
     /// 状态栏菜单贡献（文档 §4.8），最多 3 项。同上必须作为协议要求。
     var menuItems: [PluginMenuItem] { get }
+    /// 插件声明、可被「快捷按钮盒」收纳的一键动作（文档 §4.11）。
+    ///
+    /// 宿主在插件启用/attach 时收集、禁用时整体注销。插件必须缓存同一批
+    /// `QuickAction` 实例（identity 稳定），并在自身状态变化处同步 `isActive`。
+    /// 同上必须作为协议要求（extension 默认 `[]`）。
+    var quickActions: [QuickAction] { get }
     init()
 }
 
@@ -25,6 +31,9 @@ extension NotchCenterPlugin {
 
     /// 默认不贡献菜单项。
     public var menuItems: [PluginMenuItem] { [] }
+
+    /// 默认不声明快捷动作。
+    public var quickActions: [QuickAction] { [] }
 }
 
 /// 可选服务钩子：宿主在实例化、启用/禁用插件后调用，用于注入作用域

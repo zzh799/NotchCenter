@@ -13,6 +13,10 @@ final class NotchPanelController: NSObject {
     private(set) var layoutEngine: LayoutEngine!
     private(set) var pluginManager: PluginManager!
 
+    /// 快捷动作注册表：宿主经 `HostController.quickActions()` 暴露给插件，
+    /// 编辑模式的「快捷动作」目录与快捷按钮盒都从这里取数（文档 §4.11）。
+    let quickActionStore = QuickActionStore()
+
     /// 面板 UI 状态（所有屏幕的 SwiftUI 视图共享此对象；root 视图只在创建时设置一次）。
     let uiState: PanelUIState
 
@@ -88,7 +92,7 @@ final class NotchPanelController: NSObject {
 
         super.init()
 
-        pluginManager = PluginManager(hostController: self)
+        pluginManager = PluginManager(hostController: self, quickActionStore: quickActionStore)
         layoutEngine = LayoutEngine(blockResolver: { [weak self] pluginID, blockID in
             self?.pluginManager.block(pluginID: pluginID, blockID: blockID)
         })
@@ -754,6 +758,18 @@ extension NotchPanelController: HostController {
 
     func refreshCompactDisplay() {
         rebuildContent()
+    }
+
+    // MARK: 快捷动作注册表通道（文档 §4.11）
+
+    /// 当前已注册的全部快捷动作（按插件注册顺序展平）。
+    func quickActions() -> [QuickAction] {
+        quickActionStore.allActions()
+    }
+
+    /// 按 ID 查快捷动作；插件禁用/未知 ID 返回 nil。
+    func quickAction(id: String) -> QuickAction? {
+        quickActionStore.action(id: id)
     }
 
     // MARK: 活动摘要通道（Agent Note 2026-09-03-compact-area-activity-summary）

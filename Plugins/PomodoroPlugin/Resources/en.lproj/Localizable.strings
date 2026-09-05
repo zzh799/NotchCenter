@@ -45,3 +45,11 @@
 /* 单位 */
 "unit.minutes" = "%d min";
 "unit.seconds" = "%d s";
+
+/* 快捷动作 */
+"quick.start.name" = "Start Focus";
+"quick.pause.name" = "Pause / Resume";
+"quick.reset.name" = "Stop Timer";
+
+/* 快捷动作 */
+"quick.toggle.name" = "Start / Stop";

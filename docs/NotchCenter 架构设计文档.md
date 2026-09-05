@@ -292,6 +292,16 @@ extension HostController {
 
 ---
 
+### 4.11 快捷动作与快捷按钮盒（Quick Actions & Quick Button Box）
+
+- **快捷按钮 QuickAction（统一一键入口）**：插件自报的**快捷按钮**——既可放进快速区（刘海带）也可收纳进「快捷按钮盒」，宿主以统一标准样式渲染。`NotchCenterPlugin.quickActions` 声明（图标 + 名称 + `toggle`/`action` 类别 + 可选 `requiresConfirmation` + `execute` + 开关态 `isActive`）。官方一键入口不再注册自带视图的紧凑块：动作 id **沿用旧块 id**（`caffeinate.toggle` / `pomodoro.toggle` / `notes.compact` / `scratchpad.compact` / `clipboard.tray`），紧凑槽位「先按插件块解析、缺块回退同名动作」，旧布局零迁移。`QuickAction` 是 `@MainActor` 可观察对象，插件须**缓存同一实例**（identity 稳定，宿主只存引用、不持久化）；可选 `sourceBlockID` 仅保留给第三方「块卡 + 动作」合一用例，`defaultInStrip` 供首启默认布局种子。
+- **注册表生命周期**：宿主在插件启用/attach 后收集注册（`PluginManager` → `QuickActionStore`）、禁用/卸载前注销；动作 ID 全局唯一、先到先得。插件经 `HostController.quickActions()` / `quickAction(id:)` 读取（协议**要求** + 默认空实现，同 §4.10 纪律）。来源插件被禁用后：盒内对应按钮置灰保留、快速区槽位解析失败显示为空槽（编辑模式可移除）。
+- **统一外观与容器**：Kit `QuickActionTile`（圆角方块 + SF Symbol，开关点亮 / 静态 / 失效置灰三层状态）是唯一外观基元——快速区槽位（`QuickActionStripCell`：点击执行、重动作确认）、快捷按钮盒格、设置目录卡片共用，同一按钮在任何落位长相一致。盒仍是普通抽屉块（官方 `QuickButtonBoxPlugin`，`quickbuttonbox.grid`，.large/.extraLarge），宿主经 `NotchCenterQuickActionSink.acceptQuickAction(_:placementID:span:)` 询问「该放置实例是否接受一次动作落位」——接受方自判容量并把有序动作 ID 持久化到 `placementStore`（键 `quickActions`），宿主零块 ID 硬编码，第三方可自建同类容器。
+- **目录与拖拽分流**：组件页每个插件分区内的「快捷按钮」卡统一样式（磁贴 + 名称 + 去向小字）；单击 = 加入快速区末尾，按住拖 = 拖到快速区（插槽）或拖到可收纳容器（盒，装填动作；复用跨窗 `BlockDragCoordinator` 会话 + `.drawer` 落点虚线框套住盒实例）；纯动作卡落抽屉空白格无效（红叉），第三方组件块卡行为不变。盒块齿轮（instanceSettingsView）面板做移除/排序；收纳的是动作的**快捷方式/副本**，原件仍可留在快速区，双入口共享同一动作状态（toggle 点亮态实时同步）。
+- 契约与纪律见 [`快捷按钮盒 Agent Note`](agent-notes/implemented/2026-09-05-quick-button-box.md)；注册指引见 [`插件开发指南 §3`](插件开发指南.md)。参考实现：Caffeinate / Notes / Scratchpad / ClipboardHistory / Pomodoro（动作化快捷按钮）+ Calibre / Dsh / MediaControls / OpenCodeUsage（附加动作）。
+
+---
+
 ## 5. 布局系统
 
 ### 5.1 整体模型

@@ -102,6 +102,10 @@ struct GeneralSettingsPage: View {
 // MARK: 组件（按插件分组 + 二级侧边导航 + 拖拽到抽屉/快速区）
 
 /// 目录条目：块身份 + 预览视图 + 拖拽载荷。
+///
+/// `quickActionID` 非 nil 表示该块卡与插件注册的某动作**合一**（动作的
+/// `sourceBlockID` 指向本块）：这张卡拖到快速区/抽屉摆块、拖到快捷按钮盒则
+/// 装填该动作（块+动作双身份，见 `BlockDragCoordinator.Payload`）。
 struct ComponentCatalogItem: Identifiable {
     let pluginID: String
     let blockID: String
@@ -111,6 +115,8 @@ struct ComponentCatalogItem: Identifiable {
     /// 默认跨度（抽屉块）；紧凑块为 1×1。
     let span: GridSpan
     let preview: AnyView
+    /// 与该块点击同义、可被快捷按钮盒收纳的动作 ID；nil = 纯块卡。
+    let quickActionID: String?
 
     var id: String { pluginID + "." + blockID }
 
@@ -139,7 +145,8 @@ struct ComponentCatalogItem: Identifiable {
             preview: BlockDragCoordinator.DragPreviewContent(
                 view: preview,
                 size: previewSize
-            )
+            ),
+            actionID: quickActionID
         )
     }
 }
@@ -197,6 +204,9 @@ enum ComponentCatalogBuilder {
                             compactSlotIndex: nil
                         )
                     )
+                    // 块+动作合一：动作的 sourceBlockID 指向本块时，块卡携带该
+                    // 动作身份（拖到盒上装填动作），避免同入口在目录出现两份。
+                    let actions = entry.instance?.quickActions ?? []
                     let item = ComponentCatalogItem(
                         pluginID: entry.id,
                         blockID: block.id,
@@ -204,7 +214,11 @@ enum ComponentCatalogBuilder {
                         symbolName: block.symbolName,
                         isCompact: block.kind == .compact,
                         span: span,
-                        preview: block.makeView(context)
+                        preview: block.makeView(context),
+                        quickActionID: ComponentCatalogMerger.actionID(
+                            for: block.id,
+                            in: actions
+                        )
                     )
                     if block.kind == .compact {
                         compactItems.append(item)
@@ -250,11 +264,72 @@ enum ComponentCatalogBuilder {
     }
 }
 
+/// 块卡与动作的合一规则（文档 §4.11）：动作 `sourceBlockID` 指向本插件的某块
+/// 时，该动作并入块卡（块卡双身份）；未被任何块吸收的动作作为**独立「盒用
+/// 动作」卡**展示。纯逻辑、可单测。`QuickAction` 是 @MainActor，本类型同隔离。
+@MainActor
+enum ComponentCatalogMerger {
+    /// 某块是否命中一条 `sourceBlockID` 指向它的动作：是则返回该动作 ID。
+    /// 同块多条指向时取第一条（插件应保证语义唯一）。
+    static func actionID(for blockID: String, in actions: [QuickAction]) -> String? {
+        actions.first { $0.sourceBlockID == blockID }?.id
+    }
+
+    /// 未被本插件块吸收的独立动作（`sourceBlockID == nil`，或指向了不存在的
+    /// 块——防御插件改名后遗留）：它们以独立卡展示，供拖入快捷按钮盒。
+    static func standaloneActions(
+        _ actions: [QuickAction],
+        blockIDs: some Sequence<String>
+    ) -> [QuickAction] {
+        let knownBlocks = Set(blockIDs)
+        return actions.filter { action in
+            guard let source = action.sourceBlockID else { return true }
+            return !knownBlocks.contains(source)
+        }
+    }
+}
+
+/// 独立「盒用动作」目录分组（文档 §4.11）：按来源插件归组，只含**未被块卡
+/// 吸收**的动作（已合一进块卡的动作不再单列，见 `ComponentCatalogMerger`）。
+struct QuickActionCatalogGroup: Identifiable {
+    let pluginID: String
+    let displayName: String
+    let actions: [QuickAction]
+
+    var id: String { pluginID }
+}
+
+/// 独立动作目录构建：读已启用插件的 `quickActions`（动作实例缓存于插件上，
+/// 身份稳定），过滤掉与块合一的部分，其余按插件归组，供渲染进该插件的组件
+/// 分区。动作不随布局变，只在插件启用/禁用时增删——`ComponentsSettingsPage`
+/// 的 pluginSignature 已覆盖。
+@MainActor
+enum QuickActionCatalogBuilder {
+    static func build(pluginManager: PluginManager) -> [QuickActionCatalogGroup] {
+        pluginManager.entries
+            .filter { $0.isEnabled && $0.instance != nil }
+            .compactMap { entry -> QuickActionCatalogGroup? in
+                let actions = entry.instance?.quickActions ?? []
+                let standalone = ComponentCatalogMerger.standaloneActions(
+                    actions,
+                    blockIDs: entry.blocks.map(\.id)
+                )
+                guard !standalone.isEmpty else { return nil }
+                return QuickActionCatalogGroup(
+                    pluginID: entry.id,
+                    displayName: entry.metadata.displayName,
+                    actions: standalone
+                )
+            }
+    }
+}
+
 struct ComponentsSettingsPage: View {
     let controller: NotchPanelController
     @ObservedObject private var pluginManager: PluginManager
 
     @State private var groups: [ComponentCatalogGroup] = []
+    @State private var quickActionGroups: [QuickActionCatalogGroup] = []
     @State private var signature = ""
 
     init(controller: NotchPanelController) {
@@ -391,7 +466,45 @@ struct ComponentsSettingsPage: View {
                     }
                 }
             }
+
+            // 快捷按钮（可进快速区 / 可收纳进按钮盒的统一动作卡）：与块卡同一
+            // 分区、卡片下方一段。单击 = 加入快速区末尾；按住拖到快速区精确
+            // 定位、拖到「快捷按钮盒」上装填。
+            if let standalone = standaloneActions(for: group.pluginID), !standalone.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(
+                        L("settings.components.quickActions"),
+                        systemImage: "bolt.horizontal.circle"
+                    )
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 148, maximum: 210), spacing: 12)],
+                        spacing: 10
+                    ) {
+                        ForEach(standalone) { action in
+                            QuickActionCard(
+                                action: action,
+                                pluginID: group.pluginID,
+                                sourceName: L("settings.components.quickActions.cardHint"),
+                                onAdd: {
+                                    controller.addQuickAction(
+                                        pluginID: group.pluginID,
+                                        actionID: action.id
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            }
         }
+    }
+
+    /// 该插件分区内需要单列的「盒用动作」（未被块卡吸收的独立动作）。
+    private func standaloneActions(for pluginID: String) -> [QuickAction]? {
+        quickActionGroups.first { $0.pluginID == pluginID }?.actions
     }
 
     // MARK: 构建
@@ -408,6 +521,7 @@ struct ComponentsSettingsPage: View {
             pluginManager: pluginManager,
             hostController: controller
         )
+        quickActionGroups = QuickActionCatalogBuilder.build(pluginManager: pluginManager)
         if let selectedPluginID, !groups.contains(where: { $0.id == selectedPluginID }) {
             self.selectedPluginID = nil
         }
@@ -464,6 +578,26 @@ private struct ComponentCard: View {
                     BlockDragCoordinator.shared.commit()
                 }
         )
+        // 合一块卡角标：这张卡与某快捷动作同义，除快速区/抽屉外还可拖入
+        // 「快捷按钮盒」收纳（原件保留，盒与原件共享同一份状态）。
+        .overlay(alignment: .topTrailing) {
+            if item.quickActionID != nil {
+                Image(systemName: "square.grid.3x3")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .padding(5)
+                    .background(
+                        Circle()
+                            .fill(Color(red: 0.05, green: 0.05, blue: 0.06).opacity(0.92))
+                    )
+                    .overlay(
+                        Circle()
+                            .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+                    )
+                    .padding(6)
+                    .help(L("settings.components.quickActions.boxable"))
+            }
+        }
         .opacity(dragCoordinator.payload == item.payload ? 0.45 : 1)
         .animation(.easeOut(duration: 0.12), value: isHovering)
     }
@@ -489,6 +623,80 @@ private struct ComponentCard: View {
 
     private var spanText: String {
         "\(item.span.columns)×\(item.span.rows)"
+    }
+}
+
+/// 快捷按钮卡片（统一样式）：动作图标 + 名称 + 去向提示。单击 = 加入快速区
+/// 末尾；按住拖到快速区精确定位、或拖到抽屉里的「快捷按钮盒」装填。复用
+/// `BlockDragCoordinator` 会话：载荷带 `pluginID` + `actionID`，落点判定按
+/// 「快速区插入 / 容器盒装填」分流。
+private struct QuickActionCard: View {
+    let action: QuickAction
+    let pluginID: String
+    let sourceName: String
+    let onAdd: () -> Void
+
+    @State private var isHovering = false
+    @ObservedObject private var dragCoordinator = BlockDragCoordinator.shared
+
+    var body: some View {
+        HStack(spacing: 8) {
+            QuickActionTile(
+                systemImage: action.systemImage,
+                isActive: action.kind == .toggle && action.isActive,
+                symbolSize: 12,
+                sideLength: 26,
+                cornerRadius: 7
+            )
+            VStack(alignment: .leading, spacing: 1) {
+                Text(action.displayName)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(isHovering ? 0.95 : 0.85))
+                    .lineLimit(1)
+                Text(sourceName)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.38))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(isHovering ? 0.5 : 0.3))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.white.opacity(isHovering ? 0.07 : 0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.white.opacity(isHovering ? 0.14 : 0.06), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        // 单击快捷添加（短按不会满足拖拽序列，两者互不干扰）。
+        .onTapGesture(perform: onAdd)
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 4)
+                .onChanged { _ in
+                    BlockDragCoordinator.shared.beginIfNeeded(payload)
+                }
+                .onEnded { _ in
+                    BlockDragCoordinator.shared.commit()
+                }
+        )
+        .opacity(dragCoordinator.payload == payload ? 0.45 : 1)
+        .animation(.easeOut(duration: 0.12), value: isHovering)
+    }
+
+    private var payload: BlockDragCoordinator.Payload {
+        BlockDragCoordinator.Payload(
+            pluginID: pluginID,
+            quickActionID: action.id,
+            displayName: action.displayName,
+            symbolName: action.systemImage.isEmpty ? "bolt.fill" : action.systemImage
+        )
     }
 }
 

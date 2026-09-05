@@ -67,4 +67,28 @@ import SwiftUI
             .placementScope(placementID: placementID)?
             .removeValue(forKey: OpenCodeUsageAppearanceLogic.storeKey)
     }
+
+    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+
+    private var quickActionCache: [QuickAction]?
+
+    public var quickActions: [QuickAction] {
+        if let quickActionCache { return quickActionCache }
+        let store = OpenCodeUsageStore.shared
+        let actions = [
+            QuickAction(
+                id: "opencode.refresh",
+                displayName: L("usage.refreshHelp"),
+                systemImage: "arrow.clockwise",
+                kind: .action,
+                execute: { [weak store] in
+                    // 与块内刷新按钮同一守卫：未配置/加载中不重复触发。
+                    guard let store, store.isConfigured, !store.isLoading else { return }
+                    store.forceRefresh()
+                }
+            )
+        ]
+        quickActionCache = actions
+        return actions
+    }
 }

@@ -32,3 +32,6 @@
 "dsh.label.status" = "Status";
 "dsh.launchAtLogin" = "Launch at Login";
 "dsh.restart" = "Restart";
+
+/* 快捷动作 */
+"quick.toggle.name" = "Toggle Service";

@@ -1,0 +1,20 @@
+/* QuickButtonBoxPlugin 中文文案 */
+
+/* 块名与空态 */
+"block.name" = "按钮盒";
+"block.empty" = "空盒";
+"block.empty.hint" = "打开 设置 → 组件,把快捷动作拖到这里。";
+
+/* 确认与公共 */
+"confirm.run" = "执行";
+"confirm.message" = "该动作可能改变系统状态。";
+"common.cancel" = "取消";
+"action.unavailable" = "不可用";
+
+/* 无障碍 */
+"a11y.on" = "开";
+"a11y.off" = "关";
+
+/* 管理面板 */
+"panel.title" = "按钮盒";
+"panel.capacity" = "%d / %d 个动作";

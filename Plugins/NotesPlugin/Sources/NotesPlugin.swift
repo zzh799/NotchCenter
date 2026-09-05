@@ -3,20 +3,11 @@ import NotchCenterKit
 import SwiftUI
 
 /// NotesPlugin（官方笔记插件，由 NotchNotes 的笔记功能移植而来）。
-/// 提供紧凑块（展开抽屉）与抽屉笔记本块（多标签 Markdown 编辑器）。
+/// 「新建笔记」一键入口统一为**快捷按钮**（`notes.compact`，快速区与按钮盒
+/// 均可放；宿主统一标准样式渲染）；抽屉笔记本块（多标签 Markdown 编辑器）
+/// 仍以组件块提供。
 @objc(NotesPlugin) @MainActor public final class NotesPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
     public static var blocks: [NotchBlock] = [
-        NotchBlock(
-            id: "notes.compact",
-            displayName: L("notes.block.compact"),
-            kind: .compact,
-            // 自定义交互：点击 = 新建笔记 + 展开抽屉 + 焦点落到新笔记。
-            interaction: .custom,
-            symbolName: "note.text",
-            makeView: { context in
-                AnyView(NotesCompactView(context: context))
-            }
-        ),
         NotchBlock(
             id: "notes.notebook",
             displayName: L("notes.block.notebook"),
@@ -69,6 +60,28 @@ import SwiftUI
                 }
             )
         ]
+    }
+
+    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+
+    private var quickActionCache: [QuickAction]?
+
+    public var quickActions: [QuickAction] {
+        if let quickActionCache { return quickActionCache }
+        // 前身即默认进带的 `notes.compact` 紧凑块：语义完全一致
+        // （新建笔记 + 展开抽屉 + 焦点落到新笔记）。
+        let action = QuickAction(
+            id: "notes.compact",
+            displayName: L("notes.newNote"),
+            systemImage: "note.text",
+            kind: .action,
+            defaultInStrip: true,
+            execute: { [weak self] in
+                self?.createNewNote()
+            }
+        )
+        quickActionCache = [action]
+        return quickActionCache!
     }
 
     private weak var hostController: (any HostController)?

@@ -32,3 +32,6 @@
 "dsh.label.status" = "状态";
 "dsh.launchAtLogin" = "登录时启动";
 "dsh.restart" = "重启";
+
+/* 快捷动作 */
+"quick.toggle.name" = "切换服务";

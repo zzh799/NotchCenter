@@ -35,9 +35,12 @@
 
 /* Settings → Components */
 "settings.components.groups" = "Plugins";
-"settings.components.hint" = "Click to add a component; press and drag it onto the drawer or the quick strip.";
+"settings.components.hint" = "Click to add to the quick strip or drawer; press and drag onto the quick strip, the drawer, or a button box.";
 "settings.components.compact" = "Quick actions";
 "settings.components.empty" = "No components available. Enable a plugin first.";
+"settings.components.quickActions" = "Quick Buttons";
+"settings.components.quickActions.cardHint" = "Quick strip or button box";
+"settings.components.quickActions.boxable" = "This card can also be dragged onto a Quick Button Box. The original stays on the quick strip, sharing the same state.";
 
 /* Settings → Layout */
 "settings.layout.cell" = "Cell size";
@@ -125,3 +128,7 @@
 "pluginManager.error.notUserPlugin" = "%@ is a built-in plugin and cannot be uninstalled.";
 "pluginManager.error.installFailed" = "Plugin install failed: %@";
 "pluginMetadata.error.missingKey" = "Bundle at %@ is missing required Info.plist key: %@";
+
+/* 快捷按钮统一（2026-09-05） */
+"quick.confirm.run" = "Run";
+"quick.confirm.body" = "This will run immediately.";

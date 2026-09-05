@@ -1,22 +1,14 @@
 import AppKit
+import Combine
 import NotchCenterKit
 import SwiftUI
 
 /// CaffeinatePlugin（官方防休眠插件，由 NotchNotes 的 SystemSleepGuard/AppSettingsStore 移植而来）。
-/// 提供一个紧凑块（`.custom` 交互：点击直接切换防休眠）、设置界面与状态栏菜单项。
+/// 一键入口统一为**快捷按钮**（`quickActions` 的 `caffeinate.toggle`，快速区与
+/// 快捷按钮盒均可放）；另有设置界面与状态栏菜单项。不再注册自带视图的紧凑块
+/// ——宿主以统一标准样式渲染该按钮（文档 §4.11）。
 @objc(CaffeinatePlugin) @MainActor public final class CaffeinatePlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
-    public static var blocks: [NotchBlock] = [
-        NotchBlock(
-            id: "caffeinate.toggle",
-            displayName: L("caffeinate.block.name"),
-            kind: .compact,
-            interaction: .custom,
-            symbolName: "cup.and.saucer",
-            makeView: { context in
-                AnyView(KeepAwakeCompactView(context: context))
-            }
-        )
-    ]
+    public static var blocks: [NotchBlock] = []
 
     public var menuItems: [PluginMenuItem] {
         [
@@ -49,6 +41,37 @@ import SwiftUI
 
     public func pluginWasDisabled() {
         store?.stopKeepingAwake()
+    }
+
+    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+
+    private var quickActionCache: [QuickAction]?
+    private var quickActionCancellables: Set<AnyCancellable> = []
+
+    public var quickActions: [QuickAction] {
+        if let quickActionCache { return quickActionCache }
+        guard let store else { return [] } // attachServices 前无 store；宿主不在该窗口期读取。
+        let toggle = QuickAction(
+            id: "caffeinate.toggle",
+            displayName: L("quick.toggle.name"),
+            systemImage: "cup.and.saucer",
+            kind: .toggle,
+            isActive: store.isKeepingAwake,
+            // 前身正是默认进带的紧凑块：首启布局里仍放入快速区（宿主据此补种）。
+            defaultInStrip: true,
+            execute: { [weak store] in
+                store?.toggleKeepAwake()
+            }
+        )
+        // 开关态同步：store 状态变化 → 盒内按钮点亮/熄灭（同一份状态）。
+        store.$isKeepingAwake
+            .sink { [weak toggle] isOn in
+                toggle?.isActive = isOn
+            }
+            .store(in: &quickActionCancellables)
+        let actions = [toggle]
+        quickActionCache = actions
+        return actions
     }
 }
 

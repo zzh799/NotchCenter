@@ -19,3 +19,6 @@
 /* 错误信息（管理员权限） */
 "caffeinate.error.adminRequired.restore" = "恢复正常休眠需要管理员权限。";
 "caffeinate.error.adminRequired.lidClosed" = "合盖时阻止睡眠需要管理员权限。";
+
+/* 快捷动作 */
+"quick.toggle.name" = "切换防休眠";

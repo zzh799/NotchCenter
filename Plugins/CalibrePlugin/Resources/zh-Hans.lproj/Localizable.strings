@@ -35,3 +35,6 @@
 /* 动作失败的错误提示 */
 "calibre.error.createPlist" = "在 %@ 创建 plist 失败";
 "calibre.error.bootstrap" = "launchctl bootstrap 失败。";
+
+/* 快捷动作 */
+"quick.toggle.name" = "切换服务";

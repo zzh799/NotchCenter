@@ -35,3 +35,6 @@
 /* 动作失败的错误提示 */
 "calibre.error.createPlist" = "Failed to create plist at %@";
 "calibre.error.bootstrap" = "launchctl bootstrap failed.";
+
+/* 快捷动作 */
+"quick.toggle.name" = "Toggle Service";

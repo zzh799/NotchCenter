@@ -35,9 +35,12 @@
 
 /* 设置 → 组件 */
 "settings.components.groups" = "插件";
-"settings.components.hint" = "单击添加组件；按住拖到抽屉或快速区。";
+"settings.components.hint" = "单击添加到快速区或抽屉；按住拖到快速区、抽屉或按钮盒。";
 "settings.components.compact" = "快捷按钮";
 "settings.components.empty" = "没有可用组件：请先在「插件」页启用插件。";
+"settings.components.quickActions" = "快捷按钮";
+"settings.components.quickActions.cardHint" = "可放快速区，也可收纳进按钮盒";
+"settings.components.quickActions.boxable" = "此卡也可拖入「快捷按钮盒」收纳，原件仍保留在快速区，两者共享同一状态。";
 
 /* 设置 → 布局 */
 "settings.layout.cell" = "单元大小";
@@ -125,3 +128,7 @@
 "pluginManager.error.notUserPlugin" = "%@ 是内置插件，无法卸载。";
 "pluginManager.error.installFailed" = "插件安装失败：%@";
 "pluginMetadata.error.missingKey" = "位于 %@ 的 bundle 缺少必需的 Info.plist 键：%@";
+
+/* 快捷按钮统一（2026-09-05） */
+"quick.confirm.run" = "执行";
+"quick.confirm.body" = "此操作会立即执行。";

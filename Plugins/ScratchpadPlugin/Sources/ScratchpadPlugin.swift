@@ -9,21 +9,11 @@ import SwiftUI
 /// 旧版存在插件级的共享数据在首个新实例创建时自动迁入。紧凑块是全局
 /// 聚合视图：角标 = 全部实例条目之和，点击 = 确认后清空所有实例。
 @objc(ScratchpadPlugin) @MainActor public final class ScratchpadPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
-    private static let compactBlockID = "scratchpad.compact"
+    /// 快捷动作 id：沿用旧紧凑块 id（旧布局槽位无需迁移即指向该动作）。
+    private static let compactActionID = "scratchpad.compact"
     private static let shelfBlockID = "scratchpad.shelf"
 
     public static var blocks: [NotchBlock] = [
-        NotchBlock(
-            id: ScratchpadPlugin.compactBlockID,
-            displayName: L("block.compact.name"),
-            kind: .compact,
-            // 自定义交互：点击 = 确认后清空所有实例的暂存区。
-            interaction: .custom,
-            symbolName: "tray",
-            makeView: { context in
-                AnyView(ScratchpadCompactView(context: context))
-            }
-        ),
         NotchBlock(
             id: ScratchpadPlugin.shelfBlockID,
             displayName: L("block.shelf.name"),
@@ -47,6 +37,36 @@ import SwiftUI
         )
     ]
 
+    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+
+    private var quickActionCache: [QuickAction]?
+
+    public var quickActions: [QuickAction] {
+        if let quickActionCache { return quickActionCache }
+        // 前身即默认进带的 `scratchpad.compact` 紧凑块：语义一致（有内容才弹
+        // 确认，确认后清空全部实例的暂存引用——只移除路径记录，原文件不动）。
+        let action = QuickAction(
+            id: ScratchpadPlugin.compactActionID,
+            displayName: L("block.compact.name"),
+            systemImage: "tray",
+            kind: .action,
+            requiresConfirmation: true,
+            defaultInStrip: true,
+            execute: { [weak self] in
+                self?.clearAllInstancesFromQuickAction()
+            }
+        )
+        quickActionCache = [action]
+        return quickActionCache!
+    }
+
+    private func clearAllInstancesFromQuickAction() {
+        let registry = ScratchpadInstanceRegistry.shared
+        guard registry.totalItemCount > 0 else { return }
+        registry.removeAll()
+        NotificationCenter.default.post(name: .scratchpadItemsDidChange, object: nil)
+    }
+
     public override init() {
         super.init()
     }
@@ -56,8 +76,7 @@ import SwiftUI
     }
 
     public func placementWasRemoved(blockID: String, placementID: String) {
-        // 只清理该实例私有的暂存记录（只移除路径记录，原文件不受影响）；
-        // 紧凑块没有实例数据，不进注册表。
+        // 只清理该实例私有的暂存记录（只移除路径记录，原文件不受影响）。
         guard blockID == Self.shelfBlockID else { return }
         ScratchpadInstanceRegistry.shared.discard(placementID: placementID)
         NotificationCenter.default.post(name: .scratchpadItemsDidChange, object: nil)
