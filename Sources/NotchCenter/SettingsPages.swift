@@ -344,30 +344,50 @@ struct ComponentsSettingsPage: View {
 
             Divider().overlay(.white.opacity(0.06))
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 20) {
-                        hint
-                        ForEach(groups) { group in
-                            groupSection(group)
-                                .id(group.id)
-                        }
-                        if groups.isEmpty {
-                            Text(L("settings.components.empty"))
-                                .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.35))
-                                .padding(.top, 40)
-                        }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 20) {
+                    hint
+                    ForEach(groups) { group in
+                        groupSection(group)
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(
+                                        key: CatalogSectionFrameKey.self,
+                                        value: [group.id: geo.frame(in: .named(Self.catalogSpace)).minY]
+                                    )
+                                }
+                            )
                     }
-                    .padding(20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .onChange(of: selectedPluginID) { _, newValue in
-                    guard let newValue else { return }
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(newValue, anchor: .top)
+                    if groups.isEmpty {
+                        Text(L("settings.components.empty"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.35))
+                            .padding(.top, 40)
                     }
                 }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .coordinateSpace(name: Self.catalogSpace)
+            .scrollPosition(id: $scrollPositionID)
+            .onPreferenceChange(CatalogSectionFrameKey.self) { frames in
+                // 反向同步：分区实时上报视口内 minY，据此推导顶缘所在分组。
+                // 不读 scrollPosition 绑定——macOS 下用户滚动不会回填它。
+                guard !frames.isEmpty else {
+                    topVisibleGroupID = nil
+                    return
+                }
+                let reached = frames.filter { $0.value <= Self.sectionAnchorY }
+                let topID = reached.max(by: { $0.value < $1.value })?.key
+                    ?? frames.min(by: { $0.value < $1.value })?.key
+                if topID != topVisibleGroupID {
+                    topVisibleGroupID = topID
+                }
+                guard let topID,
+                      topID != selectedPluginID,
+                      Date.now >= reverseSyncHoldUntil
+                else { return }
+                selectedPluginID = topID
             }
         }
         .onAppear(perform: rebuildIfNeeded)
@@ -380,6 +400,37 @@ struct ComponentsSettingsPage: View {
     // MARK: 二级侧边导航（插件列表）
 
     @State private var selectedPluginID: String?
+    /// 跳转写入位：侧边栏点击写入以滚动目录。macOS 下用户滚动不回填该绑定，
+    /// 读取侧由 CatalogSectionFrameKey 偏好追踪承担。
+    @State private var scrollPositionID: String?
+    /// 目录顶缘当前所在分组，用于反向同步与重复点击回滚。
+    @State private var topVisibleGroupID: String?
+    /// 程序化跳转的回写抑制截止时刻，挡住动画途经的中间分区。
+    @State private var reverseSyncHoldUntil = Date.distantPast
+
+    private static let catalogSpace = "componentsCatalogSpace"
+    /// 分区归属线：分组顶缘越过视口顶部该深度即视为「顶缘分区」。
+    private static let sectionAnchorY: CGFloat = 24
+
+    /// 侧边栏行点击：选中该插件分组，并把目录滚到对应分区顶。
+    /// 重复点击已选中行时，绑定值可能因用户滚动与实际位置脱节（同值
+    /// 赋值不触发滚动），先写入当前顶缘分组再二次写入强制触发。
+    private func selectPlugin(_ group: ComponentCatalogGroup) {
+        selectedPluginID = group.id
+        reverseSyncHoldUntil = .now.addingTimeInterval(0.3)
+        if scrollPositionID == group.id, let current = topVisibleGroupID, current != group.id {
+            scrollPositionID = current
+            DispatchQueue.main.async {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    scrollPositionID = group.id
+                }
+            }
+        } else {
+            withAnimation(.easeOut(duration: 0.2)) {
+                scrollPositionID = group.id
+            }
+        }
+    }
 
     private var pluginSidebar: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -406,7 +457,7 @@ struct ComponentsSettingsPage: View {
     private func pluginRow(_ group: ComponentCatalogGroup) -> some View {
         let isSelected = selectedPluginID == group.id
         return Button {
-            selectedPluginID = group.id
+            selectPlugin(group)
         } label: {
             HStack(spacing: 6) {
                 Text(group.displayName)
@@ -522,9 +573,27 @@ struct ComponentsSettingsPage: View {
             hostController: controller
         )
         quickActionGroups = QuickActionCatalogBuilder.build(pluginManager: pluginManager)
-        if let selectedPluginID, !groups.contains(where: { $0.id == selectedPluginID }) {
-            self.selectedPluginID = nil
+        guard !groups.contains(where: { $0.id == selectedPluginID }) else { return }
+        if selectedPluginID == nil {
+            // 首次构建：默认高亮第一组，不动滚动位置，保住顶部提示条可见。
+            selectedPluginID = groups.first?.id
+        } else {
+            // 原选中分组消失（插件被关闭/卸载）：回退第一组并同步定位。
+            selectedPluginID = groups.first?.id
+            guard let fallback = selectedPluginID else { return }
+            reverseSyncHoldUntil = .now.addingTimeInterval(0.25)
+            withAnimation(.easeOut(duration: 0.2)) {
+                scrollPositionID = fallback
+            }
         }
+    }
+}
+
+/// 组件目录各分区在视口坐标系内的 minY 上报，反向同步的数据源。
+private struct CatalogSectionFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] { [:] }
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
     }
 }
 
