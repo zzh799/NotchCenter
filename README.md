@@ -46,8 +46,8 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 ## 本地运行
 
 ```bash
-./scripts/build.sh dev            # 组装官方插件 bundle 到 dev PlugIns 目录（可选 debug|release）
-swift run NotchCenter
+./scripts/build.sh run            # 构建 + 组装官方插件 bundle 进 .app 并启动（可选 debug|release）；
+                                 # 默认增量：内容未变化时跳过构建直接复用上次产物（--full/-f 强制全量）
 ```
 
 ## 构建发布包

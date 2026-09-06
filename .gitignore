@@ -1,6 +1,7 @@
 .build/
 .DS_Store
 DerivedData/
+Derived/
 NotchCenter.app/
 NotchNotes.app/
 dist/
@@ -10,3 +11,7 @@ dist.noindex/
 *.xcuserdatad
 .vscode/settings.json
 nohup.out
+
+# Tuist 生成物（源真相是 Project.swift / mise.toml）
+*.xcodeproj
+*.xcworkspace

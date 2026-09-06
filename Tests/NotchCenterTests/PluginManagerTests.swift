@@ -25,6 +25,16 @@ final class PluginManagerTests: XCTestCase {
             .appendingPathComponent("PluginManagerTests-\(UUID().uuidString)", isDirectory: true)
     }
 
+    /// 与宿主 .app 的真实 PlugIns 目录隔离：xcodebuild test 以 NotchCenter.app 为测试宿主，
+    /// 缺省的 CorePaths.builtInPlugInsDirectory 会看到 build.sh 组装的真实插件，
+    /// fixture 断言必须显式指定空目录。
+    private func makeEmptyBuiltIn() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PluginManagerTests-empty-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
     private func writeBundle(
         at root: URL,
         name: String,
@@ -125,6 +135,7 @@ final class PluginManagerTests: XCTestCase {
 
         let manager = PluginManager(
             hostController: StubHostController(),
+            builtInDirectory: makeEmptyBuiltIn(),
             userDirectory: user
         )
 
@@ -143,6 +154,7 @@ final class PluginManagerTests: XCTestCase {
 
         let manager = PluginManager(
             hostController: StubHostController(),
+            builtInDirectory: makeEmptyBuiltIn(),
             userDirectory: user
         )
         let entry = try XCTUnwrap(manager.entry(for: "com.example.old"))
@@ -168,6 +180,7 @@ final class PluginManagerTests: XCTestCase {
 
         let manager = PluginManager(
             hostController: StubHostController(),
+            builtInDirectory: makeEmptyBuiltIn(),
             userDirectory: user
         )
         let entry = try XCTUnwrap(manager.entry(for: "com.example.dead"))
@@ -186,6 +199,7 @@ final class PluginManagerTests: XCTestCase {
 
         let manager = PluginManager(
             hostController: StubHostController(),
+            builtInDirectory: makeEmptyBuiltIn(),
             userDirectory: user
         )
         manager.restoreEnabledState(from: ["com.example.dead"])
@@ -209,6 +223,7 @@ final class PluginManagerTests: XCTestCase {
 
         let manager = PluginManager(
             hostController: StubHostController(),
+            builtInDirectory: makeEmptyBuiltIn(),
             userDirectory: user
         )
         // 无真实二进制：复制后启用必然失败，应回滚复制出的 bundle。
@@ -232,6 +247,7 @@ final class PluginManagerTests: XCTestCase {
 
         let manager = PluginManager(
             hostController: StubHostController(),
+            builtInDirectory: makeEmptyBuiltIn(),
             userDirectory: user
         )
         XCTAssertThrowsError(try manager.installBundle(from: notABundle))
@@ -273,6 +289,7 @@ final class PluginManagerTests: XCTestCase {
 
         let manager = PluginManager(
             hostController: StubHostController(),
+            builtInDirectory: makeEmptyBuiltIn(),
             userDirectory: user
         )
         XCTAssertTrue(manager.menuContributions().isEmpty)

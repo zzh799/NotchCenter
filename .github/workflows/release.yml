@@ -17,18 +17,21 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: 检出代码
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: 使用 Swift 6
-        run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+      - name: 安装 Tuist（按 mise.toml 固定版本）
+        uses: jdx/mise-action@v2
+
+      - name: 使用 Xcode 16.4
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
 
       - name: 运行测试
-        run: swift test
+        run: ./scripts/build.sh test
 
       - name: 构建通用发布包
         run: |

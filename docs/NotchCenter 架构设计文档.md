@@ -40,9 +40,9 @@ NotchCenter 核心（主 App）只承担以下基础设施：
 
 ```text
 NotchCenter/
-├── Package.swift
+├── Project.swift                  # Tuist 清单（构建源真相，自动发现插件）
 ├── Sources/
-│   ├── NotchCenter/               # 主 App 可执行 target
+│   ├── NotchCenter/               # 主 App .app target（开发态与打包态布局一致）
 │   │   ├── main.swift
 │   │   ├── AppDelegate.swift
 │   │   ├── NotchPanelController.swift
