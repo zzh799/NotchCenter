@@ -8,6 +8,8 @@ import SwiftUI
 // 条目主体点击 = 写回剪贴板（单行截断显示），长按 = BlockPopover 全文预览浮窗；
 // 「置顶 / 删除」图标按钮同行放行尾。清空经卡片内 InlineConfirmOverlay 浮层
 // 确认——模态弹窗抢焦点，鼠标移过去抽屉就会收回。
+// 置顶 / 最近分组不设文字标题：组界画细线表达，条目置顶态由行尾按钮选中态表达，
+// 分组语义走节容器 accessibilityLabel。
 // 历史来自共享单例，显示偏好（条数）来自本 placement 的实例模型。
 
 struct ClipboardHistoryBlockView: View {
@@ -98,7 +100,7 @@ struct ClipboardHistoryBlockView: View {
         }
     }
 
-    /// 拍平后的展示条目（分区信息由 historyList 内按需重算标题行）。
+    /// 拍平后的展示条目（分组仅由 historyList 用细线与节容器 a11y 标签表达）。
     private var displayedEntries: [ClipboardEntry] {
         displayedSections.flatMap(\.entries)
     }
@@ -113,12 +115,12 @@ struct ClipboardHistoryBlockView: View {
         let plain = filtered.filter { !$0.pinned }
         var sections: [ClipboardSection] = []
         if !pinned.isEmpty {
-            sections.append(ClipboardSection(title: L("drawer.section.pinned"), entries: Array(pinned.prefix(limit))))
+            sections.append(ClipboardSection(kind: .pinned, entries: Array(pinned.prefix(limit))))
         }
         // 置顶已占去 k 位时，最近区补 (limit - k) 位，避免超长。
         let remaining = max(limit - min(pinned.count, limit), 0)
         if !plain.isEmpty, remaining > 0 {
-            sections.append(ClipboardSection(title: L("drawer.section.recent"), entries: Array(plain.prefix(remaining))))
+            sections.append(ClipboardSection(kind: .recent, entries: Array(plain.prefix(remaining))))
         }
         return sections
     }
@@ -214,9 +216,10 @@ struct ClipboardHistoryBlockView: View {
     private var historyList: some View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 10) {
-                ForEach(displayedSections) { section in
+                ForEach(Array(displayedSections.enumerated()), id: \.element.id) { index, section in
                     ClipboardSectionView(
                         section: section,
+                        showsTopDivider: index > 0,
                         justCopiedID: store.justCopiedID,
                         onCopy: { store.copyBack($0) },
                         onTogglePin: { store.togglePin(id: $0.id) },
@@ -229,36 +232,55 @@ struct ClipboardHistoryBlockView: View {
     }
 }
 
-/// 展示节模型（具名 Identifiable，避免匿名元组拖慢类型检查）。
+/// 展示分区（具名 Identifiable，避免匿名元组拖慢类型检查）。
+private enum ClipboardSectionKind: Hashable {
+    case pinned
+    case recent
+
+    /// 视觉上已不用文字标题，仅供节容器 accessibilityLabel 复用。
+    var titleKey: String {
+        self == .pinned ? "drawer.section.pinned" : "drawer.section.recent"
+    }
+}
+
 private struct ClipboardSection: Identifiable {
-    var id: String { title }
-    let title: String
+    var id: ClipboardSectionKind { kind }
+    let kind: ClipboardSectionKind
     let entries: [ClipboardEntry]
 }
 
-/// 单节渲染（标题 + 行列），从 historyList 抽出给类型检查器减负。
+/// 单节渲染（组间细线 + 行列表），从 historyList 抽出给类型检查器减负。
 private struct ClipboardSectionView: View {
     let section: ClipboardSection
+    let showsTopDivider: Bool
     let justCopiedID: UUID?
     let onCopy: (ClipboardEntry) -> Void
     let onTogglePin: (ClipboardEntry) -> Void
     let onDelete: (ClipboardEntry) -> Void
 
     var body: some View {
-        Text(section.title)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.45))
-            .padding(.horizontal, 12)
-        ForEach(section.entries) { entry in
-            ClipboardRowView(
-                entry: entry,
-                justCopied: justCopiedID == entry.id,
-                onCopy: { onCopy(entry) },
-                onTogglePin: { onTogglePin(entry) },
-                onDelete: { onDelete(entry) }
-            )
-            .padding(.horizontal, 8)
+        Group {
+            if showsTopDivider {
+                // 置顶组与最近组的组界发丝线（DESIGN.md §2.3 分隔线基准）。
+                Rectangle()
+                    .fill(.white.opacity(0.045))
+                    .frame(height: 1)
+                    .padding(.horizontal, 12)
+                    .accessibilityHidden(true)
+            }
+            ForEach(section.entries) { entry in
+                ClipboardRowView(
+                    entry: entry,
+                    justCopied: justCopiedID == entry.id,
+                    onCopy: { onCopy(entry) },
+                    onTogglePin: { onTogglePin(entry) },
+                    onDelete: { onDelete(entry) }
+                )
+                .padding(.horizontal, 8)
+            }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(L(section.kind.titleKey)))
     }
 }
 
@@ -274,11 +296,6 @@ private struct ClipboardRowView: View {
     var body: some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
-                if entry.pinned {
-                    Image(systemName: "pin.fill")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
                 if justCopied {
                     Image(systemName: "checkmark")
                         .font(.system(size: 9, weight: .semibold))
@@ -294,7 +311,8 @@ private struct ClipboardRowView: View {
 
             HStack(spacing: 2) {
                 iconButton(
-                    systemName: entry.pinned ? "pin.slash" : "pin",
+                    systemName: entry.pinned ? "pin.fill" : "pin",
+                    isActive: entry.pinned,
                     help: entry.pinned ? L("drawer.button.unpin") : L("drawer.button.pin"),
                     action: onTogglePin
                 )
@@ -342,12 +360,23 @@ private struct ClipboardRowView: View {
         }
     }
 
-    private func iconButton(systemName: String, help: String, action: @escaping () -> Void) -> some View {
+    private func iconButton(
+        systemName: String,
+        isActive: Bool = false,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.white.opacity(isActive ? 0.92 : 0.5))
                 .frame(width: 22, height: 20)
+                .background {
+                    if isActive {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(.white.opacity(0.08))
+                    }
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -355,6 +384,7 @@ private struct ClipboardRowView: View {
         .focusEffectDisabled(true)
         .help(help)
         .accessibilityLabel(Text(help))
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }
 
