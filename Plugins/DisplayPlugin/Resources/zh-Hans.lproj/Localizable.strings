@@ -2,6 +2,5 @@
 
 "block.drawer.name" = "显示器亮度";
 "drawer.empty.title" = "未检测到可调节的外接显示器";
-"drawer.empty.hint" = "连接支持 DDC/CI 的外接显示器后即可在此调节亮度；内建屏幕请使用系统亮度键。";
 "display.fallback.name" = "外接显示器 %d";
 "a11y.slider.label" = "%@ 的亮度";

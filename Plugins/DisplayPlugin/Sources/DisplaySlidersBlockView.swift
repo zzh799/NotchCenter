@@ -47,12 +47,6 @@ struct DisplaySlidersBlockView: View {
             Text(L("drawer.empty.title"))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.8))
-            Text(L("drawer.empty.hint"))
-                .font(.system(size: 10.5))
-                .foregroundStyle(.white.opacity(0.45))
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-                .padding(.horizontal, 18)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

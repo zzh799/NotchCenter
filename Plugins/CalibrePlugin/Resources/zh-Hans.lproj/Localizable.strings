@@ -37,4 +37,4 @@
 "calibre.error.bootstrap" = "launchctl bootstrap 失败。";
 
 /* 快捷动作 */
-"quick.toggle.name" = "切换服务";
+"quick.toggle.name" = "开关 Calibre 服务";

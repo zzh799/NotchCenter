@@ -34,4 +34,4 @@
 "dsh.restart" = "重启";
 
 /* 快捷动作 */
-"quick.toggle.name" = "切换服务";
+"quick.toggle.name" = "开关 DSH 服务";
