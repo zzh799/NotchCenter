@@ -20,9 +20,7 @@ public final class MediaControlsPlugin: NSObject, NotchCenterPlugin, NotchCenter
                 kind: .drawer,
                 supportedSizes: [.large, .extraLarge],
                 defaultSize: .large,
-                // 静态控制卡、不消费横向滚动：其上滑动直接切页。
                 symbolName: "playpause.fill",
-                scrollUsage: .none,
                 makeView: { context in
                     AnyView(MediaControlsDrawerBlockView(context: context))
                 }

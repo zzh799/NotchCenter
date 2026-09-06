@@ -16,10 +16,8 @@ public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugin
                 supportedSizes: [.medium, .large, .extraLarge],
                 defaultSize: .medium,
                 symbolName: "sun.max",
-                // 滑杆以非 ScrollView 机制消费横向输入，宿主滚动探针不可见，
-                // 按「块以自定义机制消费横向输入」约定声明无条件让路：
-                // 块上横向拖动归滑杆，切页手势移到块外触发。
-                scrollUsage: .always,
+                // 滑杆只经命中测试消费鼠标拖拽，不消费滚轮横向增量：
+                // 块上横向轻扫照常切页，与拖滑杆调亮度互不干扰。
                 makeView: { context in
                     AnyView(DisplaySlidersBlockView(context: context))
                 }

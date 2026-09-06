@@ -23,9 +23,7 @@ import SwiftUI
                 GridSpan(columns: 4, rows: 3),
                 GridSpan(columns: 4, rows: 4),
             ],
-            // 编辑区只纵向滚动、不消费横向轻扫：指针落在块上滑动即可切页。
             symbolName: "book",
-            scrollUsage: .none,
             makeView: { context in
                 AnyView(NotesBlockView(
                     store: NotesModel.shared.resolve(stateStore: context.stateStore),

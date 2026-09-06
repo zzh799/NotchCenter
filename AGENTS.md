@@ -5,7 +5,7 @@
 
 ## 项目是什么
 
-**NotchCenter** 是 macOS 刘海交互插件宿主:刘海区展开抽屉、网格布局插件"块";核心仅承担基础设施,业务功能皆以官方插件提供。架构基线见 [架构设计文档](docs/NotchCenter 架构设计文档.md),UI 遵循 [DESIGN.md](docs/DESIGN.md)。macOS 14+ / Swift 6 严格并发 / AppKit + SwiftUI / SPM;accessory 策略,无 Dock 图标。
+**NotchCenter** 是 macOS 刘海交互插件宿主:刘海区展开抽屉、网格布局插件"块";核心仅承担基础设施,业务功能皆以官方插件提供。架构基线见 [架构设计文档](docs/NotchCenter 架构设计文档.md),UI 遵循 [DESIGN.md](docs/DESIGN.md)。macOS 15+ / Swift 6 严格并发 / AppKit + SwiftUI / SPM;accessory 策略,无 Dock 图标。
 
 ## 改前必读
 

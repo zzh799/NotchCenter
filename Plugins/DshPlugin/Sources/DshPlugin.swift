@@ -15,9 +15,7 @@ import SwiftUI
             kind: .drawer,
             supportedSizes: [.small, .medium],
             defaultSize: .small,
-            // 静态服务卡、不消费横向滚动：其上滑动直接切页。
             symbolName: "server.rack",
-            scrollUsage: .none,
             makeView: { _ in
                 AnyView(DshServiceBlockView())
             }

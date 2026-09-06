@@ -39,8 +39,6 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
             supportedGridSpans: [],
             interaction: .expandDrawer,
             symbolName: kind.symbolName,
-            // 静态监控卡、不消费横向滚动：其上滑动直接切页。
-            scrollUsage: .none,
             instanceSettingsView: { context in
                 AnyView(SingleInstanceSettingsView(kind: kind, instance: instanceModel(for: context)))
             },
@@ -67,7 +65,6 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
         supportedGridSpans: [GridSpan(columns: 4, rows: 3), GridSpan(columns: 4, rows: 4)],
         interaction: .expandDrawer,
         symbolName: "speedometer",
-        scrollUsage: .none,
         instanceSettingsView: { context in
             AnyView(OverviewInstanceSettingsView(instance: instanceModel(for: context)))
         },

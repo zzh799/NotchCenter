@@ -28,9 +28,9 @@ import SwiftUI
                     }
                 }
             ),
-            // 文件架是横向 ScrollView：切页让路，横向滚动归它自己。
+            // 横向文件架：内容溢出时滑动让路归文件架（宿主探针核实），
+            // 空/未满放行切页。
             symbolName: "tray.full",
-            scrollUsage: .horizontal,
             makeView: { context in
                 AnyView(ScratchpadShelfBlockView(context: context))
             }

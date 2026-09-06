@@ -18,7 +18,7 @@ superseded-by: <无>
 - **私有符号只在 `IOAVServiceBackend` 一个文件内接触**，dlopen/dlsym 惰性解析 + 进程级缓存，与 `MediaRemoteSession` 同一封装形态；符号缺失即整体降级，绝不崩溃。`CoreDisplay_DisplayCreateInfoDictionary` 的宿主框架随系统版本漂移：macOS 14 及更早在 CoreDisplay，macOS 15 起框架移除、符号由 DisplayServices 承接（SkyLight 亦再导出）——解析按此顺序逐个探测（真机 macOS 15.6 已验证枚举 + 读 + 回写全链路）。
 - **写入走串行合并通道**（`DDCWriteChannel` actor + `CoalescedWriteStateMachine`）：任一时刻至多一次 DDC 传输在途，在途期间只保留最新值，完成后补写终值，两次写入至少间隔 80ms——拖动滑杆的连发请求不会打满 DDC 总线。
 - **初值回读 300ms 超时**，失败回退内存缓存或 50%（部分屏不支持回读，不视为不可调节）；「不可调节」以**连续两次写入失败**判定，命中后隐藏该屏滑杆行。
-- **块声明 `scrollUsage: .always`**：滑杆以非 ScrollView 机制消费横向输入，宿主滚动探针不可见，按面板与抽屉.md 的约定无条件让路（块上拖动归滑杆，切页移到块外）。
+- **块不做滑动让路声明**（2026-09-06 修订）：初版按"滑杆以非 ScrollView 机制消费横向输入"声明 `scrollUsage: .always` 无条件让路；实测滑杆只经命中测试消费鼠标拖拽、不消费滚轮横向增量，整块让路反而造成"块上无法滑动切页"。同日 `BlockScrollUsage` 声明体系随最低支持提至 macOS 15 整体删除（探针反向推断恒可信），块上让路统一由宿主 `DrawerScrollProbe` 核实横向溢出。
 - Intel 实现未经真机验证（开发机为 Apple Silicon），帧编解码 / 映射 / 合并逻辑由 `DisplayPluginTests` 覆盖；README 明示此边界。
 
 ## Alternatives considered(备选方案)
@@ -41,3 +41,4 @@ superseded-by: <无>
 ## Changelog
 
 - v1.0.0:随 DisplayPlugin 首次落地创建。
+- v1.0.1:`scrollUsage: .always` 决策修订为无声明（声明体系删除，探针统一判定）。

@@ -7,7 +7,7 @@ import PackageDescription
 let package = Package(
     name: "NotchCenterKit",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v15)
     ],
     products: [
         .library(name: "NotchCenterKit", type: .dynamic, targets: ["NotchCenterKit"])

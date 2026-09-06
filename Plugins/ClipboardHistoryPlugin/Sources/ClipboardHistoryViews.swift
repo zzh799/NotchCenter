@@ -6,7 +6,6 @@ import SwiftUI
 //
 // 交互分区防误触：条目主体点击 = 展开 / 收起全文，「复制」图标按钮 = 写回全文。
 // 历史来自共享单例，显示偏好（条数 / 时间戳）来自本 placement 的实例模型。
-// 纵向 ScrollView 不消费横向滑动（scrollUsage .none 声明在块上）。
 
 struct ClipboardHistoryBlockView: View {
     @ObservedObject var store: ClipboardHistoryStore

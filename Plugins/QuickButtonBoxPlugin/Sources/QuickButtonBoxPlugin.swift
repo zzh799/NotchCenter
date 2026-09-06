@@ -27,8 +27,6 @@ public final class QuickButtonBoxPlugin: NSObject, NotchCenterPlugin, NotchCente
                 defaultSize: .extraLarge,
                 supportedGridSpans: [],
                 symbolName: "square.grid.3x3",
-                // 静态宫格不消费横向滑动：其上滑动照常切页。
-                scrollUsage: .none,
                 instanceSettingsView: { context in
                     AnyView(QuickButtonBoxManageView(context: context))
                 },

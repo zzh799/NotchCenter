@@ -4,34 +4,28 @@ import AppKit
 
 /// 滚动事件时刻核实"光标下是否真有可横向滚动的滚动视图"。
 ///
-/// 让路判据（`NotchPanelContent.handleDrawerScroll`）的动态部分：块经
-/// `BlockScrollUsage` 声明会消费横向滑动后，宿主再用 AppKit 实测核实内容
-/// 确实横向溢出——空/未满的横向 `ScrollView`（如暂存区文件架）放行切页。
+/// 让路判据（`NotchPanelContent.handleDrawerScroll`）的动态核实：光标落在
+/// 块上时，宿主用 AppKit 实测核实内容确实横向溢出才让路——静态卡片与纵向
+/// `ScrollView`（无横向溢出，如亮度滑杆块）、空/未满的横向 `ScrollView`
+/// （如暂存区文件架）放行切页，塞满溢出时让路。
 ///
 /// 探测方式是**子树枚举**：从抽屉窗口的 `contentView` 向下 DFS 收集
 /// `NSScrollView`（及不在任何 `NSScrollView` 内、带 documentView 的
-/// `NSClipView`，兜更早系统的内部结构），逐个判定"光标落在可见区内 ∧
-/// documentView 横向溢出视口"。起点必须 contentView 而非命中链——SwiftUI
+/// `NSClipView`，兜无 ScrollView 包装的裸滚动机构），逐个判定"光标落在
+/// 可见区内 ∧ documentView 横向溢出视口"。起点必须 contentView 而非命中链——SwiftUI
 /// 在 `NSHostingView` 层接管事件路由，`hitTest` 永远到不了内部滚动机构，
 /// 旧的"沿 superview 向上找 NSScrollView"实测恒 false（勿改回）。SwiftUI
 /// `ScrollView` 内部是真实 NSView 链 `DocumentView > NSClipView >
 /// HostingScrollView`（私有 NSScrollView 子类，macOS 15 实测），子树枚举
 /// 必然访问到，与事件路由无关。
 ///
-/// 每次滚动事件现查、无缓存：抽屉窗口子树仅数百节点，且只在光标下元素
-/// 声明 `.horizontal` 时才走，微秒级；不缓存就永远不会拿着过期视图树判定。
+/// 每次滚动事件现查、无缓存：抽屉窗口子树仅数百节点，只在光标落在块上
+/// 时才走，微秒级；不缓存就永远不会拿着过期视图树判定。
 @MainActor
 enum DrawerScrollProbe {
     /// documentView 相对视口的横向溢出余量下限（pt）。取 1 防 1px 取整
     /// 误报——误报会让未满的文件架重新吞掉切页，宁可偏严。
     private static let overflowEpsilon: CGFloat = 1
-
-    /// "没找到 → 不让路"这条反向推断只在实测过 SwiftUI 内部结构的系统
-    /// （macOS 15+）启用；更早系统探针可能全盲（内部没有可枚举的
-    /// NSScrollView/NSClipView），此时只信任正向结果（找到 → 让路），
-    /// "没找到"回落旧的静态让路行为。
-    static let refinesNegativeResult = ProcessInfo.processInfo.isOperatingSystemAtLeast(
-        OperatingSystemVersion(majorVersion: 15, minorVersion: 0, patchVersion: 0))
 
     /// 诊断日志开关（`NOTCHCENTER_SCROLL_PROBE_LOG=1`）：打印候选视图、
     /// 溢出判定与最终结论，用于真机核实子树里能否枚举到内部滚动机构。

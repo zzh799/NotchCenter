@@ -406,7 +406,6 @@ extension NotchPanelController {
                     lhs.columns == rhs.columns ? lhs.rows < rhs.rows : lhs.columns < rhs.columns
                 },
                 currentSpan: currentSpan,
-                scrollUsage: block.scrollUsage,
                 hasSettings: hasSettings
             ))
         }
@@ -655,31 +654,20 @@ extension NotchPanelController {
         // 位移上限在会话期冻结（`drawerContentSize` 随进度插值，现读会让
         // 橡皮筋与位移换算逐帧漂移）；无会话时 = 当前页宽。
         let limit = uiState.drawerSwipe?.limit ?? drawerSwipeLimit
-        // 光标落在块上时按滚动消费声明（`BlockScrollUsage`）决定是否让路：
-        // `.none` 静态卡片不消费横向增量，其上滑动照常切页；`.always` 无条件
-        // 让路（探针看不见的自定义横向手势）；`.horizontal` 经 `DrawerScrollProbe`
-        // 子树枚举核实"光标下确有横向溢出的滚动视图"才让路——空/未满的横向
-        // ScrollView（如文件架）放行切页。探针从窗口 contentView 向下 DFS，不依赖
-        // 命中链（SwiftUI 在宿主视图层接管事件，hitTest 到不了内部滚动机构，
-        // 旧的"沿 superview 向上找 NSScrollView"实测恒 false，勿改回）。
+        // 光标落在块上时经 `DrawerScrollProbe` 子树枚举核实"光标下确有横向
+        // 溢出的滚动视图"才让路——静态卡片与纵向 ScrollView（无横向溢出，如
+        // 亮度滑杆块）放行切页，空/未满的横向 ScrollView（如文件架）亦放行。
+        // 探针从窗口 contentView 向下 DFS，不依赖命中链（SwiftUI 在宿主视图层
+        // 接管事件，hitTest 到不了内部滚动机构，旧的"沿 superview 向上找
+        // NSScrollView"实测恒 false，勿改回）。最低支持 macOS 15（SwiftUI 内部
+        // 滚动机构已实测），"没找到 → 放行"的反向推断可信。
         if let window = event.window,
-           let element = drawerElement(at: window.convertPoint(toScreen: event.locationInWindow)) {
-            switch element.scrollUsage {
-            case .none:
-                break
-            case .always:
-                yieldDrawerSwipeToBlock()
-                return
-            case .horizontal:
-                // 探针盲区系统（macOS 15 前，内部结构未实测）回落静态让路旧行为。
-                let scrollable = DrawerScrollProbe.hasHorizontalOverflowUnderCursor(
-                    in: window,
-                    cursorWindowPoint: event.locationInWindow)
-                if scrollable || !DrawerScrollProbe.refinesNegativeResult {
-                    yieldDrawerSwipeToBlock()
-                    return
-                }
-            }
+           drawerElement(at: window.convertPoint(toScreen: event.locationInWindow)) != nil,
+           DrawerScrollProbe.hasHorizontalOverflowUnderCursor(
+               in: window,
+               cursorWindowPoint: event.locationInWindow) {
+            yieldDrawerSwipeToBlock()
+            return
         }
         if let frame = drawerScrollTracker.feed(
             deltaX: event.scrollingDeltaX,
@@ -723,25 +711,17 @@ extension NotchPanelController {
         updateDrawerSwipe(offset: gridOffset)
     }
 
-    /// 鼠标拖动是否应让路给块的横向手势（与 handleDrawerScroll 的探针一致）。
+    /// 鼠标拖动是否应让路给块的横向滚动（与 handleDrawerScroll 的探针一致）。
     private func shouldYieldMouseSwipe() -> Bool {
         guard let pair = activePair else { return false }
         let screenPoint = NSEvent.mouseLocation
-        guard let element = drawerElement(at: screenPoint) else { return false }
-        switch element.scrollUsage {
-        case .none:
-            return false
-        case .always:
-            return true
-        case .horizontal:
-            let window = pair.drawerPanel
-            let windowPoint = NSPoint(
-                x: screenPoint.x - window.frame.minX,
-                y: screenPoint.y - window.frame.minY
-            )
-            let scrollable = DrawerScrollProbe.hasHorizontalOverflowUnderCursor(in: window, cursorWindowPoint: windowPoint)
-            return scrollable || !DrawerScrollProbe.refinesNegativeResult
-        }
+        guard drawerElement(at: screenPoint) != nil else { return false }
+        let window = pair.drawerPanel
+        let windowPoint = NSPoint(
+            x: screenPoint.x - window.frame.minX,
+            y: screenPoint.y - window.frame.minY
+        )
+        return DrawerScrollProbe.hasHorizontalOverflowUnderCursor(in: window, cursorWindowPoint: windowPoint)
     }
 
     /// 拖拽通路：松手定夺（过阈值落位，否则弹回）。速度判据经 DragGesture 的

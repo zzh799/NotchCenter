@@ -577,9 +577,8 @@ final class NotchPanelController: NSObject {
         drawerElement(at: screenPoint) != nil
     }
 
-    /// 屏幕坐标处的当前页抽屉块。`scrollUsage` 是滑动切页让路的门控：
-    /// `.none` 不让路、`.always` 无条件让路、`.horizontal` 经
-    /// `DrawerScrollProbe` 核实横向溢出。
+    /// 屏幕坐标处的当前页抽屉块。抽屉滑动的让路判据用它定位光标下的块，
+    /// 再经 `DrawerScrollProbe` 核实横向溢出。
     func drawerElement(at screenPoint: NSPoint) -> DrawerElement? {
         guard isExpanded, let pair = activePair else { return nil }
         let mapper = drawerScreenMapper(for: pair)

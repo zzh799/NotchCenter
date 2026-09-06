@@ -217,7 +217,7 @@ let package = Package(
     // 本地化资源的基准开发语言（en）：声明了 .lproj 资源后 SPM 强制要求。
     defaultLocalization: "en",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v15)
     ],
     products: products,
     dependencies: packageDependencies,

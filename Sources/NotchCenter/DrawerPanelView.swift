@@ -12,8 +12,6 @@ struct DrawerElement: Identifiable {
     let supportedSpans: [GridSpan]
     /// 当前已提交的跨度（与 placement 一致；布局遗留数据可能为 nil）。
     let currentSpan: GridSpan?
-    /// 块声明的横向滑动消费（滑动切页的让路判据，见 `BlockScrollUsage`）。
-    let scrollUsage: BlockScrollUsage
     /// 插件是否提供设置界面（编辑模式左上角齿轮按钮的显隐条件）。
     let hasSettings: Bool
 

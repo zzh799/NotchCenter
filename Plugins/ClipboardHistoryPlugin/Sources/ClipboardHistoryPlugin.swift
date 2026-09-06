@@ -30,8 +30,6 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
                 defaultSize: .large,
                 supportedGridSpans: [],
                 symbolName: "clipboard",
-                // 纵向列表不消费横向滑动：其上滑动照常切页。
-                scrollUsage: .none,
                 instanceSettingsView: { context in
                     AnyView(ClipboardInstanceSettingsView(instance: instanceModel(for: context)))
                 },

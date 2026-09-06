@@ -11,7 +11,7 @@ import PackageDescription
 let package = Package(
     name: "LaunchdControlKit",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v15)
     ],
     products: [
         .library(name: "LaunchdControlKit", type: .dynamic, targets: ["LaunchdControlKit"])

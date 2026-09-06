@@ -14,7 +14,7 @@ NotchCenter 是由 NotchNotes 改造而来的原生 macOS 应用，定位为**�
 
 - 支持动态加载第三方插件，提供类似 macOS 桌面小组件的自定义布局体验。
 - 将现有 NotchNotes 功能（笔记 / 暂存 / 防休眠）拆分为官方插件，与第三方插件同等地位。
-- 保持原生 macOS 14+、Swift 6 严格并发、纯 Swift Package Manager 管理。
+- 保持原生 macOS 15+、Swift 6 严格并发、纯 Swift Package Manager 管理。
 - 支持所有显示器，无刘海屏幕使用顶部中央回退。
 
 ---

@@ -351,7 +351,6 @@ final class SystemMonitorTests: XCTestCase {
         for block in blocks {
             XCTAssertNil(block.validationError, block.id)
             XCTAssertEqual(block.kind, .drawer)
-            XCTAssertEqual(block.scrollUsage, .none, "静态监控卡必须显式声明不消费横向滚动")
         }
         let overview = blocks.first { $0.id == "system.overview" }
         XCTAssertEqual(overview?.supportedSpans, [
