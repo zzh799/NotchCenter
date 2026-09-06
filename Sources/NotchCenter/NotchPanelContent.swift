@@ -890,6 +890,15 @@ extension NotchPanelController {
     /// 里插值到目标页）才换页。
     /// 绝不能在松手那一帧就撤层 + `selectDrawerPage`：那会把撤层、位移归零与
     /// 换页全挤进同一条 spring，真机上表现为目标页原地淡出、新页再反向滑一遍。
+    ///
+    /// **收尾拍必须另挂兜底时钟**：触控板通路经 `NSPanel.sendEvent`（AppKit
+    /// 上下文）进来，`withAnimation(completion:)` 的 completion 实测不保证在
+    /// 动画结束时触发——会被推迟到之后某次 SwiftUI 更新才冲刷，期间无人
+    /// 再动这些状态就**永不触发**，会话以 `isLanding` 卡死：胶囊点击被视图层
+    /// `isSwipeActive` 丢弃、滑动被 `canSwipeDrawerPage` 拦截，两条输入同时
+    /// 失效（真机复现）。spring 的逻辑收敛远早于限时，completion 正常到达时
+    /// 兜底空跑（`landDrawerSwipe` 与清除守卫幂等）；回弹分支的兜底逐项复核
+    /// "仍是那一次回弹"才清。
     func endDrawerSwipe(commit: Bool, offset: CGFloat) {
         guard let swipe = uiState.drawerSwipe, !swipe.isLanding else { return }
         guard commit && DrawerPageSwipe.side(forOffset: offset) == swipe.side else {
@@ -903,6 +912,7 @@ extension NotchPanelController {
                       self?.uiState.drawerSwipe?.offset == 0 else { return }
                 self?.uiState.drawerSwipe = nil
             }
+            scheduleDrawerSwipeSettle(swipe, isLanding: false)
             return
         }
         var landing = swipe
@@ -917,6 +927,33 @@ extension NotchPanelController {
         } completion: { [weak self] in
             self?.landDrawerSwipe(landing)
         }
+        scheduleDrawerSwipeSettle(landing, isLanding: true)
+    }
+
+    /// 落位/回弹收尾的宽限期：必须晚于 spring 的逻辑收敛（completion 正常
+    /// 时第二拍已由它做完），又不能拖太久（宽限期内新滑动被 `isLanding`
+    /// 挡住）。spring(0.3 / 0.86) 视觉收敛约 0.5s，取 0.75s 留余量。
+    private static let drawerSwipeSettleGrace: TimeInterval = 0.75
+
+    /// 收尾兜底时钟（见 `endDrawerSwipe` 顶部说明）：到期时逐项复核"仍是
+    /// 当初那一次收尾"——目标页、条带方向、landing/回弹身份都未变，且期间
+    /// 没有换绑/重建清场/新手势改写会话——才补上同一拍；否则空跑。
+    private func scheduleDrawerSwipeSettle(
+        _ session: PanelUIState.DrawerSwipe,
+        isLanding: Bool
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.drawerSwipeSettleGrace) { [weak self] in
+            guard let self,
+                  let current = self.uiState.drawerSwipe,
+                  current.targetPage == session.targetPage,
+                  current.side == session.side,
+                  current.isLanding == isLanding else { return }
+            if isLanding {
+                self.landDrawerSwipe(session)
+            } else if current.offset == 0 {
+                self.uiState.drawerSwipe = nil
+            }
+        }
     }
 
     /// 落位第二拍：换页与撤层**都不加动画**，靠像素重合藏住交接（网格已是目标页
@@ -924,8 +961,10 @@ extension NotchPanelController {
     /// 这一帧不动任何尺寸，整帧保持非动画帧）。视图侧据此在会话挂载期关掉换页
     /// 淡入（见 `DrawerPanelView.grid`），并按 `isLanded` 就地撤掉预览层。收尾交给
     /// 下一拍 `rebuildContent(animated: true)`（写入与当前相同的尺寸，无可见动画）。
+    /// completion 与兜底时钟都可能送达本拍：`isLanded` 守卫保证只执行一次。
     private func landDrawerSwipe(_ session: PanelUIState.DrawerSwipe) {
         guard uiState.drawerSwipe?.isLanding == true,
+              uiState.drawerSwipe?.isLanded != true,
               uiState.drawerSwipe?.targetPage == session.targetPage else { return }
         guard session.targetPage != uiState.drawerActivePage else {
             uiState.drawerSwipe = nil
