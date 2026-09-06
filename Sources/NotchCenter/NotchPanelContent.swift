@@ -657,11 +657,18 @@ extension NotchPanelController {
         // 光标落在块上时经 `DrawerScrollProbe` 子树枚举核实"光标下确有横向
         // 溢出的滚动视图"才让路——静态卡片与纵向 ScrollView（无横向溢出，如
         // 亮度滑杆块）放行切页，空/未满的横向 ScrollView（如文件架）亦放行。
+        // **让路只在会话建立前判定**（与拖拽通路 `drawerSwipeDrag` 一致）：
+        // 会话进行中页带滑行、面板尺寸随进度插值，探针的实时 NSView 几何随
+        // 之漂移——此时再探针，横向溢出的滚动视图（如暂存区）会滑到静止的
+        // 光标下翻真，把已开始的切页中途弹回（真机：轻扫途中被暂存区打断）。
+        // 会话一旦建立即锁定本次手势，切页必然走完提交/回弹；穿越溢出滚动
+        // 视图时块内可能跟随滚一点，属已知双响应取舍（见领域文档）。
         // 探针从窗口 contentView 向下 DFS，不依赖命中链（SwiftUI 在宿主视图层
         // 接管事件，hitTest 到不了内部滚动机构，旧的"沿 superview 向上找
         // NSScrollView"实测恒 false，勿改回）。最低支持 macOS 15（SwiftUI 内部
         // 滚动机构已实测），"没找到 → 放行"的反向推断可信。
-        if let window = event.window,
+        if uiState.drawerSwipe == nil,
+           let window = event.window,
            drawerElement(at: window.convertPoint(toScreen: event.locationInWindow)) != nil,
            DrawerScrollProbe.hasHorizontalOverflowUnderCursor(
                in: window,
