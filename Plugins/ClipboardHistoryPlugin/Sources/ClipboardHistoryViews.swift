@@ -215,7 +215,10 @@ struct ClipboardHistoryBlockView: View {
 
     private var historyList: some View {
         ScrollView(.vertical) {
-            LazyVStack(alignment: .leading, spacing: 10) {
+            // 普通 VStack 而非 LazyVStack:置顶/解顶会让同一 id 在两个分区
+            // ForEach 容器间移动,LazyVStack 复用已物化的同 id 视图但不重刷
+            // 内容(按钮停在旧态,重开抽屉才纠正);列表至多 50 条,惰性无收益。
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(displayedSections.enumerated()), id: \.element.id) { index, section in
                     ClipboardSectionView(
                         section: section,
