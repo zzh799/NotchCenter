@@ -66,6 +66,11 @@ final class NotchPanelController: NSObject {
     var isEditEntryPending = false
     var activeMenuTrackingCount = 0
     var drawerScrollTracker = DrawerPageScrollTracker()
+    /// 滑动切页落位/回弹的自驱弹簧（见 `DrawerSwipeSpringDriver`）：解析解
+    /// 逐帧把表现值写进会话，收敛拍自己触发——`withAnimation(completion:)`
+    /// 在 AppKit 事件上下文不保证触发，兜底时钟方案已随本驱动器删除。
+    /// 状态值 ≡ 表现值也让"动画中接管"成为零成本操作（取消即接管）。
+    let swipeSpringDriver = DrawerSwipeSpringDriver()
     var collapseTask: DispatchWorkItem?
     /// 网格指标变化的重建合并任务（滑杆拖动逐格通知 → 停顿后重建一次）。
     var metricsRebuildTask: Task<Void, Never>?

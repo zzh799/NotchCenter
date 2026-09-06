@@ -31,7 +31,10 @@ enum DrawerPageSwipe {
     /// 这笔可见边缘越小。
     static let flipDeadBand: CGFloat = 8
 
-    /// 一次切页后的冷却（秒）：与调用方的 `momentumPhase` 过滤配合，挡住一次长扫连翻数页。
+    /// 无边界设备（`phase` 恒空）就地提交后的冷却（秒）：它们等不到 `.ended`、
+    /// 没有手势边界，冷却是唯一的防连翻手段。有手势边界的通路（触控板）**不
+    /// 走冷却**——惯性尾巴由调用方按 `momentumPhase` 过滤、`.began` 重置防串
+    /// 手势，提交后再压冷却纯属输入锁定期。
     static let cooldown: TimeInterval = 0.35
 
     static let commitRatio: CGFloat = 0.28
@@ -185,6 +188,20 @@ enum DrawerPageSwipe {
     /// 留白），走到 `-gap` 时目标页层正好落在 x=0 完全覆盖可视区（源页连留白
     /// 一起滑出视口）——换页就在这一帧之后发生。
     static func arrivalOffset(gap: CGFloat) -> CGFloat { -gap }
+
+    /// 条带是否已推过目标页覆盖点（沿推的方向）：覆盖点 = `arrivalOffset`，
+    /// 右带（gap > 0）位移到达 `-gap`、左带（gap < 0）位移到达 `-gap` 即越点。
+    /// 连页判据：越点且更远侧有邻居 → 原地前进换绑（见 `advanceCarry`）；
+    /// 无邻居 → 硬停在覆盖点（与首/末页"不得滑过起点"同一语义）。
+    static func coverCrossed(offset: CGFloat, gap: CGFloat) -> Bool {
+        gap > 0 ? offset <= -gap : offset >= -gap
+    }
+
+    /// 覆盖点前进的位移衔接：新带原点 = 旧目标页。像素连续要求新带位移 = 旧
+    /// 位移 + 旧 gap——旧目标页层位置（offset + gap）在前进前后必须同帧重合
+    /// （与落位交接同一条"像素重合"原理）。推出的越点余量自然带进新带坐标，
+    /// 手指不丢行程。
+    static func advanceCarry(offset: CGFloat, gap: CGFloat) -> CGFloat { offset + gap }
 }
 
 /// 触控板轻扫的一帧输出：滑动方向、实时位移，以及本帧是否就该落位。
@@ -205,6 +222,10 @@ struct DrawerPageScrollTracker {
     private(set) var accumulatedY: CGFloat = 0
     /// 本次手势已锁定的滑动方向（未达门槛为 nil；条带位移越过原点死区后更新）。
     private(set) var lockedSide: DrawerPageSide?
+    /// 输入重锚（屏幕累计量）：覆盖点前进（连页）后钉在当前累计量上，位移、
+    /// 反手换向与提交判据都改对**锚之后的增量**计算——已消费的整页行程不再
+    /// 参与新带判据。新手势（`.began`）与 `reset` 归零。
+    private(set) var anchor: CGFloat = 0
 
     /// 手势样本（时间, 累计横向位移）：`finish` 时估计即时速度用
     /// （位移判据之外的速度判据）。`.began` 时清零。
@@ -231,26 +252,27 @@ struct DrawerPageScrollTracker {
         accumulatedX += deltaX
         accumulatedY += deltaY
         recordSample(at: now)
+        let travel = accumulatedX - anchor
 
         if let lockedSide {
             // 手势进行中反手：越过原点死区立即换向（立刻反悔），原点附近
             // 抖动（|位移| ≤ deadBand）保持原方向。
             if let flipped = DrawerPageSwipe.reversedSide(
                 current: lockedSide,
-                offset: accumulatedX,
+                offset: travel,
                 deadBand: DrawerPageSwipe.flipDeadBand
             ) {
                 self.lockedSide = flipped
             }
         } else {
             lockedSide = DrawerPageSwipe.side(
-                for: CGSize(width: accumulatedX, height: accumulatedY),
+                for: CGSize(width: travel, height: accumulatedY),
                 threshold: DrawerPageSwipe.scrollThreshold
             )
         }
         guard let lockedSide else { return nil }
 
-        let offset = DrawerPageSwipe.offset(translation: accumulatedX, limit: limit)
+        let offset = DrawerPageSwipe.offset(translation: travel, limit: limit)
         // 等不到 `.ended` 的设备只能就地提交；否则位移继续跟手，提交交给 finish。
         let commits = phase.isEmpty && DrawerPageSwipe.shouldCommit(offset: offset, limit: limit)
         if commits {
@@ -267,16 +289,27 @@ struct DrawerPageScrollTracker {
         limit: CGFloat,
         cooldown: TimeInterval = DrawerPageSwipe.cooldown
     ) -> DrawerPageSide? {
-        let offset = DrawerPageSwipe.offset(translation: accumulatedX, limit: limit)
+        let offset = DrawerPageSwipe.offset(translation: accumulatedX - anchor, limit: limit)
         let side = lockedSide
         let velocity = DrawerPageSwipe.velocityEstimate(from: samples, at: now)
         reset()
         guard let side else { return nil }
+        // 冷却只由无边界设备的就地提交置位（见下）：有手势边界的轻扫以
+        // `.began` 重置防串手势，惯性尾巴由调用方按 `momentumPhase` 过滤，
+        // 提交后再压 0.35s 冷却纯属输入锁定期（连页手感的天敌）。
         guard DrawerPageSwipe.shouldCommit(offset: offset, limit: limit, velocity: velocity) else {
             return nil
         }
-        lastCommitTime = now
         return side
+    }
+
+    /// 覆盖点前进（连页）后调用：把输入锚钉在当前累计量上——之后的位移、
+    /// 反手换向与提交判据都只看锚之后的增量（已消费的整页行程不重复计数）。
+    /// 速度样本窗口同步丢弃：跨带样本混着两段行程的差商，估出的速度没有
+    /// 物理意义（真机：锚前猛扫的残速会把锚后的轻推判成第二次提交）。
+    mutating func reanchor() {
+        anchor = accumulatedX
+        samples.removeAll()
     }
 
     /// 丢弃已累加的增量与方向（落点不该切页时调用），不动冷却。
@@ -284,6 +317,7 @@ struct DrawerPageScrollTracker {
         accumulatedX = 0
         accumulatedY = 0
         lockedSide = nil
+        anchor = 0
         samples.removeAll()
     }
 
@@ -295,9 +329,10 @@ struct DrawerPageScrollTracker {
         }
     }
 
-    /// 冷却：一次切页后 `cooldown` 内不再认新手势。`phase` 恒空的设备没有手势
-    /// 边界可依据，冷却是它们唯一的防连翻手段（触控板还有 `.began` 重置）。
-    private func isCoolingDown(at now: TimeInterval, cooldown: TimeInterval) -> Bool {
+    /// 冷却：无边界设备就地提交后 `cooldown` 内不再认新手势（它们唯一的
+    /// 防连翻手段）。有手势边界的提交不置位冷却（见 `finish` 注释）。
+    /// 控制器的接管门也读它：无边界输入只在冷却外才允许接管在飞会话。
+    func isCoolingDown(at now: TimeInterval, cooldown: TimeInterval = DrawerPageSwipe.cooldown) -> Bool {
         guard let lastCommitTime else { return false }
         return now - lastCommitTime < cooldown
     }

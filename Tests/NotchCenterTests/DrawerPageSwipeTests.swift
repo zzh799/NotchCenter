@@ -3,7 +3,7 @@ import XCTest
 @testable import NotchCenter
 
 /// 抽屉左右滑动切页的判据：方向门槛与横纵压比、跟手位移与橡皮筋、落位阈值、
-/// 冷却与"一次手势只翻一页"，以及相邻页按显示序列解析。
+/// 无边界设备的提交冷却、覆盖点前进（连页）衔接，以及相邻页按显示序列解析。
 ///
 /// 钉的是当前手感（同 `ResizeHysteresisTests` / `DrawerGestureMathTests`），
 /// 事件序列按 `NotchPanelController.handleDrawerScroll` 的契约重放。
@@ -249,63 +249,55 @@ final class DrawerPageSwipeTests: XCTestCase {
         ))
     }
 
-    // MARK: 落位后的预览层撤除
+    // MARK: 覆盖点前进（连页）与越点判据
 
-    /// 构造一个处于落位终点（offset = arrivalOffset）的会话快照。
-    private func makeSession(
-        side: DrawerPageSide,
-        gridWidth: CGFloat,
-        targetWidth: CGFloat
-    ) -> PanelUIState.DrawerSwipe {
-        let originSize = CGSize(width: gridWidth, height: 500)
-        let targetSize = CGSize(width: targetWidth, height: 500)
-        let gap = DrawerPageSwipe.gap(
-            side: side, gridWidth: gridWidth, targetWidth: targetWidth, spacing: spacing
+    func testAdvanceCarryKeepsTransferredLayerPixelContinuous() {
+        // 前进衔接：新带原点 = 旧目标页。旧目标页层位置（offset + gap）在前进
+        // 前后必须同帧重合——新带位移 = 旧位移 + 旧 gap 正是这一重合的代数式。
+        // 精确覆盖点：carry = 0（旧目标页正好落在 x=0 成为新原点）。
+        XCTAssertEqual(
+            DrawerPageSwipe.advanceCarry(
+                offset: DrawerPageSwipe.arrivalOffset(gap: 1_000), gap: 1_000
+            ),
+            0,
+            accuracy: 0.001
         )
-        return PanelUIState.DrawerSwipe(
-            originPage: 0,
-            side: side,
-            targetPage: 1,
-            elements: [],
-            contentSize: targetSize,
-            targetWindowSize: targetSize,
-            leftColumn: 0,
-            gap: gap,
-            startContentSize: originSize,
-            startWindowSize: originSize,
-            limit: abs(gap),
-            offset: DrawerPageSwipe.arrivalOffset(gap: gap)
-        )
+        // 越点余量带进新带坐标（右带继续向负方向推）：手指行程不丢。
+        XCTAssertEqual(DrawerPageSwipe.advanceCarry(offset: -1_100, gap: 1_000), -100, accuracy: 0.001)
+        // 左带（gap 为负）：越点余量为正，同一条代数式。
+        XCTAssertEqual(DrawerPageSwipe.advanceCarry(offset: 650, gap: -600), 50, accuracy: 0.001)
+        XCTAssertEqual(DrawerPageSwipe.advanceCarry(
+            offset: DrawerPageSwipe.arrivalOffset(gap: -600), gap: -600
+        ), 0, accuracy: 0.001)
     }
 
-    func testLandedPreviewPokesBackIntoClipOnlyWhenTargetIsWider() {
-        // 落位后 offset=0，预览层横坐标 = gap = 原点页宽 + 留白：目标页宽过
-        // 原点页宽 + 留白时会探回已变宽的裁剪框内（重影条带），因此视图必须
-        // 按 isLanded 就地撤层，不能赌"落位后它在屏外"。
-        func landed(_ session: PanelUIState.DrawerSwipe) -> PanelUIState.DrawerSwipe {
-            var s = session
-            s.offset = 0
-            s.isLanded = true
-            return s
-        }
-        let wider = landed(makeSession(side: .right, gridWidth: 600, targetWidth: 1_000))
-        XCTAssertLessThan(
-            wider.offset + wider.gap,
-            wider.contentSize.width,
-            "宽目标页：落位后预览层左缘落在裁剪框内（重影条带存在）"
-        )
-        let narrower = landed(makeSession(side: .right, gridWidth: 1_000, targetWidth: 600))
-        XCTAssertGreaterThanOrEqual(
-            narrower.offset + narrower.gap,
-            narrower.contentSize.width,
-            "目标页不宽于原页：预览层完全在右缘外（屏外假设成立的唯一情形）"
-        )
-        let leftward = landed(makeSession(side: .left, gridWidth: 1_000, targetWidth: 600))
-        XCTAssertLessThanOrEqual(
-            leftward.offset + leftward.gap + leftward.contentSize.width,
-            0,
-            "左滑落位：预览层整体在左缘外"
-        )
+    func testCoverCrossedDetectsArrivalInPushDirection() {
+        // 右带（gap > 0）：位移到达 -gap 即越点，差一点不算。
+        XCTAssertTrue(DrawerPageSwipe.coverCrossed(offset: -1_000, gap: 1_000))
+        XCTAssertTrue(DrawerPageSwipe.coverCrossed(offset: -1_200, gap: 1_000))
+        XCTAssertFalse(DrawerPageSwipe.coverCrossed(offset: -999, gap: 1_000))
+        XCTAssertFalse(DrawerPageSwipe.coverCrossed(offset: 0, gap: 1_000))
+        // 左带（gap < 0）：位移到达 -gap（正值）即越点。
+        XCTAssertTrue(DrawerPageSwipe.coverCrossed(offset: 600, gap: -600))
+        XCTAssertFalse(DrawerPageSwipe.coverCrossed(offset: 599, gap: -600))
+    }
+
+    func testTrackerReanchorSplitsJudgmentAtAdvance() {
+        var tracker = DrawerPageScrollTracker()
+        _ = tracker.feed(deltaX: -300, phase: .began, at: 0, limit: limit)
+        _ = tracker.feed(deltaX: -200, phase: .changed, at: 0.01, limit: limit)
+        // 覆盖点前进（连页）后重锚：已消费的整页行程退出判据，位移只看锚后增量。
+        tracker.reanchor()
+        XCTAssertEqual(tracker.anchor, -500)
+        let frame = tracker.feed(deltaX: -80, phase: .changed, at: 0.02, limit: limit)
+        guard let frame else { return XCTFail("重锚后应继续输出跟手帧") }
+        XCTAssertEqual(frame.offset, -80, accuracy: 0.001, "位移 = 锚后增量，不是累计 -580")
+        // 锚后增量不过门槛的松手：只弹回，不把前一段行程重复计成第二次提交。
+        XCTAssertNil(tracker.finish(at: 0.03, limit: limit))
+        // 新手势（.began）重置锚。
+        _ = tracker.feed(deltaX: -60, phase: .began, at: 1.0, limit: limit)
+        XCTAssertEqual(tracker.anchor, 0)
+        XCTAssertEqual(tracker.accumulatedX, -60)
     }
 
     // MARK: 触控板累加器（有手势边界）
@@ -427,17 +419,17 @@ final class DrawerPageSwipeTests: XCTestCase {
         XCTAssertNil(DrawerPageSwipe.side(forOffset: 0))
     }
 
-    func testCooldownBlocksTheNextGesture() {
+    func testPhasedGestureMayReflickImmediatelyAfterCommit() {
         var tracker = DrawerPageScrollTracker()
         _ = tracker.feed(deltaX: -120, phase: .began, at: 10, limit: limit)
-        let committedAt: TimeInterval = 10.05
-        XCTAssertEqual(tracker.finish(at: committedAt, limit: limit), .right)
-        // 冷却窗口内的下一次轻扫：一帧都不认（一次猛扫的尾巴不得连翻数页）。
-        XCTAssertNil(tracker.feed(deltaX: -200, phase: .began, at: committedAt + 0.05, limit: limit))
-        XCTAssertNil(tracker.finish(at: committedAt + 0.07, limit: limit))
-        // 冷却过后重新放行。
-        let later = committedAt + DrawerPageSwipe.cooldown + 0.01
-        XCTAssertNotNil(tracker.feed(deltaX: -60, phase: .began, at: later, limit: limit))
+        XCTAssertEqual(tracker.finish(at: 10.05, limit: limit), .right)
+        // 有边界通路不设提交冷却（惯性尾巴由调用方按 momentumPhase 过滤、
+        // `.began` 重置防串手势）：提交后立即可再扫，下一页跟手不被压住。
+        XCTAssertNotNil(
+            tracker.feed(deltaX: -100, phase: .began, at: 10.06, limit: limit),
+            "提交后 10ms 的新轻扫必须照常锁定方向"
+        )
+        XCTAssertEqual(tracker.finish(at: 10.30, limit: limit), .right)
     }
 
     func testOneGestureCommitsAtMostOnePage() {

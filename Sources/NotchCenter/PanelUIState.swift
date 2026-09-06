@@ -63,17 +63,22 @@ final class PanelUIState: ObservableObject {
     @Published var drawerSwipe: DrawerSwipe?
 
     /// 滑动会话快照：`elements` 是目标页的**真实例**（`isPreview: false`，走
-    /// 正常缓存键并回写视图缓存），落位时直接转正为 `drawerElements`。
+    /// 正常缓存键并回写视图缓存），前进/落位时直接转正为 `drawerElements`。
     /// 条带模型：一次会话 = 原点页 + 一侧邻居构成的"两层页带"在视口里跟手移动，
     /// `offset` 是带符号**条带位移**（原点 = `originPage`）。位移穿越原点（死区外）
-    /// 时整条带换绑到另一侧邻居（`rebind`）——方向、目标与条带层都变，
-    /// 唯独原点锚（起点两尺寸）恒不动。
+    /// 时整条带换绑到另一侧邻居（`rebind`）——方向、目标与条带层都变，唯独
+    /// 原点锚（起点两尺寸）恒不动；推过目标页覆盖点时原点**前进**到目标页并
+    /// 换绑更远邻居（连页，`NotchPanelContent.advanceDrawerSwipe`）。会话全程
+    /// 可被新手势接管（自驱弹簧的状态值即表现值，取消驱动器即接管，零瞬移）。
     struct DrawerSwipe {
-        /// 会话原点页（= 建会时的激活页，会话期间**恒不变**）：中途反手换绑的
-        /// 邻居始终以它为基准解析；尺寸插值的起点永远钉在它的尺寸上——换绑
-        /// 绝不再冻结起点（旧实现把中间插值值当新起点，回退终点变成中间值，
-        /// 抽屉尺寸卡死）。
-        let originPage: Int
+        /// 会话身份：自驱弹簧驱动器与收尾拍按它核对"仍是这一次会话"——
+        /// 换绑/前进保留同一身份（同一次手势的延续），新建/清场换新。
+        let id = UUID()
+        /// 会话原点页（= 建会时的激活页，**覆盖点前进时推进到新原点**）：
+        /// 中途反手换绑的邻居始终以它为基准解析；尺寸插值的起点永远钉在
+        /// 它的尺寸上——反手换绑绝不再冻结起点（旧实现把中间插值值当新
+        /// 起点，回退终点变成中间值，抽屉尺寸卡死）。
+        var originPage: Int
         /// 当前条带方向（换绑后更新，不再恒定）。
         var side: DrawerPageSide
         /// 当前目标页（+ 其真实例层与尺寸，换绑时整体刷新）。
@@ -89,22 +94,24 @@ final class PanelUIState: ObservableObject {
         /// 留白 = `DrawerPageSwipe.bandSpacing`，两倍内容边距）。
         var gap: CGFloat
         /// 会话开始时的内容尺寸（网格层宽度在会话期冻结为此值；尺寸插值起点，
-        /// **永不随换绑更新**）。
-        let startContentSize: CGSize
-        /// 会话开始时的窗口尺寸（尺寸插值起点，永不随换绑更新）。
-        let startWindowSize: CGSize
+        /// **反手换绑不更新**——唯一例外是覆盖点前进：前进帧条带正好停在目标
+        /// 页全覆盖（p=1），起点重冻结在插值终点值上自洽，见
+        /// `NotchPanelContent.advanceDrawerSwipe`）。
+        var startContentSize: CGSize
+        /// 会话开始时的窗口尺寸（尺寸插值起点；更新例外同上）。
+        var startWindowSize: CGSize
         /// 当前条带的位移上限（橡皮筋与落位门槛按它取 = |gap|：右侧束带 =
         /// 原点页宽 + 留白、左侧束带 = 目标页宽 + 留白，换绑时更新）。
         var limit: CGFloat
-        /// 已进入落位拍（滑到位动画进行中，目标页层即将全覆盖）：位移由动画驱动，
-        /// 不得再接新手势/拖拽帧，否则落位与跟手会抢同一个 offset。
-        var isLanding = false
-        /// 当前位移（pt，带符号；与手指同向）。
+        /// 当前位移（pt，带符号；与手指同向）。自驱弹簧在飞时本字段每帧被
+        /// 写成屏幕表现值——接管（grab）以它为种子，零瞬移。
         var offset: CGFloat
-        /// 落位拍已换页：会话对页带的贡献结束——`elements` 已就地转正为
-        /// `drawerElements`（同一 ForEach 身份），视图侧据此停止把它再叠进
-        /// 页带（否则同一 placement 会以重复 id 在 ForEach 里出现两份）。
-        var isLanded = false
+        /// 输入重锚状态（覆盖点前进 / 动画接管时重置）：`gestureSeed` 是重锚
+        /// 时的条带位移（band pt），`gestureAnchor` 是拖拽通路的重锚屏幕输入
+        /// 位（`translation.width`；触控板通路的锚在 `DrawerPageScrollTracker
+        /// .anchor`）。跟手位移 = 种子 + 锚后增量 × 屏幕换算比。建会时双零。
+        var gestureSeed: CGFloat = 0
+        var gestureAnchor: CGFloat = 0
 
         /// 滑动进度 p ∈ [0,1]（位移 / 落位全程）：面板尺寸插值与胶囊高亮层
         /// 都从这一份进度派生——跟手、落位 spring 与回弹天然同曲线。

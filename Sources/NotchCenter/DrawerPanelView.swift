@@ -268,9 +268,9 @@ struct DrawerPanelView: View {
     /// 元素源见 `bandItems`。会话期 = 原点页（随 `offset` 平移）+ 目标页
     /// **真实例**（随 `offset + gap` 平移、整层禁命中）构成一条**刚性页带**
     /// （两层之间隔一条页带留白 = 两倍内容边距的背景带，看得出是两页），
-    /// 整体跟手平移、超出裁掉。落位拍把 `drawerElements := 会话 elements`
-    /// 且 `isLanded` 置位：目标页子视图在**同一个 ForEach 里身份保持**、
-    /// 原点页在视口外卸载——落位零重挂载。旧"网格层 + 预览层"两层 ZStack
+    /// 整体跟手平移、超出裁掉。前进/落位拍把 `drawerElements := 会话 elements`
+    /// 且激活页切到目标页：目标页子视图在**同一个 ForEach 里身份保持**、
+    /// 旧原点页在视口外卸载——交接零重挂载。旧"网格层 + 预览层"两层 ZStack
     /// 的病根：同一视图值换个结构位必被 SwiftUI 整批重挂，暂存区缩略图
     /// 归零回退图标、监控重挂探针的落位闪烁由此而来。
     /// 容器宽高跟随 `drawerContentSize`——会话期间该尺寸随滑动进度在起止两端间
@@ -348,13 +348,16 @@ struct DrawerPanelView: View {
     }
 
     /// 页带元素源：稳态 = `drawerElements`；会话挂载期 = 原点页（`drawerElements`）
-    /// + 目标页（`swipe.elements`，未落位时）。落位拍 `drawerElements` 已被赋为
-    /// 会话 elements 且 `isLanded` 置位——两份来源在同一事务里交接，ForEach
-    /// 按 placementID 差分：目标页子视图保留、原点页子视图卸载（此时已在
-    /// 视口外，卸载不可见）；回弹拍目标页滑出视口后随会话清除而卸载，原点页
-    /// 子视图全程未动。会话目标页的渲染几何按目标页左列起排（原点页几何仍
-    /// 是激活页的），落位帧 `drawerGridLeftColumn` 已切到目标页、两套几何
-    /// 数值相等，frame 无缝衔接。
+    /// + 目标页（`swipe.elements`，目标页尚未转正时）。前进/落位拍把
+    /// `drawerElements` 赋为会话 elements 且激活页切到目标页——两份来源在
+    /// 同一事务里交接，ForEach 按 placementID 差分：目标页子视图保留、旧
+    /// 原点页子视图卸载（此时已在视口外，卸载不可见）；回弹拍目标页滑出
+    /// 视口后随会话清除而卸载，原点页子视图全程未动。会话目标页的渲染
+    /// 几何按目标页左列起排（原点页几何仍是激活页的），交接帧
+    /// `drawerGridLeftColumn` 已切到目标页、两套几何数值相等，frame 无缝衔接。
+    /// 门控 = `targetPage != activePage`：目标页一旦转正（前进连页 / 落位收尾，
+    /// 激活页同帧切换）就必须停止把它叠进页带，否则同一 placement 会以重复
+    /// id 在 ForEach 里出现两份。
     private var bandItems: [DrawerBandItem] {
         var items: [DrawerBandItem] = []
         let swipe = ui.drawerSwipe
@@ -367,7 +370,7 @@ struct DrawerPanelView: View {
                 isInteractive: true
             ))
         }
-        if let swipe, !swipe.isLanded {
+        if let swipe, swipe.targetPage != ui.drawerActivePage {
             let targetGeometry = DrawerGridGeometry(
                 metrics: GridMetrics.current,
                 leftColumn: swipe.leftColumn,
