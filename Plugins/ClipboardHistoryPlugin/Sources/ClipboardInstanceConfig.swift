@@ -3,14 +3,13 @@ import NotchCenterKit
 
 // MARK: - 放置实例配置（每实例单独显示偏好，共识 Q5/Q10）
 //
-// 全局历史仍在插件级 ClipboardHistoryStore 单例；每实例差异（显示条数 /
-// 时间戳开关）走 placementStore 经 instanceSettingsView 编辑。参考实现：
-// SystemMonitorPlugin 的 InstanceConfig（逐项容错解码 + 注册表单例缓存）。
+// 全局历史仍在插件级 ClipboardHistoryStore 单例；每实例差异（显示条数）走
+// placementStore 经 instanceSettingsView 编辑。参考实现：SystemMonitorPlugin
+// 的 InstanceConfig（逐项容错解码 + 注册表单例缓存）。
 
 /// 单个放置实例的显示偏好。
 struct ClipboardInstanceConfig: Codable, Equatable, Sendable {
     var displayCount = 50
-    var showTimestamps = true
 }
 
 @MainActor
@@ -48,8 +47,7 @@ final class ClipboardInstanceModel: ObservableObject {
 
     func update(_ config: ClipboardInstanceConfig) {
         let next = ClipboardInstanceConfig(
-            displayCount: ClipboardHistoryLogic.sanitizeDisplayCount(config.displayCount),
-            showTimestamps: config.showTimestamps
+            displayCount: ClipboardHistoryLogic.sanitizeDisplayCount(config.displayCount)
         )
         self.config = next
         ClipboardInstanceConfigLogic.save(next, to: store)

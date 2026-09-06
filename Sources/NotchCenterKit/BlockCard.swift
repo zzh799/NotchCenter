@@ -109,21 +109,32 @@ public extension View {
     /// `onTap` 为可选点击动作，长按期间自动抑制（保住“开关等子控件
     /// 自行消费点击”的语义）。挂在整卡上（含背景区）。
     ///
+    /// `cornerRadius` 只影响按压增亮覆盖的形状，默认对齐 `BlockCard` 圆角
+    /// （`BlockCardMetrics.cornerRadius` = 10；公开签名处只能用字面值）；
+    /// 复用到非 BlockCard 的圆角子元素（如列表行圆角 7）时传入自身圆角。
+    ///
     /// 实现说明：整条交互由单个 `DragGesture(minimumDistance: 0)` 驱动，
     /// 不用 `TapGesture`——它与 simultaneous 失败长按并存时在真机上不触发
     /// （DSH/Calibre「点击开网页」失效的根因），而 DragGesture 管线与
     /// 缩放握把/滚动探针同路，行为可靠。分类阈值见 `BlockTapClassifier`。
     func blockPopoverTrigger(
         onTap: ((_ frameInWindow: CGRect) -> Void)? = nil,
-        onLongPress: @escaping (_ frameInWindow: CGRect) -> Void
+        onLongPress: @escaping (_ frameInWindow: CGRect) -> Void,
+        cornerRadius: CGFloat = 10
     ) -> some View {
-        modifier(BlockPopoverTriggerModifier(onTap: onTap, onLongPress: onLongPress))
+        modifier(BlockPopoverTriggerModifier(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            cornerRadius: cornerRadius
+        ))
     }
 }
 
 private struct BlockPopoverTriggerModifier: ViewModifier {
     let onTap: ((CGRect) -> Void)?
     let onLongPress: (CGRect) -> Void
+    /// 按压增亮覆盖的圆角（对齐挂载对象自身圆角；见 View 扩展文档）。
+    let cornerRadius: CGFloat
 
     /// 块在宿主窗口坐标系中的 frame（GeometryReader 实时捕获），用于浮窗定位。
     @State private var frameInWindow: CGRect?
@@ -181,9 +192,9 @@ private struct BlockPopoverTriggerModifier: ViewModifier {
     /// 不参与命中测试，避免遮挡卡片内子控件的点击。
     private var pressOverlay: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: BlockCardMetrics.cornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.03))
-            RoundedRectangle(cornerRadius: BlockCardMetrics.cornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
         }
         .allowsHitTesting(false)

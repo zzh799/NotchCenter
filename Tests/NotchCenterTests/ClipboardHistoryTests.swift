@@ -145,6 +145,14 @@ final class ClipboardHistoryTests: XCTestCase {
         XCTAssertEqual(ClipboardHistoryLogic.sanitizeDisplayCount(999), 50)
     }
 
+    /// 旧版本持久化配置含 showTimestamps 键（2026-09-06 起字段移除）：
+    /// JSONDecoder 忽略未知键，升级解码必须不失败、保留有效字段。
+    func testLegacyConfigJSONWithTimestampsKeyStillDecodes() throws {
+        let legacy = Data(#"{"displayCount":20,"showTimestamps":false}"#.utf8)
+        let config = try JSONDecoder().decode(ClipboardInstanceConfig.self, from: legacy)
+        XCTAssertEqual(config.displayCount, 20)
+    }
+
     // MARK: transient 判定（Q2）
 
     func testTransientTypeNamesAreSkipped() {

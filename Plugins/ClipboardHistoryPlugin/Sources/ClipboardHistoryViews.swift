@@ -2,10 +2,13 @@ import Foundation
 import NotchCenterKit
 import SwiftUI
 
-// MARK: - 抽屉块视图（搜索 + 置顶区 + 最近列表，共识 Q8/Q9）
+// MARK: - 抽屉块视图（搜索 + 置顶区 + 最近列表）
 //
-// 交互分区防误触：条目主体点击 = 展开 / 收起全文，「复制」图标按钮 = 写回全文。
-// 历史来自共享单例，显示偏好（条数 / 时间戳）来自本 placement 的实例模型。
+// 交互（2026-09-06 重构，推翻原共识 Q8/Q9，见 agent-note 同日记录）：
+// 条目主体点击 = 写回剪贴板（单行截断显示），长按 = BlockPopover 全文预览浮窗；
+// 「置顶 / 删除」图标按钮同行放行尾。清空经卡片内 InlineConfirmOverlay 浮层
+// 确认——模态弹窗抢焦点，鼠标移过去抽屉就会收回。
+// 历史来自共享单例，显示偏好（条数）来自本 placement 的实例模型。
 
 struct ClipboardHistoryBlockView: View {
     @ObservedObject var store: ClipboardHistoryStore
@@ -14,7 +17,6 @@ struct ClipboardHistoryBlockView: View {
     let isPreview: Bool
 
     @State private var query = ""
-    @State private var expandedID: UUID?
     @State private var confirmingClear = false
 
     init(instance: ClipboardInstanceModel, placementID: String, isPreview: Bool) {
@@ -46,18 +48,22 @@ struct ClipboardHistoryBlockView: View {
             guard !isPreview else { return }
             ClipboardHistoryStore.shared.viewDidDisappear(placementID: placementID)
         }
-        .confirmationDialog(
-            L("drawer.clear.title"),
-            isPresented: $confirmingClear,
-            titleVisibility: .visible
-        ) {
-            Button(L("drawer.clear.confirm"), role: .destructive) {
-                store.clearUnpinned()
+        .overlay {
+            if confirmingClear {
+                InlineConfirmOverlay(
+                    title: L("drawer.clear.title"),
+                    message: L("drawer.clear.message"),
+                    confirmTitle: L("drawer.clear.confirm"),
+                    cancelTitle: L("drawer.clear.cancel"),
+                    onConfirm: {
+                        store.clearUnpinned()
+                        confirmingClear = false
+                    },
+                    onCancel: { confirmingClear = false }
+                )
             }
-            Button(L("drawer.clear.cancel"), role: .cancel) {}
-        } message: {
-            Text(L("drawer.clear.message"))
         }
+        .animation(.easeOut(duration: 0.15), value: confirmingClear)
         .colorScheme(.dark)
     }
 
@@ -211,8 +217,6 @@ struct ClipboardHistoryBlockView: View {
                 ForEach(displayedSections) { section in
                     ClipboardSectionView(
                         section: section,
-                        showTimestamps: instance.config.showTimestamps,
-                        expandedID: $expandedID,
                         justCopiedID: store.justCopiedID,
                         onCopy: { store.copyBack($0) },
                         onTogglePin: { store.togglePin(id: $0.id) },
@@ -235,8 +239,6 @@ private struct ClipboardSection: Identifiable {
 /// 单节渲染（标题 + 行列），从 historyList 抽出给类型检查器减负。
 private struct ClipboardSectionView: View {
     let section: ClipboardSection
-    let showTimestamps: Bool
-    @Binding var expandedID: UUID?
     let justCopiedID: UUID?
     let onCopy: (ClipboardEntry) -> Void
     let onTogglePin: (ClipboardEntry) -> Void
@@ -250,12 +252,7 @@ private struct ClipboardSectionView: View {
         ForEach(section.entries) { entry in
             ClipboardRowView(
                 entry: entry,
-                showTimestamp: showTimestamps,
-                isExpanded: expandedID == entry.id,
                 justCopied: justCopiedID == entry.id,
-                onToggleExpand: {
-                    expandedID = expandedID == entry.id ? nil : entry.id
-                },
                 onCopy: { onCopy(entry) },
                 onTogglePin: { onTogglePin(entry) },
                 onDelete: { onDelete(entry) }
@@ -265,54 +262,37 @@ private struct ClipboardSectionView: View {
     }
 }
 
-// MARK: - 历史行（主体展开 vs 复制按钮双热区）
+// MARK: - 历史行（主体点击写回 + 长按浮窗预览，操作按钮同行）
 
 private struct ClipboardRowView: View {
     let entry: ClipboardEntry
-    let showTimestamp: Bool
-    let isExpanded: Bool
     let justCopied: Bool
-    let onToggleExpand: () -> Void
     let onCopy: () -> Void
     let onTogglePin: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Button(action: onToggleExpand) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 4) {
-                        if entry.pinned {
-                            Image(systemName: "pin.fill")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.5))
-                        }
-                        Text(entry.text)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(.white.opacity(0.92))
-                            .multilineTextAlignment(.leading)
-                            .lineLimit(isExpanded ? nil : 3)
-                    }
-                    if showTimestamp {
-                        Text(Self.relativeString(for: entry.capturedAt))
-                            .font(.system(size: 9.5))
-                            .foregroundStyle(.white.opacity(0.4))
-                    }
+        HStack(spacing: 8) {
+            HStack(spacing: 4) {
+                if entry.pinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.5))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+                if justCopied {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.45, green: 0.85, blue: 0.55))
+                        .accessibilityLabel(Text(L("drawer.button.copied")))
+                }
+                Text(entry.text)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
             }
-            .buttonStyle(.plain)
-            .focusable(false)
-            .focusEffectDisabled(true)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            VStack(spacing: 2) {
-                iconButton(
-                    systemName: justCopied ? "checkmark" : "doc.on.doc",
-                    help: justCopied ? L("drawer.button.copied") : L("drawer.button.copy"),
-                    action: onCopy
-                )
-                .foregroundStyle(justCopied ? Color(red: 0.45, green: 0.85, blue: 0.55) : .white.opacity(0.55))
+            HStack(spacing: 2) {
                 iconButton(
                     systemName: entry.pinned ? "pin.slash" : "pin",
                     help: entry.pinned ? L("drawer.button.unpin") : L("drawer.button.pin"),
@@ -336,9 +316,29 @@ private struct ClipboardRowView: View {
                 .strokeBorder(.white.opacity(0.09), lineWidth: 1)
         }
         .animation(.easeOut(duration: 0.12), value: justCopied)
+        // 主体点击 = 写回、长按 = 全文预览：单手势管线（blockPopoverTrigger，
+        // TapGesture 与长按并存真机不触发的红线结论），行尾图标按钮自行消费点击。
+        .blockPopoverTrigger(
+            onTap: { _ in onCopy() },
+            onLongPress: { frame in presentPreview(frame) },
+            cornerRadius: 7
+        )
         .contextMenu {
             Button(entry.pinned ? L("drawer.button.unpin") : L("drawer.button.pin"), action: onTogglePin)
             Button(L("drawer.button.delete"), action: onDelete)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(entry.text))
+    }
+
+    /// 长按全文预览：BlockPopover 盖在行上方，长文内嵌滚动、可选中复制；
+    /// 点击浮窗外与抽屉收起由 BlockPopover 自行收窗。
+    private func presentPreview(_ frameInWindow: CGRect) {
+        BlockPopover.shared.present(
+            anchoredTo: frameInWindow,
+            cardSize: CGSize(width: 280, height: 200)
+        ) {
+            ClipboardEntryPreviewCard(text: entry.text)
         }
     }
 
@@ -356,20 +356,21 @@ private struct ClipboardRowView: View {
         .help(help)
         .accessibilityLabel(Text(help))
     }
+}
 
-    /// 相对时间（"5 分钟前"）：格式化在本模块完成，不跨动态库边界转 CVarArg。
-    static func relativeString(for date: Date, now: Date = Date()) -> String {
-        let elapsed = max(now.timeIntervalSince(date), 0)
-        if elapsed < 60 {
-            return String(format: L("time.relative.seconds"), Int(elapsed))
+/// 长按预览浮窗内容：全文 + 内嵌滚动（长文本），支持选中复制。
+private struct ClipboardEntryPreviewCard: View {
+    let text: String
+
+    var body: some View {
+        ScrollView(.vertical) {
+            Text(text)
+                .font(.system(size: 11.5))
+                .foregroundStyle(.white.opacity(0.92))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
         }
-        if elapsed < 3600 {
-            return String(format: L("time.relative.minutes"), Int(elapsed / 60))
-        }
-        if elapsed < 86400 {
-            return String(format: L("time.relative.hours"), Int(elapsed / 3600))
-        }
-        return String(format: L("time.relative.days"), Int(elapsed / 86400))
     }
 }
 
@@ -395,32 +396,23 @@ struct ClipboardTrayView: View {
     }
 }
 
-// MARK: - 实例设置（显示条数 + 时间戳开关）
+// MARK: - 实例设置（显示条数）
 
 struct ClipboardInstanceSettingsView: View {
     @ObservedObject var instance: ClipboardInstanceModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(L("settings.displayCount"))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
-                Spacer()
-                Picker(L("settings.displayCount"), selection: displayCountBinding) {
-                    ForEach(ClipboardHistoryLogic.allowedDisplayCounts, id: \.self) { count in
-                        Text("\(count)").tag(count)
-                    }
+        HStack {
+            Text(L("settings.displayCount"))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
+            Spacer()
+            Picker(L("settings.displayCount"), selection: displayCountBinding) {
+                ForEach(ClipboardHistoryLogic.allowedDisplayCounts, id: \.self) { count in
+                    Text("\(count)").tag(count)
                 }
-                .labelsHidden()
-                .controlSize(.small)
             }
-            Toggle(isOn: showTimestampsBinding) {
-                Text(L("settings.showTimestamps"))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
-            }
-            .toggleStyle(.switch)
+            .labelsHidden()
             .controlSize(.small)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -430,22 +422,7 @@ struct ClipboardInstanceSettingsView: View {
         Binding(
             get: { instance.config.displayCount },
             set: {
-                instance.update(ClipboardInstanceConfig(
-                    displayCount: $0,
-                    showTimestamps: instance.config.showTimestamps
-                ))
-            }
-        )
-    }
-
-    private var showTimestampsBinding: Binding<Bool> {
-        Binding(
-            get: { instance.config.showTimestamps },
-            set: {
-                instance.update(ClipboardInstanceConfig(
-                    displayCount: instance.config.displayCount,
-                    showTimestamps: $0
-                ))
+                instance.update(ClipboardInstanceConfig(displayCount: $0))
             }
         )
     }

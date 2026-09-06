@@ -501,17 +501,19 @@ struct GlobalFrameReader: View {
 // MARK: - 快速区快捷按钮单元格（统一标准样式）
 
 /// 快速区里的统一快捷按钮：宿主标准外观（`QuickActionTile`）+ 点击执行动作。
-/// 开关类经 `@ObservedObject` 观察 `isActive` 实时点亮；重动作先弹确认；
-/// 悬停提示显示动作名（与旧紧凑块 help 同款体验）。
+/// 开关类经 `@ObservedObject` 观察 `isActive` 实时点亮；重动作经图标下方垂出的
+/// 确认浮窗二次确认；悬停提示显示动作名（与旧紧凑块 help 同款体验）。
 struct QuickActionStripCell: View {
     @ObservedObject var action: QuickAction
     let slotSize: CGSize
-    @State private var confirmRequested = false
+    /// 图标在宿主窗口坐标系中的 frame（`GlobalFrameReader` 实时捕获），
+    /// 确认浮窗的锚点。
+    @State private var tileFrame: CGRect?
 
     var body: some View {
         Button {
             if action.requiresConfirmation {
-                confirmRequested = true
+                presentConfirmation()
             } else {
                 action.execute()
             }
@@ -530,17 +532,32 @@ struct QuickActionStripCell: View {
         .focusEffectDisabled(true)
         .help(action.displayName)
         .accessibilityLabel(action.displayName)
-        .confirmationDialog(
-            action.displayName,
-            isPresented: $confirmRequested,
-            titleVisibility: .visible
+        .background {
+            GlobalFrameReader { frame in tileFrame = frame }
+        }
+    }
+
+    /// 重动作确认浮窗：贴图标下方弹出（与齿轮设置浮窗同一 BlockPopover 管线，
+    /// `.below` 摆放）。不用 confirmationDialog——模态弹窗抢焦点，鼠标移过去
+    /// 宿主就会收起条带，确认根本完不成。
+    private func presentConfirmation() {
+        guard let tileFrame else { return }
+        BlockPopover.shared.present(
+            anchoredTo: tileFrame,
+            cardSize: CGSize(width: 240, height: 104),
+            placement: .below
         ) {
-            Button(L("quick.confirm.run")) {
-                action.execute()
-            }
-            Button(L("common.cancel"), role: .cancel) {}
-        } message: {
-            Text(L("quick.confirm.body"))
+            InlineConfirmPanel(
+                title: action.displayName,
+                message: L("quick.confirm.body"),
+                confirmTitle: L("quick.confirm.run"),
+                cancelTitle: L("common.cancel"),
+                onConfirm: {
+                    action.execute()
+                    BlockPopover.shared.dismiss()
+                },
+                onCancel: { BlockPopover.shared.dismiss() }
+            )
         }
     }
 }

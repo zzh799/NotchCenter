@@ -14,7 +14,6 @@
 "drawer.search.empty" = "No matches";
 
 /* 行按钮（图标按钮的无障碍标签与悬停提示） */
-"drawer.button.copy" = "Copy entry";
 "drawer.button.copied" = "Copied";
 "drawer.button.pin" = "Pin entry";
 "drawer.button.unpin" = "Unpin entry";
@@ -33,10 +32,3 @@
 
 /* 实例设置 */
 "settings.displayCount" = "Entries to show";
-"settings.showTimestamps" = "Show timestamps";
-
-/* 相对时间（printf 风格 %d 占位） */
-"time.relative.seconds" = "%ds ago";
-"time.relative.minutes" = "%dm ago";
-"time.relative.hours" = "%dh ago";
-"time.relative.days" = "%dd ago";

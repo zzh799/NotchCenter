@@ -5,11 +5,14 @@ import SwiftUI
 
 /// 「快捷按钮盒」抽屉块视图：按放置实例的动作集渲染纯图标宫格。按钮悬停
 /// 时经系统 tooltip 显示动作全名（.help），开关类动作带点亮态；需要确认的
-/// 重动作点击先弹 confirmationDialog。动作来源插件被禁用后该格置灰保留
-/// （容器只存动作 ID，禁用的动作宿主注册表查不到即 nil）。
+/// 重动作点击先经卡片浮层确认（InlineConfirmOverlay——模态弹窗抢焦点会让
+/// 抽屉收回）。动作来源插件被禁用后该格置灰保留（容器只存动作 ID，禁用的
+/// 动作宿主注册表查不到即 nil）。
 struct QuickButtonBoxView: View {
     let context: BlockContext
     @ObservedObject private var model: BoxInstanceModel
+    /// 待确认的重动作（nil = 无）：确认层盖在整卡上，确认后执行。
+    @State private var pendingConfirm: QuickAction?
 
     init(context: BlockContext) {
         self.context = context
@@ -33,6 +36,22 @@ struct QuickButtonBoxView: View {
             .padding(10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .overlay {
+            if let action = pendingConfirm {
+                InlineConfirmOverlay(
+                    title: action.displayName,
+                    message: L("confirm.message"),
+                    confirmTitle: L("confirm.run"),
+                    cancelTitle: L("common.cancel"),
+                    onConfirm: {
+                        action.execute()
+                        pendingConfirm = nil
+                    },
+                    onCancel: { pendingConfirm = nil }
+                )
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: pendingConfirm == nil)
     }
 
     private var emptyState: some View {
@@ -65,7 +84,7 @@ struct QuickButtonBoxView: View {
         ) {
             ForEach(Array(resolvedActions.enumerated()), id: \.offset) { _, action in
                 if let action {
-                    BoxActionButtonCell(action: action)
+                    BoxActionButtonCell(action: action, onRequestConfirm: { pendingConfirm = $0 })
                 } else {
                     BoxActionMissingCell()
                 }
@@ -74,18 +93,19 @@ struct QuickButtonBoxView: View {
     }
 }
 
-/// 正常动作按钮：图标 + 悬停显名（.help）；开关类高亮点亮态；重动作确认后执行。
+/// 正常动作按钮：图标 + 悬停显名（.help）；开关类高亮点亮态；重动作经回调
+/// 请求卡片级确认（确认层由 QuickButtonBoxView 统一挂载）。
 private struct BoxActionButtonCell: View {
     @ObservedObject var action: QuickAction
+    let onRequestConfirm: (QuickAction) -> Void
 
-    @State private var isConfirming = false
     @State private var isHovering = false
 
     var body: some View {
         let isActive = action.isActive
         Button {
             if action.requiresConfirmation {
-                isConfirming = true
+                onRequestConfirm(action)
             } else {
                 action.execute()
             }
@@ -108,18 +128,6 @@ private struct BoxActionButtonCell: View {
             ? (action.isActive ? L("a11y.on") : L("a11y.off"))
             : "")
         .onHover { isHovering = $0 }
-        .confirmationDialog(
-            Text(action.displayName),
-            isPresented: $isConfirming,
-            titleVisibility: .visible
-        ) {
-            Button(L("confirm.run"), role: .destructive) {
-                action.execute()
-            }
-            Button(L("common.cancel"), role: .cancel) {}
-        } message: {
-            Text(L("confirm.message"))
-        }
     }
 }
 
