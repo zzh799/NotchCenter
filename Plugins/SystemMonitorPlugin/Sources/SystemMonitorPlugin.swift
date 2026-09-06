@@ -5,7 +5,8 @@ import SwiftUI
 // MARK: - SystemMonitorPlugin（系统监控：CPU / 内存 / 磁盘 / 网络 + All-in-one）
 //
 // 单插件注册五个抽屉块（共识 Q11-A）：四个单指标块（1×1 / 2×1）与一个
-// 系统总览块（2×2 / 4×2 / 4×3 / 4×4）。采样引擎全局单份（SystemMonitorStore），
+// 系统总览块（1×1 / 1×2 / 2×1 / 2×2 / 4×2 / 4×3 / 4×4，布局随跨度切换）。
+// 采样引擎全局单份（SystemMonitorStore），
 // 每实例差异（历史窗 / 阈值 / 单位 / 排除表 / 指标开关）走 placementStore
 // 经 instanceSettingsView 编辑。不实现插件级 settingsView 与 menuItems（共识 Q13/Q14）。
 
@@ -49,8 +50,12 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
                     placementID: context.placementID,
                     isPreview: context.layoutInfo.isPreview,
                     // 宿主按跨度变化重走 makeView（BlockViewCacheKey 含跨度），
-                    // 2×1 档在创建期即展开 sparkline。
-                    showsSparkline: context.layoutInfo.size == .medium
+                    // 2×1 档在创建期即展开 sparkline；抽屉路径 size 恒 nil，判定走 span。
+                    showsSparkline: MetricCellForm.forSpan(
+                        widthColumns: context.layoutInfo.widthColumns,
+                        heightRows: context.layoutInfo.heightRows,
+                        size: context.layoutInfo.size
+                    ) == .sparkline
                 ))
             }
         )
@@ -60,9 +65,13 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
         id: "system.overview",
         displayName: L("block.overview.name"),
         kind: .drawer,
-        supportedSizes: [.large, .extraLarge],
+        supportedSizes: [.small, .medium, .large, .extraLarge],
         defaultSize: .large,
-        supportedGridSpans: [GridSpan(columns: 4, rows: 3), GridSpan(columns: 4, rows: 4)],
+        supportedGridSpans: [
+            GridSpan(columns: 1, rows: 2),
+            GridSpan(columns: 4, rows: 3),
+            GridSpan(columns: 4, rows: 4),
+        ],
         interaction: .expandDrawer,
         symbolName: "speedometer",
         instanceSettingsView: { context in
@@ -72,7 +81,9 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
             AnyView(OverviewBlockView(
                 instance: instanceModel(for: context),
                 placementID: context.placementID,
-                isPreview: context.layoutInfo.isPreview
+                isPreview: context.layoutInfo.isPreview,
+                widthColumns: context.layoutInfo.widthColumns,
+                heightRows: context.layoutInfo.heightRows
             ))
         }
     )

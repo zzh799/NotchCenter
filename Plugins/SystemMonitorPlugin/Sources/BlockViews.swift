@@ -5,7 +5,8 @@ import SwiftUI
 //
 // 布局策略（共识 Q5/Q6/Q11）：
 // - 单指标块 1×1：指标名 + 当前值 + 迷你负载条；2×1：左值右 sparkline。
-// - All-in-one：2×2 四小格（宽高比大时横向一排）；每格 = 指标名 + 当前值 + 迷你趋势。
+// - All-in-one 按跨度切形态：1×1 横向小条竖排（名称+聚合值）；1×2 竖排 / 2×1 横排
+//   迷你 cell（名称+值+迷你条）；2×2/4×4 两列网格、4×2/4×3 横向一排（sparkline 格）。
 // - 阈值变色（共识 Q7-C）：CPU/磁盘/网络按实例阈值映射 白/黄/红，内存直接映射
 //   内核压力等级（normal 绿）。方向色（读/写、下/上）只用于箭头与曲线。
 //
@@ -489,27 +490,59 @@ struct OverviewBlockView: View {
     @ObservedObject var instance: SystemMonitorInstanceModel
     let placementID: String
     let isPreview: Bool
+    /// 抽屉路径宿主恒填跨度；组件目录预览等无 span 上下文为 nil（按 defaultSize 网格渲染）。
+    let widthColumns: Int?
+    let heightRows: Int?
 
     @ObservedObject private var store = SystemMonitorStore.shared
 
+    private var arrangement: OverviewArrangement {
+        OverviewArrangement.forSpan(widthColumns: widthColumns, heightRows: heightRows)
+    }
+
+    private var enabledKinds: [MetricKind] {
+        MetricKind.allCases.filter { instance.overview.enabled.contains($0) }
+    }
+
     var body: some View {
         BlockCard { _ in
-            GeometryReader { geo in
-                let enabledKinds = MetricKind.allCases.filter { instance.overview.enabled.contains($0) }
-                let isHorizontal = geo.size.width > geo.size.height * 1.6
-                Group {
-                    if store.history.isEmpty {
-                        waitingPlaceholder
-                    } else if isHorizontal {
-                        HStack(alignment: .top, spacing: 10) {
+            Group {
+                if store.history.isEmpty {
+                    waitingPlaceholder
+                } else {
+                    switch arrangement {
+                    case .compactStrips:
+                        VStack(spacing: 4) {
                             ForEach(enabledKinds, id: \.self) { kind in
-                                cell(kind)
+                                CompactMetricStrip(
+                                    kind: kind,
+                                    history: store.history,
+                                    netExclusions: SystemMetricsLogic.defaultNetExclusions
+                                )
                             }
                         }
-                    } else {
+                    case .stackedMiniCells:
+                        VStack(spacing: 6) {
+                            ForEach(enabledKinds, id: \.self) { kind in
+                                cell(kind, showsSparkline: false)
+                            }
+                        }
+                    case .miniCellRow:
+                        HStack(alignment: .top, spacing: 6) {
+                            ForEach(enabledKinds, id: \.self) { kind in
+                                cell(kind, showsSparkline: false)
+                            }
+                        }
+                    case .sparklineGrid:
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             ForEach(enabledKinds, id: \.self) { kind in
-                                cell(kind)
+                                cell(kind, showsSparkline: true)
+                            }
+                        }
+                    case .sparklineRow:
+                        HStack(alignment: .top, spacing: 10) {
+                            ForEach(enabledKinds, id: \.self) { kind in
+                                cell(kind, showsSparkline: true)
                             }
                         }
                     }
@@ -520,7 +553,7 @@ struct OverviewBlockView: View {
         .modifier(BlockLifecycleHooks(placementID: placementID, isPreview: isPreview))
     }
 
-    private func cell(_ kind: MetricKind) -> some View {
+    private func cell(_ kind: MetricKind, showsSparkline: Bool) -> some View {
         MetricCell(
             kind: kind,
             history: store.history,
@@ -528,7 +561,7 @@ struct OverviewBlockView: View {
             thresholds: SystemMetricsLogic.defaultThresholds(for: kind),
             rateUnit: .auto,
             netExclusions: SystemMetricsLogic.defaultNetExclusions,
-            showsSparkline: true
+            showsSparkline: showsSparkline
         )
     }
 
@@ -541,5 +574,76 @@ struct OverviewBlockView: View {
         }
         .foregroundStyle(Color.white.opacity(0.4))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// 1×1 总览档的横向小条：名称 + 聚合当前值（吞吐类读+写 / 下+上合并——
+/// 单行放不下双值，且 cellWidth 可缩到 90pt）。
+struct CompactMetricStrip: View {
+    let kind: MetricKind
+    let history: [MetricSample]
+    let netExclusions: [String]
+
+    private var latest: MetricSample? { history.last }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(L(kind.displayNameKey))
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.55))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            valueText
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    @ViewBuilder
+    private var valueText: some View {
+        if let sample = latest, kind == .disk, !sample.diskAvailable {
+            Text(L("state.unavailable"))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.45))
+        } else if let sample = latest {
+            Text(valueString(sample))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(levelColor(sample))
+                .lineLimit(1)
+        } else {
+            Text(L("state.sampling"))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.4))
+        }
+    }
+
+    private func valueString(_ sample: MetricSample) -> String {
+        switch kind {
+        case .cpu: return SystemMetricsLogic.percentString(sample.cpuUsage)
+        case .memory: return SystemMetricsLogic.percentString(sample.memoryUsage)
+        case .disk:
+            return SystemMetricsLogic.rateString(sample.diskReadRate + sample.diskWriteRate, unit: .auto)
+        case .network:
+            let net = SystemMetricsLogic.aggregateNet(sample.netInterfaceRates, exclusions: netExclusions)
+            return SystemMetricsLogic.rateString(net.down + net.up, unit: .auto)
+        }
+    }
+
+    private func levelColor(_ sample: MetricSample) -> Color {
+        MetricPresentation.levelColor(
+            for: kind,
+            level: MetricPresentation.level(
+                for: kind,
+                sample: sample,
+                thresholds: SystemMetricsLogic.defaultThresholds(for: kind),
+                netExclusions: netExclusions
+            )
+        )
+    }
+
+    private var accessibilitySummary: String {
+        guard let sample = latest else { return L("state.sampling") }
+        return "\(L(kind.displayNameKey)) \(valueString(sample))"
     }
 }

@@ -4,8 +4,8 @@ import XCTest
 
 /// SystemMonitorPlugin 回归：差分与守卫（计数器回绕钳 0）、内存压力等级映射、
 /// 阈值与钳制、单位换档、滑窗与归一化、网络排除聚合、历史裁剪、实例配置
-/// 持久化与隔离、store 节奏与生命周期（挂起/移除/可见性）。全部注入假数据源，
-/// 绝不触碰真实系统（CPU/磁盘/网络采集器本体不在测试范围）。
+/// 持久化与隔离、store 节奏与生命周期（挂起/移除/可见性）、跨度→布局映射。
+/// 全部注入假数据源，绝不触碰真实系统（CPU/磁盘/网络采集器本体不在测试范围）。
 @MainActor
 final class SystemMonitorTests: XCTestCase {
     // MARK: 夹具
@@ -354,6 +354,9 @@ final class SystemMonitorTests: XCTestCase {
         }
         let overview = blocks.first { $0.id == "system.overview" }
         XCTAssertEqual(overview?.supportedSpans, [
+            GridSpan(columns: 1, rows: 1),
+            GridSpan(columns: 1, rows: 2),
+            GridSpan(columns: 2, rows: 1),
             GridSpan(columns: 2, rows: 2),
             GridSpan(columns: 4, rows: 2),
             GridSpan(columns: 4, rows: 3),
@@ -364,6 +367,29 @@ final class SystemMonitorTests: XCTestCase {
             GridSpan(columns: 1, rows: 1),
             GridSpan(columns: 2, rows: 1),
         ])
+    }
+
+    // MARK: 跨度 → 布局映射
+
+    func testOverviewArrangementMapsAllDeclaredSpans() {
+        XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: 1, heightRows: 1), .compactStrips)
+        XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: 1, heightRows: 2), .stackedMiniCells)
+        XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: 2, heightRows: 1), .miniCellRow)
+        XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: 2, heightRows: 2), .sparklineGrid)
+        XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: 4, heightRows: 2), .sparklineRow)
+        XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: 4, heightRows: 3), .sparklineRow)
+        XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: 4, heightRows: 4), .sparklineGrid)
+        // 无 span 上下文（组件目录预览等）按 defaultSize 的网格形态渲染。
+        XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: nil, heightRows: nil), .sparklineGrid)
+    }
+
+    func testSingleBlockFormReadsSpanBeforeSize() {
+        // 抽屉路径 size 恒 nil，2×1 判定必须走 span。
+        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: 2, heightRows: 1, size: nil), .sparkline)
+        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: 1, heightRows: 1, size: nil), .mini)
+        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: nil, heightRows: nil, size: .medium), .sparkline)
+        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: nil, heightRows: nil, size: .small), .mini)
+        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: nil, heightRows: nil, size: nil), .mini)
     }
 
     // MARK: store 节奏与生命周期
