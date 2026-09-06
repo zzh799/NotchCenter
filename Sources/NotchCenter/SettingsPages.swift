@@ -519,33 +519,26 @@ struct ComponentsSettingsPage: View {
             }
 
             // 快捷按钮（可进快速区 / 可收纳进按钮盒的统一动作卡）：与块卡同一
-            // 分区、卡片下方一段。单击 = 加入快速区末尾；按住拖到快速区精确
-            // 定位、拖到「快捷按钮盒」上装填。
+            // 分区、卡片下方一段。图标行卡与块预览卡样式天然可辨，不再重复
+            // 分区标题。单击 = 加入快速区末尾；按住拖到快速区精确定位、拖到
+            // 「快捷按钮盒」上装填。
             if let standalone = standaloneActions(for: group.pluginID), !standalone.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(
-                        L("settings.components.quickActions"),
-                        systemImage: "bolt.horizontal.circle"
-                    )
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 148, maximum: 210), spacing: 12)],
-                        spacing: 10
-                    ) {
-                        ForEach(standalone) { action in
-                            QuickActionCard(
-                                action: action,
-                                pluginID: group.pluginID,
-                                sourceName: L("settings.components.quickActions.cardHint"),
-                                onAdd: {
-                                    controller.addQuickAction(
-                                        pluginID: group.pluginID,
-                                        actionID: action.id
-                                    )
-                                }
-                            )
-                        }
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 148, maximum: 210), spacing: 12)],
+                    spacing: 10
+                ) {
+                    ForEach(standalone) { action in
+                        QuickActionCard(
+                            action: action,
+                            pluginID: group.pluginID,
+                            sourceName: L("settings.components.quickActions.cardHint"),
+                            onAdd: {
+                                controller.addQuickAction(
+                                    pluginID: group.pluginID,
+                                    actionID: action.id
+                                )
+                            }
+                        )
                     }
                 }
                 .padding(.top, 2)
