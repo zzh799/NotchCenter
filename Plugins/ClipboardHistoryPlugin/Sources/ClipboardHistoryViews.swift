@@ -8,9 +8,10 @@ import SwiftUI
 // 条目主体点击 = 写回剪贴板（单行截断显示），长按 = BlockPopover 全文预览浮窗；
 // 「置顶 / 删除」图标按钮同行放行尾。清空经卡片内 InlineConfirmOverlay 浮层
 // 确认——模态弹窗抢焦点，鼠标移过去抽屉就会收回。
-// 顶部工具行默认只露「搜索 / 清空」两颗组件默认圆形按钮（Kit IconCircleButton，
-// 与编辑模式角标同一外观），不占整行输入框——纵向空间让给剪贴条目；点搜索
-// 按钮才展开输入行（行首同款搜索钮兼任收起，收起时清空查询）。
+// 顶部「搜索 / 清空」两颗组件默认圆形按钮（Kit IconCircleButton，与编辑模式
+// 角标同一外观）默认隐藏、鼠标悬浮组件才显示，左搜索、右清空对称镜像编辑
+// 模式的左上齿轮 / 右上移除；不占整行输入框——纵向空间全让给剪贴条目。
+// 点搜索角标才展开输入行（行首同款搜索钮兼任收起，收起时清空查询）。
 // 置顶 / 最近分组不设文字标题：组界画细线表达，条目置顶态由行尾按钮选中态表达，
 // 分组语义走节容器 accessibilityLabel。
 // 历史来自共享单例，显示偏好（条数）来自本 placement 的实例模型。
@@ -23,6 +24,7 @@ struct ClipboardHistoryBlockView: View {
 
     @State private var query = ""
     @State private var isSearchExpanded = false
+    @State private var isHovering = false
     @State private var confirmingClear = false
     @FocusState private var searchFocused: Bool
 
@@ -36,7 +38,9 @@ struct ClipboardHistoryBlockView: View {
     var body: some View {
         BlockCard(hoverEffect: false) { _ in
             VStack(spacing: 0) {
-                headerBar
+                if isSearchExpanded {
+                    searchInputRow
+                }
                 if store.isPaused {
                     pausedBanner
                 }
@@ -48,6 +52,23 @@ struct ClipboardHistoryBlockView: View {
         .background {
             visibilityProbeLayer
         }
+        // 搜索 / 清空角标：与编辑模式角标同一交互——默认隐藏，鼠标悬浮组件才显示；
+        // 左搜索、右清空，对称镜像编辑模式的左上齿轮 / 右上移除。搜索展开时隐藏。
+        .overlay(alignment: .topLeading) {
+            if isHovering, !isSearchExpanded {
+                searchButton
+                    .padding(6)
+                    .transition(.opacity)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if isHovering, !isSearchExpanded {
+                clearAllButton
+                    .padding(6)
+                    .transition(.opacity)
+            }
+        }
+        .onHover { isHovering = $0 }
         .onAppear {
             guard !isPreview else { return }
             ClipboardHistoryStore.shared.viewDidAppear(placementID: placementID)
@@ -55,6 +76,12 @@ struct ClipboardHistoryBlockView: View {
         .onDisappear {
             guard !isPreview else { return }
             ClipboardHistoryStore.shared.viewDidDisappear(placementID: placementID)
+        }
+        // 焦点移出（点击条目 / 其他区域 / 收起按钮）即收起搜索，输入行不悬空。
+        .onChange(of: searchFocused) { _, focused in
+            if !focused {
+                collapseSearch()
+            }
         }
         .overlay {
             if confirmingClear {
@@ -72,6 +99,7 @@ struct ClipboardHistoryBlockView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: confirmingClear)
+        .animation(.easeOut(duration: 0.12), value: isHovering)
         .colorScheme(.dark)
     }
 
@@ -131,58 +159,47 @@ struct ClipboardHistoryBlockView: View {
         return sections
     }
 
-    // MARK: 顶部工具行
+    // MARK: 顶部工具行（角标按钮 + 搜索输入行）
 
-    /// 默认态只露「搜索 / 清空」两颗组件默认圆形按钮（Kit `IconCircleButton`），
-    /// 不占整行输入框，把纵向空间让给剪贴条目；点搜索按钮展开输入行。
-    @ViewBuilder
-    private var headerBar: some View {
-        if isSearchExpanded {
-            HStack(spacing: 6) {
-                IconCircleButton(
-                    systemImage: "magnifyingglass",
-                    helpText: L("drawer.button.search.collapse")
-                ) {
-                    collapseSearch()
-                }
-                TextField(L("drawer.search.placeholder"), text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .focused($searchFocused)
-                    // 展开后立即可输入（面板 canBecomeKey，见 PanelWindows.swift）。
-                    .onAppear { searchFocused = true }
-                if !query.isEmpty {
-                    Button {
-                        query = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.4))
-                    }
-                    .buttonStyle(.plain)
-                    .focusable(false)
-                    .focusEffectDisabled(true)
-                }
-                Spacer(minLength: 0)
-                clearAllButton
+    /// 搜索展开时的输入行：行首同款圆形搜索钮兼任收起（收起即清空查询，避免
+    /// 「过滤已生效但输入框不可见」的困惑）；焦点移出（点击条目 / 其他区域）
+    /// 也会自动收起，见 body 的 onChange(of: searchFocused)。行尾清空按钮在
+    /// 展开期间由右上角角标隐藏，输入行不重复放置，保持与折叠态同一颗按钮的语义。
+    private var searchInputRow: some View {
+        HStack(spacing: 6) {
+            IconCircleButton(
+                systemImage: "magnifyingglass",
+                helpText: L("drawer.button.search.collapse")
+            ) {
+                collapseSearch()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .transition(.opacity.combined(with: .move(edge: .top)))
-        } else {
-            HStack(spacing: 6) {
-                searchButton
-                Spacer(minLength: 0)
-                clearAllButton
+            TextField(L("drawer.search.placeholder"), text: $query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.92))
+                .focused($searchFocused)
+                // 展开后立即可输入（面板 canBecomeKey，见 PanelWindows.swift）。
+                .onAppear { searchFocused = true }
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .focusEffectDisabled(true)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
-    /// 搜索按钮：折叠态点开输入行；展开态行首同款按钮兼任收起（收起即清空查询，
-    /// 避免「过滤已生效但输入框不可见」的困惑）。
+    /// 搜索角标（左上角）：默认隐藏、悬浮显示；按下展开输入行。
     private var searchButton: some View {
         IconCircleButton(
             systemImage: "magnifyingglass",
@@ -192,7 +209,8 @@ struct ClipboardHistoryBlockView: View {
         }
     }
 
-    /// 清空未置顶：组件默认圆形按钮样式，禁用态（全为置顶）置灰。
+    /// 清空角标（右上角）：默认隐藏、悬浮显示；组件默认圆形按钮样式，
+    /// 禁用态（全为置顶）置灰。
     private var clearAllButton: some View {
         IconCircleButton(
             systemImage: "trash",

@@ -22,10 +22,19 @@ struct OpenCodeUsageBlockView: View {
     }
 
     var body: some View {
-        BlockCard(hoverEffect: true) { _ in
+        BlockCard(hoverEffect: true) { isHovering in
+            // content 自身不占满卡片高度（usageContent 等为固有高度，BlockCard
+            // 拉伸时居中），若把 overlay 直接挂 content 上，按钮会随内容漂移；
+            // 先撑满整卡，让 overlay 锚定到卡片真正右上角（编辑模式角标同几何）。
             content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // 刷新角标与编辑模式角标同一交互：默认隐藏、鼠标悬浮组件才显示；
+                // 淡入淡出由 BlockCard 的悬停动画驱动。
                 .overlay(alignment: .topTrailing) {
-                    refreshButton
+                    if isHovering {
+                        refreshButton
+                            .transition(.opacity)
+                    }
                 }
         }
         // 手势顺序、长按抑制点击等语义都在触发器内统一实现；不设 onTap，点击无动作。
