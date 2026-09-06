@@ -312,6 +312,11 @@ struct DrawerPageScrollTracker {
         samples.removeAll()
     }
 
+    /// 本次手势的**锚后净增量**（屏幕位）：松手意图的方向判据来源——带位移
+    /// 在接管（grab）/前进后会偏离手势自身方向（回拉的带仍深在目标侧），
+    /// 只有锚后增量忠实反映"这一把手指往哪边推"。
+    var netTravel: CGFloat { accumulatedX - anchor }
+
     /// 丢弃已累加的增量与方向（落点不该切页时调用），不动冷却。
     mutating func reset() {
         accumulatedX = 0

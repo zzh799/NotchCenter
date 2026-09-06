@@ -282,6 +282,33 @@ final class DrawerPageSwipeTests: XCTestCase {
         XCTAssertFalse(DrawerPageSwipe.coverCrossed(offset: 599, gap: -600))
     }
 
+    func testNetTravelIsAnchorRelativeForIntent() {
+        var tracker = DrawerPageScrollTracker()
+        XCTAssertEqual(tracker.netTravel, 0)
+        _ = tracker.feed(deltaX: -300, phase: .began, at: 0, limit: limit)
+        _ = tracker.feed(deltaX: -200, phase: .changed, at: 0.01, limit: limit)
+        XCTAssertEqual(tracker.netTravel, -500, accuracy: 0.001)
+        // 接管回拉：锚后增量为正——松手意图据此判"反向、必弹回"，不被带位移
+        // （仍在目标侧深处）带偏。
+        tracker.reanchor()
+        _ = tracker.feed(deltaX: 120, phase: .changed, at: 0.02, limit: limit)
+        XCTAssertEqual(tracker.netTravel, 120, accuracy: 0.001)
+        tracker.reset()
+        XCTAssertEqual(tracker.netTravel, 0)
+    }
+
+    func testIntentDeadZoneFromGestureDelta() {
+        // 松手意图按换向死区取阈：接住未推（|增量| < 8pt）不表态，
+        // endDrawerSwipe 回落带位移符号兜底。
+        func intent(_ delta: CGFloat) -> DrawerPageSide? {
+            DrawerPageSwipe.side(for: CGSize(width: delta, height: 0), threshold: DrawerPageSwipe.flipDeadBand)
+        }
+        XCTAssertNil(intent(7))
+        XCTAssertNil(intent(-7))
+        XCTAssertEqual(intent(8), .left)
+        XCTAssertEqual(intent(-8), .right)
+    }
+
     func testTrackerReanchorSplitsJudgmentAtAdvance() {
         var tracker = DrawerPageScrollTracker()
         _ = tracker.feed(deltaX: -300, phase: .began, at: 0, limit: limit)

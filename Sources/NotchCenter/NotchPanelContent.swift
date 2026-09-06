@@ -714,10 +714,17 @@ extension NotchPanelController {
             }
         }
         if phase.contains(.ended) || phase.contains(.cancelled) {
-            // 提交门在 endDrawerSwipe 里按"松手位移的意图方向 == 条带方向"
-            // 再核一道：反手滑回原点的松手只弹回、不落位。
+            // 提交门在 endDrawerSwipe 里按"手势净方向 == 条带方向"再核一道
+            // （净方向取锚后增量：接管回拉时带位移仍深在目标侧，按带符号会把
+            // "往回取消"读成"继续落位"）；反手滑回原点的松手天然不匹配，只
+            // 弹回、不落位。
+            let gestureDelta = drawerScrollTracker.netTravel
             let willCommit = drawerScrollTracker.finish(at: event.timestamp, limit: limit) != nil
-            endDrawerSwipe(commit: willCommit, offset: uiState.drawerSwipe?.offset ?? 0)
+            endDrawerSwipe(
+                commit: willCommit,
+                offset: uiState.drawerSwipe?.offset ?? 0,
+                gestureDelta: gestureDelta
+            )
         }
     }
 
@@ -781,7 +788,9 @@ extension NotchPanelController {
                 limit: session.limit,
                 predictedOffset: seedScreen + predictedScreen
             ),
-            offset: session.gestureSeed + deltaScreen * scale
+            offset: session.gestureSeed + deltaScreen * scale,
+            // 意图 = 锚后净增量（回拉反向必弹回，见 endDrawerSwipe 顶部）。
+            gestureDelta: delta
         )
     }
 
@@ -940,9 +949,19 @@ extension NotchPanelController {
     /// 驱动器运行中的重复 `endDrawerSwipe`（无边界设备就地提交后 `.ended`
     /// 又到）直接忽略——落位已在飞；接管（grab）会先取消驱动器，松手帧
     /// 到达时它已不在运行，本函数照常定夺。
-    func endDrawerSwipe(commit: Bool, offset: CGFloat) {
+    ///
+    /// **松手意图 = 手势自身净方向（`gestureDelta`，锚后增量），不是带位移
+    /// 符号**：接管续接后带位移会偏离手势方向——回拉的带仍深在目标侧，按
+    /// 带符号读意图会把"往回取消"判成"对目标的再次提交"（真机：快扫提交
+    /// 后回扫，带未拉回原点就重新落位到目标页）。增量反向 → 必弹回原页；
+    /// 同向 → 正常落位；|增量| ≤ 换向死区（接住未推）→ 回落带位移符号兜底
+    /// （触控板 finish 是增量判据、自然 bounce；拖拽按带位置就近落点）。
+    func endDrawerSwipe(commit: Bool, offset: CGFloat, gestureDelta: CGFloat? = nil) {
         guard let swipe = uiState.drawerSwipe, !swipeSpringDriver.isRunning else { return }
-        guard commit && DrawerPageSwipe.side(forOffset: offset) == swipe.side else {
+        let intentSide = gestureDelta.map {
+            DrawerPageSwipe.side(for: CGSize(width: $0, height: 0), threshold: DrawerPageSwipe.flipDeadBand)
+        } ?? DrawerPageSwipe.side(forOffset: offset)
+        guard commit && intentSide == swipe.side else {
             // 回弹：p → 0，插值尺寸同步回落到起点（往回滑立即恢复原大小）；
             // 收敛即散场（身份不符时收敛拍自动空跑）。
             startDrawerSwipeDriver(session: swipe, to: 0, settle: .dissolve)
