@@ -33,9 +33,12 @@ final class DshServiceMonitor: ObservableObject {
     /// 主开关的语义（决策 4）：只反映 **launchd 管理的服务** 是否在跑。
     /// 野进程占用端口（unmanagedExternal）不算开启——否则 dsh 已停但
     /// 端口被其他程序占用时开关会误显示为开。
+    /// 启动期（`.starting`，worker 尚未监听）也算开启：开关不在启动瞬间回弹。
     var isServiceOn: Bool {
-        if case .managed = status.state { return true }
-        return false
+        switch status.state {
+        case .managed, .starting: return true
+        default: return false
+        }
     }
 
     private let probe: LaunchdProbe

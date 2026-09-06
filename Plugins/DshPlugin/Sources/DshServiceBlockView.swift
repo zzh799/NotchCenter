@@ -70,7 +70,7 @@ struct DshServiceBlockView: View {
         switch monitor.status.state {
         case .managed:
             return .green
-        case .loadedNotRunning:
+        case .starting, .loadedNotRunning:
             return .yellow
         case .unmanagedExternal:
             return .orange
@@ -86,6 +86,7 @@ struct DshServiceBlockView: View {
         if monitor.isBusy { return busyText }
         switch monitor.status.state {
         case .managed: return L("dsh.state.running")
+        case .starting: return L("dsh.state.starting")
         case .loadedNotRunning: return L("dsh.state.loadedNotRunning")
         case .unmanagedExternal: return L("dsh.state.unmanagedShort")
         case .portConflict(let n): return LF("dsh.conflict.block", n)

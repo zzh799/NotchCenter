@@ -70,7 +70,7 @@ struct CalibreServiceBlockView: View {
         switch monitor.status.state {
         case .managed:
             return .green
-        case .loadedNotRunning:
+        case .starting, .loadedNotRunning:
             return .yellow
         case .unmanagedExternal:
             return .orange
@@ -86,6 +86,7 @@ struct CalibreServiceBlockView: View {
         if monitor.isBusy { return busyText }
         switch monitor.status.state {
         case .managed: return L("calibre.subtitle.runningShort")
+        case .starting: return L("calibre.state.starting")
         case .loadedNotRunning: return L("calibre.state.loadedNotRunning")
         case .unmanagedExternal: return L("calibre.subtitle.unmanaged")
         case .portConflict(let n): return LF("calibre.subtitle.portConflict", n)

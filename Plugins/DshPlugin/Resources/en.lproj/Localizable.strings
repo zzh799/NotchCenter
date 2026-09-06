@@ -5,6 +5,7 @@
 
 /* 服务状态（浮窗完整版 / 块副标题短版） */
 "dsh.state.managed" = "Managed by launchd";
+"dsh.state.starting" = "Starting…";
 "dsh.state.loadedNotRunning" = "Loaded, not running";
 "dsh.state.unmanagedExternal" = "Unmanaged process listening";
 "dsh.state.unmanagedShort" = "⚠️ Unmanaged process";

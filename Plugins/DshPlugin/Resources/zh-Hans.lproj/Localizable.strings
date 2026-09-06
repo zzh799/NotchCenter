@@ -5,6 +5,7 @@
 
 /* 服务状态（浮窗完整版 / 块副标题短版） */
 "dsh.state.managed" = "由 launchd 管理";
+"dsh.state.starting" = "启动中…";
 "dsh.state.loadedNotRunning" = "已加载未运行";
 "dsh.state.unmanagedExternal" = "检测到非托管进程";
 "dsh.state.unmanagedShort" = "⚠️ 非托管进程";

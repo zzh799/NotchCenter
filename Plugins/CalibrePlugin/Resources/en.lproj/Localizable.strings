@@ -12,6 +12,7 @@
 
 /* 服务状态（浮窗） */
 "calibre.state.managed" = "Managed by launchd";
+"calibre.state.starting" = "Starting…";
 "calibre.state.loadedNotRunning" = "Loaded, not running";
 "calibre.state.unmanagedExternal" = "Unmanaged process listening";
 "calibre.state.portConflict" = "%d instances conflict";

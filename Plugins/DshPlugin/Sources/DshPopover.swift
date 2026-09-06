@@ -65,6 +65,7 @@ struct DshPopoverContentView: View {
     private var statusText: String {
         switch monitor.status.state {
         case .managed: return L("dsh.state.managed")
+        case .starting: return L("dsh.state.starting")
         case .loadedNotRunning: return L("dsh.state.loadedNotRunning")
         case .unmanagedExternal: return L("dsh.state.unmanagedExternal")
         case .portConflict(let n): return LF("dsh.conflict.popover", n)

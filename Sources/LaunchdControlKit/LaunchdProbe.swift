@@ -4,17 +4,21 @@ import Foundation
 
 /// 一次探测得到的完整服务状态快照。
 public struct LaunchdServiceStatus: Sendable, Equatable {
-    /// 服务四态判定。
+    /// 服务状态判定。
     public enum State: Sendable, Equatable {
         /// 未加载且无进程在跑。
         case stopped
-        /// launchd 已加载、由它（或其子孙进程）提供服务。
+        /// launchd 已加载、由它（或其子孙进程）提供服务（worker 已在监听端口）。
         case managed
+        /// launchd 已加载、任务有 PID 但尚无实例监听：wrapper 等待外置卷 /
+        /// 服务刚启动尚未就绪。网页在 worker 真正监听前不可用——按
+        /// `.managed` 显示“Running”会误导（启动后即点网页 = 连接失败/502）。
+        case starting
         /// 有进程在监听端口，但与 launchd 实例血缘无关（野进程）。
         case unmanagedExternal
         /// 多个实例同时监听端口。
         case portConflict(listeningCount: Int)
-        /// launchd 已加载但未运行（启动中或崩溃）。
+        /// launchd 已加载但未运行（进程已退出/崩溃，launchctl 无 PID）。
         case loadedNotRunning
     }
 
@@ -207,13 +211,19 @@ public struct LaunchdProbe: Sendable {
 
     // MARK: 全量快照
 
-    /// 纯函数状态判定（便于单测）：把 probe() 收集的事实映射为五态。
+    /// 纯函数状态判定（便于单测）：把 probe() 收集的事实映射为各状态。
     ///
     /// 关键语义：**野进程（unmanagedExternal / portConflict）只认真正在监听
     /// 端口的进程**。仅命令行特征匹配（pgrep）但未监听的进程——tail 看日志、
     /// 编辑器打开 wrapper 脚本、刚 bootout 的残留进程——不算野进程，否则
     /// 服务未启动时卡片会误显示 Unmanaged（CalibrePlugin 落地时踩过；
     /// DshPlugin 的 isSelfOrAncestor 排除是同类问题的另一面）。
+    ///
+    /// 关键语义 2：**启动期不算 Running**——launchd 已加载且任务有 PID 但
+    /// 尚无实例监听（wrapper 等待外置卷 / worker 启动中），判为 `.starting`
+    /// （黄）而不是 `.managed`（绿）。否则服务启动后立即点“打开网页”的
+    /// 场景，插件绿灯 + 死链/502，正是《Calibre 插件启动服务后网页无法
+    /// 访问》事故的根因之一。
     static func resolveState(
         isLoaded: Bool,
         launchdPID: pid_t?,
@@ -232,8 +242,10 @@ public struct LaunchdProbe: Sendable {
                     ? .portConflict(listeningCount: listeningCount)
                     : .unmanagedExternal
             }
-            // 已加载有 PID 但无监听实例：wrapper 等待外置卷 / 启动中。
-            return launchdPID != nil ? .managed : .loadedNotRunning
+            // 已加载有 PID 但无监听实例：wrapper 等待外置卷 / 服务启动中。
+            // 不冒充 Running（web 尚未就绪），与「已加载但进程已退」（无 PID）
+            // 区分开——后者才是真的挂了。
+            return launchdPID != nil ? .starting : .loadedNotRunning
         }
         // 未加载：只有真正在监听的进程才构成野进程 / 端口冲突。
         guard let servingPID else { return .stopped }

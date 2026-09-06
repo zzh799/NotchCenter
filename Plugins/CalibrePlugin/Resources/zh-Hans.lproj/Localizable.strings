@@ -12,6 +12,7 @@
 
 /* 服务状态（浮窗） */
 "calibre.state.managed" = "由 launchd 管理";
+"calibre.state.starting" = "启动中…";
 "calibre.state.loadedNotRunning" = "已加载，未运行";
 "calibre.state.unmanagedExternal" = "有未受管的进程在监听";
 "calibre.state.portConflict" = "%d 个实例端口冲突";

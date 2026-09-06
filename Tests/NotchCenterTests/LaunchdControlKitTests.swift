@@ -105,8 +105,8 @@ final class LaunchdControlKitTests: XCTestCase {
             // (说明, isLoaded, launchdPID, servingPID, servingManaged, listeningCount, 期望)
             ("未加载 + 真有监听野进程", false, nil, 901, false, 1, .unmanagedExternal),
             ("未加载 + 两个监听实例", false, nil, 901, false, 2, .portConflict(listeningCount: 2)),
-            ("已加载 + wrapper 等待外置卷（有 PID 未监听）", true, 100, nil, false, 0, .managed),
-            ("已加载无 PID 且无监听", true, nil, nil, false, 0, .loadedNotRunning),
+            ("已加载 + wrapper 等待外置卷（有 PID 未监听）→ 启动中，不冒充 Running", true, 100, nil, false, 0, .starting),
+            ("已加载无 PID 且无监听（进程已退/真挂）", true, nil, nil, false, 0, .loadedNotRunning),
             ("已加载 + 监听实例即 launchd PID", true, 100, 100, true, 1, .managed),
             ("已加载 + 监听实例是 launchd 子孙（exec/pnpm 包装）", true, 100, 200, true, 1, .managed),
             ("已加载 + 监听实例无血缘", true, 100, 999, false, 1, .unmanagedExternal),

@@ -65,6 +65,7 @@ struct CalibrePopoverContentView: View {
     private var statusText: String {
         switch monitor.status.state {
         case .managed: return L("calibre.state.managed")
+        case .starting: return L("calibre.state.starting")
         case .loadedNotRunning: return L("calibre.state.loadedNotRunning")
         case .unmanagedExternal: return L("calibre.state.unmanagedExternal")
         case .portConflict(let n): return LF("calibre.state.portConflict", n)
