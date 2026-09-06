@@ -35,10 +35,11 @@ superseded-by: <无>
 
 - 新增 `Plugins/DisplayPlugin/`（无 Package.swift / build.sh 清单改动，自动发现）与 `Tests/NotchCenterTests/DisplayPluginTests.swift`；`LocalizationTests.modules` 增补该插件目录。
 - 插件内私有 API 接触面新增一处（`IOAVServiceBackend`），与 `MediaRemoteSession` 并列为「dlopen/dlsym + 降级」范式的两个实例；后续同类需求照抄该形态。
-- v1 已知边界（README 明示）：不监听显示器热插拔（增删屏后重启刷新；可调屏为空时重开抽屉会重新枚举）；IOI2C 路线在同型号双屏且 serial 为 0 时靠顺序对齐，可能混淆。
+- v1 已知边界（README 明示）：v1.1 起监听 `didChangeScreenParametersNotification`（宿主重建布局同名事件）做差量重枚举，撤销「不监听热插拔」边界——拔出屏的模型移除、新增屏回读初值、存活屏保留状态不重复回读；剩余边界为「同一物理屏以新 `CGDirectDisplayID` 重连时亮度内存缓存按 id 键控匹配不到，初值回退 50%」。IOI2C 路线在同型号双屏且 serial 为 0 时靠顺序对齐，可能混淆。
 - 后续扩展点：VCP 特征码已是常量表（`VCPCode`），加对比度 / 音量只需扩编解码调用方与 UI；`DisplayListFilter` / `CoalescedWriteStateMachine` / `DDCPacketCodec` 均为纯逻辑可直接单测。
 
 ## Changelog
 
 - v1.0.0:随 DisplayPlugin 首次落地创建。
 - v1.0.1:`scrollUsage: .always` 决策修订为无声明（声明体系删除，探针统一判定）。
+- v1.1.0:监听 `didChangeScreenParametersNotification` 做显示器热插拔差量刷新（`BrightnessController.refresh()`：消失屏移除并清除其连续失败计数、新增屏回读初值、存活屏保留状态不重复回读）；对已移除屏的尾随滑杆写入直接丢弃，不再对消失的 transport 发起 DDC IO。

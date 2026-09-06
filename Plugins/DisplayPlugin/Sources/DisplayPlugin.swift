@@ -32,9 +32,33 @@ public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugin
     public func attachServices(stateStore: StateStore, hostController: any HostController) {
         // 重新启用时恢复写入通道（禁用时 suspend 收掉）。
         BrightnessController.shared.resume()
+        observeScreenChanges()
     }
 
     public func pluginWasDisabled() {
+        stopObservingScreenChanges()
         BrightnessController.shared.suspend()
+    }
+
+    // MARK: 显示器热插拔
+
+    /// 监听屏幕参数变化：显示器插拔 / 分辨率变化完成后触发差量重枚举，
+    /// 拔出屏的滑杆行即时消失、新屏即时出现（同名通知宿主亦用于重建布局）。
+    private func observeScreenChanges() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersDidChange),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+    }
+
+    private func stopObservingScreenChanges() {
+        NotificationCenter.default.removeObserver(
+            self, name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    }
+
+    @objc private func screenParametersDidChange(_ notification: Notification) {
+        Task { await BrightnessController.shared.refresh() }
     }
 }

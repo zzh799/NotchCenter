@@ -116,9 +116,20 @@ final class DisplayPluginTests: XCTestCase {
         XCTFail("初值回读未在 2s 内完成")
     }
 
+    /// 多屏场景：等待全部行的初值探针落定（各行探针是独立异步任务）。
+    @MainActor
+    private func waitForAllProbes(_ controller: BrightnessController) async throws {
+        for _ in 0..<100 {
+            if !controller.rows.isEmpty, controller.rows.allSatisfy({ $0.state == .ready }) { return }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("初值回读未在 2s 内完成")
+    }
+
     private final class FakeBackend: DisplayDDCBackend, @unchecked Sendable {
         private let lock = NSLock()
-        private let displays: [ExternalDisplay]
+        /// 当前在线显示器列表：测试可改写以模拟拔插。
+        var displays: [ExternalDisplay]
         private let readError: DDCError?
         private let writeError: DDCError?
         private var readCalls: [ExternalDisplay] = []
@@ -226,5 +237,76 @@ final class DisplayPluginTests: XCTestCase {
         XCTAssertFalse(writes.isEmpty)
         XCTAssertEqual(writes.last?.value, 90, "最终收敛到最新值")
         XCTAssertLessThan(writes.count, 9, "拖动连发被合并（至多写入首末等少数几笔）")
+    }
+
+    // MARK: 显示器热插拔刷新（DisplayPlugin 监听 didChangeScreenParameters
+    // Notification 后调用 refresh()；此处直接驱动控制器验证差量语义）
+
+    @MainActor
+    func testRefreshRemovesUnpluggedDisplay() async throws {
+        let second = ExternalDisplay(id: CGDirectDisplayID(8), name: "Second Panel")
+        let backend = FakeBackend(displays: [testDisplay, second])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForAllProbes(controller)
+        XCTAssertEqual(controller.rows.count, 2)
+
+        backend.displays = [testDisplay] // 拔出第二台屏
+        await controller.refresh()
+        XCTAssertEqual(
+            controller.rows.map(\.display.id), [testDisplay.id],
+            "拔出屏的滑杆行消失，存活屏保留")
+        XCTAssertTrue(controller.models[second.id] == nil, "消失屏的模型被移除")
+    }
+
+    @MainActor
+    func testRefreshKeepsSurvivingDisplayStateAndSkipsReprobe() async throws {
+        let second = ExternalDisplay(id: CGDirectDisplayID(8), name: "Second Panel")
+        let backend = FakeBackend(displays: [testDisplay, second])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForAllProbes(controller)
+        let readsBefore = backend.reads.count
+        XCTAssertEqual(readsBefore, 2, "两屏各回读一次")
+
+        backend.displays = [testDisplay]
+        await controller.refresh()
+        let survivor = try XCTUnwrap(controller.rows.first)
+        XCTAssertEqual(survivor.display.id, testDisplay.id)
+        XCTAssertEqual(survivor.state, .ready)
+        XCTAssertEqual(survivor.percent, 42, accuracy: 0.001, "存活屏状态（百分比）保留")
+        XCTAssertEqual(backend.reads.count, readsBefore, ".ready 屏不重复回读")
+    }
+
+    @MainActor
+    func testRefreshWhileSuspendedIsNoOp() async throws {
+        let backend = FakeBackend(displays: [testDisplay])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForProbe(controller)
+        XCTAssertEqual(controller.rows.count, 1)
+
+        controller.suspend()
+        backend.displays = []
+        await controller.refresh()
+        XCTAssertEqual(controller.rows.count, 1, "插件禁用（暂停）期间刷新是空操作，不枚举")
+    }
+
+    @MainActor
+    func testWriteToRemovedDisplayIsDropped() async throws {
+        let backend = FakeBackend(displays: [testDisplay])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForProbe(controller)
+        let model = try XCTUnwrap(controller.rows.first)
+        let writesBefore = backend.writes.count
+
+        backend.displays = []
+        await controller.refresh()
+        XCTAssertTrue(controller.rows.isEmpty)
+
+        controller.requestWrite(model, percent: 30)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(backend.writes.count, writesBefore, "对已移除屏的尾随写入被丢弃")
     }
 }

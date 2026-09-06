@@ -6,7 +6,9 @@ import Foundation
 //
 // 多屏抽屉的同实例视图副本观察同一个控制器（面板与抽屉.md 共享状态约束）；
 // 预览副本（isPreview）不触发枚举与写入。枚举在首个激活副本出现时进行，
-// v1 不监听显示器热插拔（可调屏一个都不在时重开抽屉会重新枚举一次）。
+// 显示器插拔 / 屏幕参数变化经 `refresh()` 差量重枚举（DisplayPlugin 监听
+// didChangeScreenParametersNotification 后调用）：消失的屏移除、新增的屏
+// 回读初值、存活屏保留状态不重复回读。
 
 /// 单台显示器的可观察亮度状态。
 @MainActor
@@ -92,10 +94,22 @@ final class BrightnessController: ObservableObject {
             }
         }
         models = next
+        // 消失的屏清掉连续失败计数：同 id 重插后从零计数（走写入成功即复位
+        // 之外的又一入口）；内存缓存按 id 键控、体积极小，保留以便同 id 重插
+        // 回退到记忆亮度（新 id 重连本也匹配不到，见 README 已知边界）。
+        let live = Set(displays.map(\.id))
+        writeFailures = writeFailures.filter { live.contains($0.key) }
         for display in displays {
             guard let model = models[display.id], model.state != .ready else { continue }
             probe(model, backend: backend)
         }
+    }
+
+    /// 显示器热插拔 / 屏幕参数变化后的差量刷新：重新枚举并按 id 增删模型，
+    /// 存活屏状态保留、不重复回读。幂等、可重入；与 `startIfNeeded` 并发时
+    /// 两者均为全量快照，后完成者覆盖、收敛一致（后端 IO 自带串行队列）。
+    func refresh() async {
+        await runEnumeration()
     }
 
     /// 初值回读：300ms 超时，失败回退内存缓存或 50%（部分屏不支持回读，
@@ -124,6 +138,9 @@ final class BrightnessController: ObservableObject {
 
     func requestWrite(_ model: BrightnessDisplayModel, percent: Double) {
         guard !suspended, let channel else { return }
+        // 屏已从枚举结果移除（拔出）时丢弃尾随写入：不再对消失的 transport
+        // 发起无意义 DDC IO（后端会抛 displayGone，重复失败计数也无益）。
+        guard models[model.display.id] != nil else { return }
         let clamped = min(max(percent, 0), 100)
         model.percent = clamped
         let value = Self.ddcValue(percent: clamped, upperBound: model.maxLuminance)
