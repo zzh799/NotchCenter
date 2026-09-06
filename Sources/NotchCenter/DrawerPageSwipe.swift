@@ -27,7 +27,7 @@ enum DrawerPageSwipe {
 
     /// 手势中途反手（条带位移越过原点）的换向死区（pt）：|位移| 越过它才把
     /// 条带换绑到另一侧邻居。原点附近 ±几点的手指抖动必须吸收在死区内——
-    /// 换绑那一帧另一侧预览层以 O(deadBand) 宽的边缘一步进入视口，死区越小
+    /// 换绑那一帧另一侧目标页层以 O(deadBand) 宽的边缘一步进入视口，死区越小
     /// 这笔可见边缘越小。
     static let flipDeadBand: CGFloat = 8
 
@@ -159,14 +159,14 @@ enum DrawerPageSwipe {
         return (recent.last!.x - recent.first!.x) / dt
     }
 
-    /// 页带留白 = 抽屉内容边距的两倍（“两倍边框距离”）：预览副本与源页面在
+    /// 页带留白 = 抽屉内容边距的两倍（“两倍边框距离”）：目标页与源页面在
     /// 滑动中不得贴死，中间要露出一条背景带才看得出是两页。倍数的唯一出处，
     /// 调用点传当前指标快照的 `contentPadding`。
     static func bandSpacing(contentPadding: CGFloat) -> CGFloat {
         contentPadding * 2
     }
 
-    /// 预览层相对网格层的**带符号**间距：目标页在右让出“源页宽 + 留白”，
+    /// 目标页层相对原点页层的**带符号**间距：目标页在右让出“源页宽 + 留白”，
     /// 在左让出“目标页宽 + 留白”——两层之间恒隔一条 `spacing` 宽的背景带
     /// （相邻缘各按自己的页宽对齐，再各让出一份留白）。
     ///
@@ -181,8 +181,8 @@ enum DrawerPageSwipe {
         side == .right ? gridWidth + spacing : -(targetWidth + spacing)
     }
 
-    /// 落位终点位移：两层构成刚性页带（预览层位置 = 位移 + gap，层间距恒等于
-    /// 留白），走到 `-gap` 时预览层正好落在 x=0 完全覆盖可视区（源页连留白
+    /// 落位终点位移：两层构成刚性页带（目标页层位置 = 位移 + gap，层间距恒等于
+    /// 留白），走到 `-gap` 时目标页层正好落在 x=0 完全覆盖可视区（源页连留白
     /// 一起滑出视口）——换页就在这一帧之后发生。
     static func arrivalOffset(gap: CGFloat) -> CGFloat { -gap }
 }

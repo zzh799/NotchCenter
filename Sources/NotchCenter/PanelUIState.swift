@@ -62,10 +62,11 @@ final class PanelUIState: ObservableObject {
     /// 位移上限都在会话里冻结，`rebuildContent` 仍是提交后尺寸的唯一出口。
     @Published var drawerSwipe: DrawerSwipe?
 
-    /// 滑动会话快照：`elements` 是目标页的只读预览副本（`BlockLayoutInfo.isPreview`）。
+    /// 滑动会话快照：`elements` 是目标页的**真实例**（`isPreview: false`，走
+    /// 正常缓存键并回写视图缓存），落位时直接转正为 `drawerElements`。
     /// 条带模型：一次会话 = 原点页 + 一侧邻居构成的"两层页带"在视口里跟手移动，
     /// `offset` 是带符号**条带位移**（原点 = `originPage`）。位移穿越原点（死区外）
-    /// 时整条带换绑到另一侧邻居（`rebind`）——方向、目标与预览层都变，
+    /// 时整条带换绑到另一侧邻居（`rebind`）——方向、目标与条带层都变，
     /// 唯独原点锚（起点两尺寸）恒不动。
     struct DrawerSwipe {
         /// 会话原点页（= 建会时的激活页，会话期间**恒不变**）：中途反手换绑的
@@ -75,16 +76,16 @@ final class PanelUIState: ObservableObject {
         let originPage: Int
         /// 当前条带方向（换绑后更新，不再恒定）。
         var side: DrawerPageSide
-        /// 当前目标页（+ 其预览副本与尺寸，换绑时整体刷新）。
+        /// 当前目标页（+ 其真实例层与尺寸，换绑时整体刷新）。
         var targetPage: Int
         var elements: [DrawerElement]
-        /// 目标页内容尺寸（预览层宽度；尺寸插值的终点之一）。
+        /// 目标页内容尺寸（条带层宽度；尺寸插值的终点之一）。
         var contentSize: CGSize
         /// 目标页窗口尺寸（屏幕封顶后；尺寸插值的终点之一）。
         var targetWindowSize: CGSize
         /// 目标页格网最左列，与 `drawerGridLeftColumn` 同义。
         var leftColumn: Int
-        /// 预览层与网格层的带符号间距（相邻页宽 + 页带留白，换绑时重算；
+        /// 目标页层与原点页层的带符号间距（相邻页宽 + 页带留白，换绑时重算；
         /// 留白 = `DrawerPageSwipe.bandSpacing`，两倍内容边距）。
         var gap: CGFloat
         /// 会话开始时的内容尺寸（网格层宽度在会话期冻结为此值；尺寸插值起点，
@@ -95,22 +96,23 @@ final class PanelUIState: ObservableObject {
         /// 当前条带的位移上限（橡皮筋与落位门槛按它取 = |gap|：右侧束带 =
         /// 原点页宽 + 留白、左侧束带 = 目标页宽 + 留白，换绑时更新）。
         var limit: CGFloat
-        /// 已进入落位拍（滑到位动画进行中，预览层即将全覆盖）：位移由动画驱动，
+        /// 已进入落位拍（滑到位动画进行中，目标页层即将全覆盖）：位移由动画驱动，
         /// 不得再接新手势/拖拽帧，否则落位与跟手会抢同一个 offset。
         var isLanding = false
         /// 当前位移（pt，带符号；与手指同向）。
         var offset: CGFloat
-        /// 落位拍已换页：预览层使命结束，视图侧据此就地撤层。不能等 animated
-        /// 清理才撤——目标页更宽时它会探回已变宽的裁剪框内，淡出成右侧重影。
+        /// 落位拍已换页：会话对页带的贡献结束——`elements` 已就地转正为
+        /// `drawerElements`（同一 ForEach 身份），视图侧据此停止把它再叠进
+        /// 页带（否则同一 placement 会以重复 id 在 ForEach 里出现两份）。
         var isLanded = false
 
         /// 滑动进度 p ∈ [0,1]（位移 / 落位全程）：面板尺寸插值与胶囊高亮层
         /// 都从这一份进度派生——跟手、落位 spring 与回弹天然同曲线。
         var progress: CGFloat { DrawerPageSwipe.progress(offset: offset, gap: gap) }
 
-        /// 换绑到另一侧邻居：只换条带量（方向/目标/预览/尺寸/间距/上限），
+        /// 换绑到另一侧邻居：只换条带量（方向/目标/条带层/尺寸/间距/上限），
         /// 原点锚（起点两尺寸）与位移保持不动。换绑只发生在 |offset| ≈ 死区：
-        /// 旧预览层已整层移出视口、新预览层整层还在视口外，这一帧的层替换
+        /// 旧目标页层已整层移出视口、新目标页层整层还在视口外，这一帧的层替换
         /// 不可见（与落位交接同一条"像素重合"原理）。
         mutating func rebind(
             side: DrawerPageSide,

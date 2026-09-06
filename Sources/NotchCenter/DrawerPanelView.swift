@@ -264,34 +264,55 @@ struct DrawerPanelView: View {
         )
     }
 
-    /// 滑动切页的两层容器：当前页与目标页预览层构成一条**刚性页带**（预览层
-    /// 横坐标 = `offset + gap`，`gap` 在会话开始时冻结；两层之间隔一条页带
-    /// 留白 = 两倍内容边距的背景带，看得出是两页），整体跟手平移、超出裁掉。
+    /// 滑动切页的**单一常驻页带**：一个 ForEach 同时承载稳态页与滑动会话，
+    /// 元素源见 `bandItems`。会话期 = 原点页（随 `offset` 平移）+ 目标页
+    /// **真实例**（随 `offset + gap` 平移、整层禁命中）构成一条**刚性页带**
+    /// （两层之间隔一条页带留白 = 两倍内容边距的背景带，看得出是两页），
+    /// 整体跟手平移、超出裁掉。落位拍把 `drawerElements := 会话 elements`
+    /// 且 `isLanded` 置位：目标页子视图在**同一个 ForEach 里身份保持**、
+    /// 原点页在视口外卸载——落位零重挂载。旧"网格层 + 预览层"两层 ZStack
+    /// 的病根：同一视图值换个结构位必被 SwiftUI 整批重挂，暂存区缩略图
+    /// 归零回退图标、监控重挂探针的落位闪烁由此而来。
     /// 容器宽高跟随 `drawerContentSize`——会话期间该尺寸随滑动进度在起止两端间
-    /// 插值（面板同步长大/缩小），页带本身保持刚性（两层间距恒 = 留白：
-    /// 网格层宽度由 `grid` 冻结在`会话起点值`，预览层宽度 = 目标页宽，留白条
-    /// 不随插值变宽）。容器高度 = 内容高度：内容 ≡ 可视区，ScrollView
+    /// 插值（面板同步长大/缩小），页带本身保持刚性（两层间距恒 = 留白）。
+    /// 容器高度 = 内容高度：内容 ≡ 可视区，ScrollView
     /// 才不闪滚动条（与 `gridFrameHeight` 同源教训；会话外二者恒等）。
-    /// 预览层按 `isLanded` 就地撤除（落位帧两层像素重合，撤层不可见）——不能等
-    /// 异步 animated 清理才撤：目标页更宽时它会探回裁剪框内，淡出成右侧重影。
     private var pageSlide: some View {
-        let offset = ui.drawerSwipe?.offset ?? 0
+        let swipe = ui.drawerSwipe
+        // 会话期条带宽冻结在会话起点值（拖拽面/占位框不随插值伸缩），稳态 = 内容宽。
+        let bandWidth = swipe?.startContentSize.width ?? ui.drawerContentSize.width
         let zStack = ZStack(alignment: .topLeading) {
-            grid
-                .offset(x: offset)
-            if let swipe = ui.drawerSwipe, !swipe.isLanded {
-                previewGrid(swipe)
-                    .offset(x: swipe.offset + swipe.gap)
-                    .allowsHitTesting(false)
+            ForEach(bandItems) { item in
+                bandBlockContainer(for: item)
+            }
+            dropPlaceholder
+                .offset(x: swipe?.offset ?? 0)
+        }
+        .frame(
+            width: bandWidth,
+            height: gridFrameHeight,
+            alignment: .topLeading
+        )
+        .background {
+            // 编辑态仅空隙可切页（块拖拽优先），非编辑态整面可切页由
+            // pageSlide 的 simultaneousGesture 承载，避免空隙与整面双重触发。
+            if ui.isEditing {
+                pageSwipeSurface
             }
         }
+        // 两条跟随元素变化的 spring 在**滑动会话挂载期必须关闭**：落位帧
+        // 原点页子视图成批卸载，spring 参与就会在 x=0 上重影淡出（真机报告
+        // "目标页面直接淡出"的根因）。
+        .animation(swipe == nil ? DrawerAnimation.spring : nil, value: bandItems.map(\.id))
+        .animation(swipe == nil ? DrawerAnimation.spring : nil, value: bandItems.map(\.element.placement))
+        .animation(DrawerAnimation.spring, value: interaction.previewOrigins)
         .frame(
             width: ui.drawerContentSize.width,
             height: ui.drawerContentSize.height,
             alignment: .topLeading
         )
         .clipped()
-        // 非编辑态整面可拖动切页（含块上方），编辑态仅空隙可切页（块拖拽优先，由 grid 背景层承载）。
+        // 非编辑态整面可拖动切页（含块上方），编辑态仅空隙可切页（块拖拽优先，由页带背景层承载）。
         // 手势用 .global 坐标：面板宽度在跟手期插值，.local 原点随视图平移会导致 translation 逐帧回跳、形成原/目标尺寸的自激振荡（与缩放握把同源）。
         // 用 simultaneousGesture 而非 highPriority：让路时块的横向滚动仍可与切页手势并发识别，yield 后块自己处理滚动；外层纵向 ScrollView 与横向切页方向正交，不冲突。
         if ui.isEditing {
@@ -311,86 +332,71 @@ struct DrawerPanelView: View {
         }
     }
 
-    /// 目标页预览层：只按格网摆放块视图（`isPreview` 只读副本），
-    /// 无手势——整层 `allowsHitTesting(false)`。编辑态下预览同样呈现编辑
-    /// 视觉（压暗层 + 描边），与正式网格的静态编辑态一致，避免落位那一帧
-    /// 出现“预览素面 → 落位后突然压暗”的闪烁（需求：预览目标页内容也应是编辑状态的）。
-    private func previewGrid(_ swipe: PanelUIState.DrawerSwipe) -> some View {
-        let previewGeometry = DrawerGridGeometry(
-            metrics: GridMetrics.current,
-            leftColumn: swipe.leftColumn,
-            capacity: .max,
-            // 全局下限、所有页共用：两层留白高度一致，落位交接那一帧才完全重合。
-            minimumRows: ui.drawerGridMinRows,
-            minimumColumns: ui.drawerGridMinColumns
-        )
-        let cells = swipe.elements.map { GridCell($0.placement) }
-        let isEditing = ui.isEditing
-        return ZStack(alignment: .topLeading) {
-            ForEach(swipe.elements) { element in
-                let frame = previewGeometry.frame(GridCell(element.placement))
-                previewBlock(for: element, frame: frame, isEditing: isEditing)
-                    .position(x: frame.midX, y: frame.midY)
-            }
-        }
-        .frame(
-            width: swipe.contentSize.width,
-            height: previewGeometry.contentHeight(covering: cells),
-            alignment: .topLeading
-        )
+    /// 页带元素：稳态页或会话目标页的一个块 + 它在页带里的渲染参数。
+    /// 身份 = placementID（跨页全局唯一）：落位拍目标页从"会话贡献"转为
+    /// "稳态元素"时 id 不变，ForEach 据此保持子视图身份（零重挂载的关键）。
+    private struct DrawerBandItem: Identifiable {
+        let element: DrawerElement
+        /// 渲染几何：稳态/原点页用激活页左列，会话目标页用目标页左列。
+        let renderGeometry: DrawerGridGeometry
+        /// 条带位移（视觉平移）：原点页 = `swipe.offset`，目标页 = `offset + gap`，稳态 = 0。
+        let bandOffset: CGFloat
+        /// 会话目标页在滑动中整层禁命中。
+        let isInteractive: Bool
+
+        var id: String { element.id }
     }
 
-    /// 预览块编辑壳（静态，不含交互）。
-    private func previewBlock(for element: DrawerElement, frame: CGRect, isEditing: Bool) -> some View {
-        let cornerRadius: CGFloat = 12
-        return element.view
-            .frame(width: frame.width, height: frame.height)
-            .background(isEditing ? Color.white.opacity(0.03) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay {
-                if isEditing {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color.black.opacity(0.35))
-                }
+    /// 页带元素源：稳态 = `drawerElements`；会话挂载期 = 原点页（`drawerElements`）
+    /// + 目标页（`swipe.elements`，未落位时）。落位拍 `drawerElements` 已被赋为
+    /// 会话 elements 且 `isLanded` 置位——两份来源在同一事务里交接，ForEach
+    /// 按 placementID 差分：目标页子视图保留、原点页子视图卸载（此时已在
+    /// 视口外，卸载不可见）；回弹拍目标页滑出视口后随会话清除而卸载，原点页
+    /// 子视图全程未动。会话目标页的渲染几何按目标页左列起排（原点页几何仍
+    /// 是激活页的），落位帧 `drawerGridLeftColumn` 已切到目标页、两套几何
+    /// 数值相等，frame 无缝衔接。
+    private var bandItems: [DrawerBandItem] {
+        var items: [DrawerBandItem] = []
+        let swipe = ui.drawerSwipe
+        let originOffset = swipe?.offset ?? 0
+        for element in ui.drawerElements {
+            items.append(DrawerBandItem(
+                element: element,
+                renderGeometry: geometry,
+                bandOffset: originOffset,
+                isInteractive: true
+            ))
+        }
+        if let swipe, !swipe.isLanded {
+            let targetGeometry = DrawerGridGeometry(
+                metrics: GridMetrics.current,
+                leftColumn: swipe.leftColumn,
+                capacity: .max,
+                // 全局下限、所有页共用：两层留白高度一致，落位交接那一帧才完全重合。
+                minimumRows: ui.drawerGridMinRows,
+                minimumColumns: ui.drawerGridMinColumns
+            )
+            for element in swipe.elements {
+                items.append(DrawerBandItem(
+                    element: element,
+                    renderGeometry: targetGeometry,
+                    bandOffset: swipe.offset + swipe.gap,
+                    isInteractive: false
+                ))
             }
-            .overlay {
-                if isEditing {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(.white.opacity(0.4), lineWidth: 1)
-                }
-            }
-            .clipped()
+        }
+        return items
     }
 
-    /// 网格层。两条跟随元素变化的 spring 在**滑动会话挂载期必须关闭**：
-    /// 切页换的是整页元素身份，落位那一帧若让它参与动画，退场页会在 x=0 上
-    /// 重影淡出、进场页再从反方向滑一遍（真机报告"目标页面直接淡出"的根因）。
-    /// 会话期网格层宽度必须**冻结在会话起点值**：预览层按"会话起点页宽 + 留白"
-    /// 起排，若本层 bounds 跟着插值收窄/变宽，两层之间的留白条就会偏离会话
-    /// 冻结值——只有本层宽度不变，层间距才恒等于留白。
-    private var grid: some View {
-        let swipeActive = ui.drawerSwipe != nil
-        let gridWidth = ui.drawerSwipe?.startContentSize.width ?? ui.drawerContentSize.width
-        return ZStack(alignment: .topLeading) {
-            ForEach(ui.drawerElements) { element in
-                blockContainer(for: element)
-            }
-            dropPlaceholder
-        }
-        .frame(
-            width: gridWidth,
-            height: gridFrameHeight,
-            alignment: .topLeading
-        )
-        .background {
-            // 编辑态仅空隙可切页（块拖拽优先），非编辑态整面可切页由 pageSlide 的 simultaneousGesture 承载，避免空隙与整面双重触发。
-            if ui.isEditing {
-                pageSwipeSurface
-            }
-        }
-        .animation(swipeActive ? nil : DrawerAnimation.spring, value: ui.drawerElements.map(\.id))
-        .animation(swipeActive ? nil : DrawerAnimation.spring, value: ui.drawerElements.map(\.placement))
-        .animation(DrawerAnimation.spring, value: interaction.previewOrigins)
+    /// 页带块容器：与稳态网格同一渲染路径（编辑壳/角标/手势全同，编辑态
+    /// 视觉与旧预览壳逐值一致，"预览素面 → 落位后突然压暗"不会复现），只是
+    /// 渲染几何与条带位移按元素来源注入；会话目标页整层禁命中。**单一构建
+    /// 路径**是身份保持的前提——同一子视图从"会话目标页"转正为"稳态元素"
+    /// 时修饰符链结构不变，SwiftUI 只做值更新、不重挂。
+    private func bandBlockContainer(for item: DrawerBandItem) -> some View {
+        blockContainer(for: item.element, in: item.renderGeometry)
+            .offset(x: item.bandOffset)
+            .allowsHitTesting(item.isInteractive)
     }
 
     /// 滑动切页的**拖拽**面：铺在网格背后的兄弟层。块无条件 `contentShape(Rectangle())`
@@ -455,12 +461,18 @@ struct DrawerPanelView: View {
     }
 
     /// 单个抽屉块容器（含定位修饰）：独立成方法拆开类型检查表达式——
-    /// 全部内联在 grid 里会超出编译器合理检查时间。
-    private func blockContainer(for element: DrawerElement) -> some View {
+    /// 全部内联在页带里会超出编译器合理检查时间。`in renderGeometry` 注入
+    /// 渲染几何：稳态/原点页传 `geometry`（激活页左列），会话目标页传目标页
+    /// 左列的几何（见 `bandItems`）——`layoutInfo.frame` 喂插件的仍是引擎的
+    /// 绝对列坐标，与本渲染几何无涉。
+    private func blockContainer(
+        for element: DrawerElement,
+        in renderGeometry: DrawerGridGeometry
+    ) -> some View {
         let origin = resolveOrigin(for: element)
         // 遗留布局数据的跨度可能为 0 或负：`max(_, 0)` 让 frame 退化为零
         // 尺寸（与改动前 `> 0 ? ... : 0` 的三元判断等价）。
-        let blockFrame = geometry.frame(
+        let blockFrame = renderGeometry.frame(
             GridCell(
                 column: origin.column,
                 row: origin.row,

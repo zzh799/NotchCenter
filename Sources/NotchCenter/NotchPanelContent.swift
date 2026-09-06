@@ -390,7 +390,7 @@ extension NotchPanelController {
                 isPreview: isPreview,
                 hasSettings: hasSettings
             )
-            // 键逐项相等 → 复用上一次的视图值（切页往返、预览层重复构建等
+            // 键逐项相等 → 复用上一次的视图值（切页往返、条带层换绑重建等
             // 场景不再反复重挂插件视图；placementID 全局唯一，跨页不会误配）。
             let view: AnyView
             if let old = drawerViewCache[placement.placementID], old.key == key {
@@ -754,9 +754,12 @@ extension NotchPanelController {
     /// 尺寸起点被中间插值污染、再反手时方向相等守卫挡住换回）。反手换绑由
     /// `updateDrawerSwipe` 按条带位移穿越原点统一驱动，这里只负责首次建房；
     /// 落位拍进行中会话仍在，任何新方向都会被这一行拦下（"本次手势整个忽略"，
-    /// 且绝不会清掉正在滑入的会话层）。目标页的只读预览副本（`isPreview` =
-    /// true）只在首次进入时构建并缓存进会话（换绑时重建一次）——每帧重建
-    /// 会让插件视图反复出现消失，编辑器与选区状态首帧就废。
+    /// 且绝不会清掉正在滑入的会话层）。目标页的**真实例**（`isPreview: false`，
+    /// 走正常缓存键并回写 `drawerViewCache`）只在首次进入时构建并缓存进会话
+    /// （换绑时重建一次）——每帧重建会让插件视图反复出现消失，编辑器与选区
+    /// 状态首帧就废。真实例让插件副作用（监控采样、缩略图加载、DDC 枚举等）
+    /// 在滑动期间预热，落位即就绪；落位时这份元素直接转正为 `drawerElements`
+    /// （见 `landDrawerSwipe`），页带里的子视图身份保持、零重挂载。
     ///
     /// 会话同时冻结尺寸插值的起点与位移上限：`drawerWindowSize` /
     /// `drawerContentSize` 会在整个会话期间随进度在起止两端间插值
@@ -787,7 +790,7 @@ extension NotchPanelController {
             originPage: uiState.drawerActivePage,
             side: side,
             targetPage: target,
-            elements: buildDrawerElements(page: target, isPreview: true),
+            elements: buildDrawerElements(page: target),
             contentSize: targetContentSize,
             targetWindowSize: drawerWindowSize(for: activePair, page: target),
             leftColumn: layoutEngine.gridLeftColumn(page: target),
@@ -811,9 +814,9 @@ extension NotchPanelController {
     /// 往回滑进度减小、尺寸恢复（两维都插值，与位移线性一致）。
     ///
     /// 条带位移穿越原点（死区外）时在这里完成**换绑**：方向翻到另一侧、
-    /// 目标页/预览层/gap/位移上限随之更换，唯独原点锚两尺寸保持不动——
-    /// 换绑只发生在 |s| ≈ 死区，旧预览层整层在视口外、新预览层整层还没
-    /// 进视口，这一帧的层替换不可见（与落位交接同一条"像素重合"原理）。
+    /// 目标页/条带层/gap/位移上限随之更换，唯独原点锚两尺寸保持不动——
+    /// 换绑只发生在 |s| ≈ 死区，旧目标页层整层在视口外、新目标页层整层
+    /// 还没进视口，这一帧的层替换不可见（与落位交接同一条"像素重合"原理）。
     /// 起点尺寸若跟着换绑重冻结，回退到 0 的终点就变成中间值，抽屉尺寸
     /// 卡死（旧实现的次生缺陷）。无该侧邻居（首/末页硬边界）时条带硬停
     /// 在原点：没有可揭示的页，条带不得滑过起点。
@@ -840,7 +843,7 @@ extension NotchPanelController {
                 swipe.rebind(
                     side: newSide,
                     targetPage: target,
-                    elements: buildDrawerElements(page: target, isPreview: true),
+                    elements: buildDrawerElements(page: target),
                     contentSize: targetContentSize,
                     targetWindowSize: drawerWindowSize(for: activePair, page: target),
                     leftColumn: layoutEngine.gridLeftColumn(page: target),
@@ -873,7 +876,7 @@ extension NotchPanelController {
     /// 松手方向必然与条带不匹配，只弹回、绝不落位到错误一侧（旧实现只认
     /// 输入通路的方向，向 B 的回摆会落到换绑后的 C）。不提交：位移弹回、
     /// 尺寸随同一进度回退到起点，回弹动画结束后再撤层。提交：**分两拍**——
-    /// 先把两层刚性滑到位（预览层落到 x=0 全覆盖、面板尺寸在同一条 spring
+    /// 先把两层刚性滑到位（目标页层落到 x=0 全覆盖、面板尺寸在同一条 spring
     /// 里插值到目标页）才换页。
     /// 绝不能在松手那一帧就撤层 + `selectDrawerPage`：那会把撤层、位移归零与
     /// 换页全挤进同一条 spring，真机上表现为目标页原地淡出、新页再反向滑一遍。
@@ -943,12 +946,14 @@ extension NotchPanelController {
         }
     }
 
-    /// 落位第二拍：换页与撤层**都不加动画**，靠像素重合藏住交接（网格已是目标页
-    /// 真实例，预览层恰好落在 x=0，窗口尺寸也已在第一拍的 spring 里到目标值——
-    /// 这一帧不动任何尺寸，整帧保持非动画帧）。视图侧据此在会话挂载期关掉换页
-    /// 淡入（见 `DrawerPanelView.grid`），并按 `isLanded` 就地撤掉预览层。收尾交给
-    /// 下一拍 `rebuildContent(animated: true)`（写入与当前相同的尺寸，无可见动画）。
-    /// completion 与兜底时钟都可能送达本拍：`isLanded` 守卫保证只执行一次。
+    /// 落位第二拍：换页**不加动画**（目标页层恰好落在 x=0，窗口尺寸也已在
+    /// 第一拍的 spring 里到目标值——这一帧不动任何尺寸，整帧保持非动画帧）。
+    /// 元素**沿用会话里的目标页真实例**（`session.elements`，与页带里正在
+    /// 显示的是同一份视图值），不做 `buildDrawerElements` 重建：单一页带结构
+    /// （`DrawerPanelView.pageSlide`）里这些子视图的 ForEach 身份保持不变，
+    /// 落位零重挂载；随后的 `rebuildContentAfterPageChange` 按缓存键复用同一
+    /// 批视图值（会话构建时已回写缓存），同样无可见交接。completion 与兜底
+    /// 时钟都可能送达本拍：`isLanded` 守卫保证只执行一次。
     private func landDrawerSwipe(_ session: PanelUIState.DrawerSwipe) {
         guard uiState.drawerSwipe?.isLanding == true,
               uiState.drawerSwipe?.isLanded != true,
@@ -959,13 +964,17 @@ extension NotchPanelController {
         }
         uiState.drawerActivePage = session.targetPage
         uiState.drawerGridLeftColumn = session.leftColumn
-        uiState.drawerElements = buildDrawerElements(page: session.targetPage)
+        // 直接沿用会话真实例：一旦重建就换掉视图身份，页带里的目标页子视图
+        // 会在落位帧整批重挂（暂存区缩略图归零回退图标、监控重挂探针的
+        // 落位闪烁根因）。
+        uiState.drawerElements = session.elements
         var landed = session
         landed.offset = 0
         landed.isLanded = true
         uiState.drawerSwipe = landed
         DispatchQueue.main.async { [weak self] in
-            // 收尾清会话：预览层已在落位帧撤除，这里的 animated 清理无可见层。
+            // 收尾清会话：目标页已在落位帧就地转正（同一 ForEach 身份），这里
+            // 的 animated 重建按缓存键复用同一批视图值，无可见交接。
             self?.rebuildContentAfterPageChange()
         }
     }
