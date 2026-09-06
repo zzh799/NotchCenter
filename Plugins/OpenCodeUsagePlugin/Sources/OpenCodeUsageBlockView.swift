@@ -22,10 +22,10 @@ struct OpenCodeUsageBlockView: View {
     }
 
     var body: some View {
-        BlockCard(hoverEffect: true) { isHovering in
+        BlockCard(hoverEffect: true) { _ in
             content
                 .overlay(alignment: .topTrailing) {
-                    refreshButton(hovering: isHovering)
+                    refreshButton
                 }
         }
         // 手势顺序、长按抑制点击等语义都在触发器内统一实现；不设 onTap，点击无动作。
@@ -190,20 +190,18 @@ struct OpenCodeUsageBlockView: View {
 
     // MARK: 刷新按钮
 
-    private func refreshButton(hovering: Bool) -> some View {
-        Button {
+    /// 组件默认圆形按钮样式（Kit `IconCircleButton`，与编辑模式角标同一外观）。
+    /// 未配置 / 加载中禁用并置灰；悬停增亮与手型光标由组件自带。
+    private var refreshButton: some View {
+        IconCircleButton(
+            systemImage: "arrow.clockwise",
+            helpText: L("usage.refreshHelp")
+        ) {
             store.forceRefresh()
-        } label: {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(hovering ? 0.88 : 0.55))
-                .padding(4)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .disabled(store.isLoading || !store.isConfigured)
         .opacity((store.isLoading || !store.isConfigured) ? 0.35 : 1)
-        .help(L("usage.refreshHelp"))
+        .padding(6)
     }
 
     // MARK: 动作

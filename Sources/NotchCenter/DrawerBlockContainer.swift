@@ -9,7 +9,7 @@ import SwiftUI
 ///   弹出）+ 右上角移除按钮 + 右下角缩放握把，均跟随块一起移动；三者只在
 ///   指针悬停于该块上时出现（与紧凑区图标、分页胶囊同一交互），压暗层与
 ///   边缘描边恒在以标示可编辑态。设置 / 移除 / 缩放握把
-///   共用组件默认圆形按钮样式（`EditCircleBadge`）。
+///   共用组件默认圆形按钮样式（Kit `IconCircleBadge`）。
 struct DrawerBlockContainer: View {
     let element: DrawerElement
     let isEditing: Bool
@@ -92,7 +92,7 @@ struct DrawerBlockContainer: View {
             .overlay(alignment: .topLeading) {
                 if showsEditControls && hasSettings {
                     // 左上角设置按钮：经 SettingPopover 展示插件设置。
-                    EditCircleButton(
+                    IconCircleButton(
                         systemImage: "gearshape",
                         helpText: L("panel.help.pluginSettings")
                     ) {
@@ -104,7 +104,7 @@ struct DrawerBlockContainer: View {
             }
             .overlay(alignment: .topTrailing) {
                 if showsEditControls {
-                    EditCircleButton(
+                    IconCircleButton(
                         systemImage: "xmark",
                         helpText: L("panel.help.removeBlock")
                     ) {
@@ -176,7 +176,7 @@ struct DrawerBlockContainer: View {
     /// 右下角缩放握把：对角双箭头图标（组件默认圆形按钮样式），
     /// 悬停 / 拖动中增亮，拖动中放大。
     private var resizeHandle: some View {
-        EditCircleBadge(
+        IconCircleBadge(
             systemImage: "arrow.up.left.and.arrow.down.right",
             isHighlighted: isResizing || isResizeHandleHovering
         )

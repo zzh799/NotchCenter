@@ -1,3 +1,4 @@
+import NotchCenterKit
 import SwiftUI
 
 // MARK: - 纯几何：胶囊行槽位与拖动落点
@@ -248,7 +249,7 @@ struct DrawerPageCapsule: View {
         let help = side == .left
             ? L("panel.help.page.addLeft")
             : L("panel.help.page.addRight")
-        return EditCircleButton(
+        return IconCircleButton(
             systemImage: "plus",
             helpText: help,
             diameter: DrawerPagePillLayout.addButtonDiameter,
