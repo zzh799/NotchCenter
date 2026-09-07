@@ -53,10 +53,10 @@ NotchCenter/
 │   │   └── ...
 │   └── NotchCenterKit/            # 共享 API framework（动态库）
 │       ├── NotchCenterPlugin.swift
-│       ├── NotchBlock.swift
+│       ├── NotchBlock.swift        # NotchBlock / BlockPixelSize / BlockProbe / GridSpan
 │       ├── BlockContext.swift
 │       ├── ActivitySummary.swift
-│       ├── BlockSize.swift
+│       ├── BlockSizeVerifier.swift # 打包期最小尺寸遮挡校验（纯几何）
 │       ├── PluginSettingsContext.swift
 │       └── ...
 ├── Plugins/                       # 官方插件源码，作为独立 bundle target
@@ -147,28 +147,54 @@ public struct NotchBlock {
     public let id: String                     // 插件内唯一块类型 ID
     public let displayName: String            // 用户可见名称
     public let kind: BlockKind                // .compact 或 .drawer
-    public let supportedSizes: Set<BlockSize> // 仅 .drawer 有效
-    public let defaultSize: BlockSize?        // 仅 .drawer 有效
+    public let minSize: BlockPixelSize?       // 抽屉块最小物理像素（pt），compact 恒 nil
+    public let maxSize: BlockPixelSize?       // 抽屉块最大物理像素（pt），compact 恒 nil
+    public let recommendedSize: BlockPixelSize? // 抽屉块推荐物理像素（pt），compact 恒 nil
     public let interaction: BlockInteraction  // .expandDrawer 或 .custom（仅紧凑块有意义）
+    public let probes: (@MainActor (BlockLayoutInfo) -> [BlockProbe])? // 打包期遮挡校验探针
     public let makeView: @MainActor (BlockContext) -> AnyView
 }
 ```
 
-**枚举定义：**
+**像素三档（BlockPixelSize，本模型的尺寸真源）：**
 
 ```swift
 public enum BlockKind { case compact, drawer }
 
-public enum BlockSize { case small, medium, wide, large, extraLarge }
+public struct BlockPixelSize { public var width: CGFloat; public var height: CGFloat } // pt
+
+public struct BlockProbe { public let id: String; public let rect: CGRect } // 块本地坐标
 
 public enum BlockInteraction { case expandDrawer, custom }
 ```
 
+**尺寸语义（关键，用户 2026-09-07 拍板）：**
+
+- 抽屉块声明的是**物理像素三档** `min/max/recommended`（单位 pt），与用户格子尺寸无关；
+  `minSize` 的全局下限为 `NotchBlock.globalMinimumPixel` = **75×60 pt**。
+- 宿主按**当前用户格子尺寸**（每格内容宽/高，不含 spacing）把三档换算成"允许格跨盒"  `[min…max]`（`sizeBox`）：min 向上取整使物理 ≥ min、max 向下取整使物理 ≤ max（至少 1 格）、
+  recommended 就近取整并夹进盒内。新块落位用推荐档；拖拽缩放钳制在盒内。
+- 组件像素**不含格间间距**（组件像素 = 格子之和）；宿主渲染几何仍含间距，两者语义分离。
+- 用户把格子调大到 1×1 都超过 max 时（量化不可表示）：1×1 兜底显示；存量已摆放块照显，
+  再次拖拽时按新边界钳制。
+- 存量官方插件迁移公式：旧跨度 × 默认格（150/120）→ 像素。
+
+**打包期遮挡校验（probes，原始需求收尾件）：**
+
+- `probes` 为可选回调：给定布局（打包校验时 frame = `minSize` 像素），返回关键 UI 区的
+  `BlockProbe` 矩形（块本地坐标，声明"此区必须完整可见"）。
+- 校验器 `BlockSizeVerifier`（纯几何，Kit）按内容盒 = minSize 跑两类检查：探针**越界**
+  （内容会伸到邻居块，宿主卡片不裁切）与探针**自叠**（组件内部互遮）。
+- 官方 drawer 块**必须**声明 probes（门禁强制）；第三方未声明即跳过。
+- 门禁入口：`./scripts/build.sh verify-sizes`；`package` 默认打包预检
+  （`--skip-size-check` 逃生）。机制与边界见 Agent Note 2026-09-07-block-min-size-occlusion-verification。
+
 **校验规则：**
 
 - 紧凑块只能放入紧凑槽位，抽屉块只能放入抽屉网格。
-- 抽屉块必须声明 `supportedSizes` 且包含 `defaultSize`。
-- 紧凑块固定尺寸 28×28，无需声明尺寸。
+- 抽屉块必须声明像素三档，且逐轴 `min ≤ recommended ≤ max`、min 不小于 75×60；
+  compact 不得声明三档。
+- 紧凑块尺寸由宿主统一决定（紧凑槽位几何），不属于抽屉三档模型、无需声明尺寸。
 - 紧凑块 `interaction` 可选；默认行为是点击展开抽屉。
 
 ### 4.3 块多实例
@@ -319,16 +345,11 @@ extension HostController {
 
 ### 5.3 抽屉网格
 
-- 单元格固定大小：**150×120 pt**。
-- 网格间距：**12 pt**。
+- 格子尺寸**用户可调**（设置 → 布局；范围下限 75×60 pt，默认 150×120 pt），格间间距固定 12 pt。
 - 抽屉内容内边距：**16 pt**。
-- 块尺寸等级：
-  - `small`：1×1
-  - `medium`：2×1
-  - `wide`：4×1
-  - `large`：2×2
-  - `extraLarge`：4×2
-- 窗口宽度 = 当前列数 × 单元格宽度 + (列数-1) × 间距 + 2 × 内边距。
+- 块尺寸 = **物理像素三档按当前格子换算的格跨盒**：见 §4.2。无旧离散档位——
+  组件在盒内任意整数跨渲染（min/max/recommended 只约束盒，不枚举尺寸集合）。
+- 窗口宽度 = 当前列数 × 格子宽度 + (列数-1) × 间距 + 2 × 内边距。
 - 最大列数可用户配置（默认 4），上限由所有已启用显示器中最小可用宽度决定（见 7.2）。
 - 窗口高度随行数增长；达到屏幕可用高度上限后，内容区域滚动。
 - 总列数不随内容继续增长，超出最大列数后新增块自动换行。
@@ -365,7 +386,7 @@ extension HostController {
 - 内联编辑：用户展开抽屉后通过按钮进入编辑模式。
 - 编辑模式中：
   - 块可拖拽重排（网格内）。
-  - 块可调整尺寸（在支持的尺寸等级间切换）。
+  - 块可调整尺寸：拖拽缩放，钳制在当前格子换算出的允许格跨盒 `[min…max]` 内（无档位枚举）。
   - 块可移除。
   - 通过“+ 添加块”打开块目录侧边栏，按插件分组列出可用块类型，点击添加。
   - 紧凑区槽位旁提供“+”添加紧凑块。
@@ -486,7 +507,7 @@ extension HostController {
 | 5 | 插件状态管理 | 常驻实例 + 核心 `StateStore` 统一存储 |
 | 6 | 块 API 形式 | SwiftUI `AnyView` 工厂 |
 | 7 | 布局编辑交互 | 内联编辑模式 |
-| 8 | 网格尺寸模型 | 固定单元格尺寸 + 尺寸等级 |
+| 8 | 网格尺寸模型 | 用户可调格子尺寸（默认 150×120，下限 75×60）+ 组件像素三档按格换算 |
 | 9 | 抽屉扩展行为 | 高度随内容增长，宽度随列数变化，受最小屏幕宽度约束 |
 | 10 | 最大列数确定 | 用户可配置，受最小屏幕宽度约束，默认 4 |
 | 11 | 单元格数值 | 150×120，间距 12，内边距 16 |
@@ -504,7 +525,7 @@ extension HostController {
 | 23 | 并发模型 | 全 `@MainActor` |
 | 24 | `StateStore` API | Codable + Data 键值对 |
 | 25 | 插件协议 | `blocks` + `init()`，身份来自清单 |
-| 26 | 块结构 | `id`, `displayName`, `kind`, `supportedSizes`, `defaultSize`, `interaction`, `makeView` |
+| 26 | 块结构 | `id`, `displayName`, `kind`, `minSize/maxSize/recommendedSize`（像素三档）, `interaction`, `probes`（打包期遮挡校验，可选）, `makeView` |
 | 27 | 视图生命周期 | 稳定身份，保留 `@State`，`StateStore` 持久化 |
 | 28 | 插件管理界面 | 独立管理窗口 |
 | 29 | 插件设置 UI | 可嵌入管理窗口 |

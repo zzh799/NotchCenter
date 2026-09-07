@@ -44,3 +44,6 @@ superseded-by: <无>
 
 - v2:implemented 收口(2026-09-03)——MediaRemote 路线采纳并落地;摘要分工=播放中提交/暂停置态/停止收回;展示载体收敛为单抽屉块、无紧凑图标、无 seek;每实例设置不适用(全局单实例)。
 - v1:proposed 草案(2026-09-03)。
+
+## 修订(2026-09-07,像素三档模型)
+本记录中 "large/extraLarge, defaultSize large" 等措辞属于已废弃的离散档位模型。同日决策见 `2026-09-07-block-size-pixel-three-tier` 与 `2026-09-07-block-min-size-occlusion-verification`：`media.controls` 现声明物理像素三档 `300×240 / 600×240 / 300×240`（= 旧 2×2/4×2 × 默认格 150/120），并带打包期遮挡校验探针。历史文字保留不改。
