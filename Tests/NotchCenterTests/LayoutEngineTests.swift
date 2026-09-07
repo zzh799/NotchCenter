@@ -3,6 +3,58 @@ import SwiftUI
 import XCTest
 @testable import NotchCenter
 
+// MARK: - 尺寸夹具（物理像素三档：夹具保留"目录档"速记）
+
+/// 测试语汇里的尺寸档速记 → 格跨。物理像素模型下 NotchBlock 只接受像素三档，
+/// 测试按"档集合的包络盒 + default 为推荐档"换算成像素（跨度 × 默认格 150×120，
+/// 与官方插件迁移规则一致）；引擎侧默认按当前格子（测试进程默认 150×120）换算回格跨。
+enum FixtureSize: Hashable {
+    case small
+    case medium
+    case wide
+    case large
+    case extraLarge
+
+    var span: GridSpan {
+        switch self {
+        case .small: return GridSpan(columns: 1, rows: 1)
+        case .medium: return GridSpan(columns: 2, rows: 1)
+        case .wide: return GridSpan(columns: 4, rows: 1)
+        case .large: return GridSpan(columns: 2, rows: 2)
+        case .extraLarge: return GridSpan(columns: 4, rows: 2)
+        }
+    }
+}
+
+/// 默认格内容尺寸（像素换算基准；与 `GridMetricsStore` 出厂默认一致）。
+let fixtureCellWidth: CGFloat = 150
+let fixtureCellHeight: CGFloat = 120
+
+/// 档集合 → 包络盒（min/max）+ 推荐档（defaultSize 或盒下角），换算成像素三档。
+func fixtureBox(
+    sizes: Set<FixtureSize>,
+    defaultSize: FixtureSize?
+) -> (min: BlockPixelSize, max: BlockPixelSize, recommended: BlockPixelSize) {
+    func pixels(_ span: GridSpan) -> BlockPixelSize {
+        BlockPixelSize(
+            width: CGFloat(span.columns) * fixtureCellWidth,
+            height: CGFloat(span.rows) * fixtureCellHeight
+        )
+    }
+    guard !sizes.isEmpty else {
+        let single = pixels(GridSpan.globalMinimum)
+        return (single, single, single)
+    }
+    let minColumns = sizes.map(\.span.columns).min() ?? 1
+    let minRows = sizes.map(\.span.rows).min() ?? 1
+    let maxColumns = sizes.map(\.span.columns).max() ?? 1
+    let maxRows = sizes.map(\.span.rows).max() ?? 1
+    let lower = GridSpan(columns: minColumns, rows: minRows)
+    let upper = GridSpan(columns: maxColumns, rows: maxRows)
+    let recommended = defaultSize?.span ?? lower
+    return (pixels(lower), pixels(upper), pixels(recommended))
+}
+
 @MainActor
 final class LayoutEngineTests: XCTestCase {
     private var registry: [String: NotchBlock] = [:]
@@ -35,17 +87,30 @@ final class LayoutEngineTests: XCTestCase {
         pluginID: String = "com.test.plugin",
         blockID: String,
         kind: BlockKind,
-        sizes: Set<BlockSize> = [],
-        defaultSize: BlockSize? = nil
+        sizes: Set<FixtureSize> = [],
+        defaultSize: FixtureSize? = nil
     ) {
-        registry["\(pluginID)|\(blockID)"] = NotchBlock(
-            id: blockID,
-            displayName: blockID,
-            kind: kind,
-            supportedSizes: sizes,
-            defaultSize: defaultSize,
-            makeView: { _ in AnyView(EmptyView()) }
-        )
+        let makeView: @MainActor (BlockContext) -> AnyView = { _ in AnyView(EmptyView()) }
+        switch kind {
+        case .compact:
+            registry["\(pluginID)|\(blockID)"] = NotchBlock(
+                id: blockID,
+                displayName: blockID,
+                kind: kind,
+                makeView: makeView
+            )
+        case .drawer:
+            let box = fixtureBox(sizes: sizes, defaultSize: defaultSize)
+            registry["\(pluginID)|\(blockID)"] = NotchBlock(
+                id: blockID,
+                displayName: blockID,
+                kind: kind,
+                minSize: box.min,
+                maxSize: box.max,
+                recommendedSize: box.recommended,
+                makeView: makeView
+            )
+        }
     }
 
     // MARK: 默认模型（文档 §5.4）
@@ -164,17 +229,59 @@ final class LayoutEngineTests: XCTestCase {
         XCTAssertTrue(engine.validate().isEmpty)
     }
 
-    func testResizeOnlySupportsDeclaredSizes() throws {
+    func testResizeClampedToDeclaredBox() throws {
         register(blockID: "notes", kind: .drawer, sizes: [.small, .medium], defaultSize: .small)
         let (engine, directory, _) = try makeEngine()
         engine.updateScreenConstraint(width: 700)
 
         let placed = try XCTUnwrap(engine.autoPlaceDrawerBlock(pluginID: "com.test.plugin", blockID: "notes"))
-        XCTAssertTrue(engine.resizeDrawerBlock(placementID: placed.placementID, to: .medium))
+        // 推荐档（small=1×1）落位；盒 (1,1)-(2,1) 内任意整数跨可缩放到。
+        XCTAssertTrue(engine.resizeDrawerBlock(placementID: placed.placementID, toColumns: 2, toRows: 1))
         XCTAssertEqual(engine.drawerBlock(placementID: placed.placementID)?.widthColumns, 2)
 
-        XCTAssertFalse(engine.resizeDrawerBlock(placementID: placed.placementID, to: .extraLarge))
-        XCTAssertFalse(engine.resizeDrawerBlock(placementID: "missing", to: .medium))
+        // 盒外（extraLarge 4×2）与不存在的实例：拒绝。
+        XCTAssertFalse(engine.resizeDrawerBlock(placementID: placed.placementID, toColumns: 4, toRows: 2))
+        XCTAssertFalse(engine.resizeDrawerBlock(placementID: "missing", toColumns: 2, toRows: 1))
+    }
+
+    /// 全矩形可达：盒内但**不在旧离散档里**的中间整数跨（如 3×1）也必须能停靠。
+    func testResizeReachesIntermediateSpansInsideBox() throws {
+        register(blockID: "wide", kind: .drawer, sizes: [.small, .medium, .wide], defaultSize: .medium)
+        let (engine, directory, _) = try makeEngine()
+        engine.updateScreenConstraint(width: 900)
+
+        let placed = try XCTUnwrap(engine.autoPlaceDrawerBlock(pluginID: "com.test.plugin", blockID: "wide"))
+        XCTAssertEqual(placed.widthColumns, 2, "推荐档 2×1 落位")
+
+        XCTAssertTrue(engine.resizeDrawerBlock(placementID: placed.placementID, toColumns: 3, toRows: 1))
+        XCTAssertEqual(engine.drawerBlock(placementID: placed.placementID)?.widthColumns, 3)
+        XCTAssertTrue(engine.validate().isEmpty)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 存量超盒布局合法（validate 不再报 sizeNotSupported），缩放提交目标在盒内。
+    func testStoredSpanOutsideBoxIsLegalUntilResized() throws {
+        register(blockID: "cell", kind: .drawer, sizes: [.small, .medium], defaultSize: .small)
+        let (engine, directory, _) = try makeEngine()
+        var model = engine.modelForTesting
+        model.drawerBlocks.append(PlacedBlock(
+            pluginID: "com.test.plugin",
+            blockID: "cell",
+            placementID: "legacy",
+            page: 0,
+            originColumn: 0,
+            originRow: 0,
+            widthColumns: 4,
+            heightRows: 2
+        ))
+        engine.modelForTesting = model
+        // 盒外存量：不视为损坏。
+        XCTAssertTrue(engine.validate().isEmpty)
+        // 拖拽/提交仍只能落在盒内。
+        XCTAssertFalse(engine.resizeDrawerBlock(placementID: "legacy", toColumns: 4, toRows: 1))
+        XCTAssertTrue(engine.resizeDrawerBlock(placementID: "legacy", toColumns: 2, toRows: 1))
+        XCTAssertEqual(engine.drawerBlock(placementID: "legacy")?.widthColumns, 2)
+        try? FileManager.default.removeItem(at: directory)
     }
 
     func testRemoveDrawerBlock() throws {
@@ -353,43 +460,158 @@ final class LayoutEngineTests: XCTestCase {
 
     // MARK: 尺寸模型
 
-    func testBlockSizeGridSpansMatchDocumentation() {
-        XCTAssertEqual(BlockSize.small.gridSpan.columns, 1)
-        XCTAssertEqual(BlockSize.small.gridSpan.rows, 1)
-        XCTAssertEqual(BlockSize.medium.gridSpan.columns, 2)
-        XCTAssertEqual(BlockSize.wide.gridSpan.columns, 4)
-        XCTAssertEqual(BlockSize.large.gridSpan.rows, 2)
-        XCTAssertEqual(BlockSize.extraLarge.gridSpan.columns, 4)
-        XCTAssertEqual(BlockSize.extraLarge.gridSpan.rows, 2)
-    }
-
     func testNotchBlockValidationRules() {
-        // 紧凑块禁止声明尺寸。
-        XCTAssertNotNil(NotchBlock(
+        // 紧凑块合法（无抽屉三档声明）。
+        XCTAssertNil(NotchBlock(
             id: "c", displayName: "c", kind: .compact,
-            supportedSizes: [.small],
             makeView: { _ in AnyView(EmptyView()) }
         ).validationError)
 
-        // 抽屉块必须声明 supportedSizes 且包含 defaultSize。
+        // 抽屉块三档合法：min ≤ recommended ≤ max（物理像素，逐轴）。
         let validDrawer = NotchBlock(
             id: "d", displayName: "d", kind: .drawer,
-            supportedSizes: [.medium, .large], defaultSize: .large,
+            minSize: BlockPixelSize(width: 300, height: 120),
+            maxSize: BlockPixelSize(width: 300, height: 240),
+            recommendedSize: BlockPixelSize(width: 300, height: 120),
             makeView: { _ in AnyView(EmptyView()) }
         )
         XCTAssertNil(validDrawer.validationError)
 
+        // 推荐档落在矩形盒外 → 非法。
         XCTAssertNotNil(NotchBlock(
             id: "d2", displayName: "d2", kind: .drawer,
-            supportedSizes: [],
+            minSize: BlockPixelSize(width: 150, height: 120),
+            maxSize: BlockPixelSize(width: 300, height: 120),
+            recommendedSize: BlockPixelSize(width: 600, height: 240),
             makeView: { _ in AnyView(EmptyView()) }
         ).validationError)
 
+        // min 轴超过 max 轴 → 非法。
         XCTAssertNotNil(NotchBlock(
             id: "d3", displayName: "d3", kind: .drawer,
-            supportedSizes: [.medium], defaultSize: .large,
+            minSize: BlockPixelSize(width: 300, height: 240),
+            maxSize: BlockPixelSize(width: 300, height: 120),
+            recommendedSize: BlockPixelSize(width: 300, height: 120),
             makeView: { _ in AnyView(EmptyView()) }
         ).validationError)
+
+        // min 低于全局像素下限 75×60 → 非法。
+        XCTAssertNotNil(NotchBlock(
+            id: "d4", displayName: "d4", kind: .drawer,
+            minSize: BlockPixelSize(width: 60, height: 60),
+            maxSize: BlockPixelSize(width: 300, height: 240),
+            recommendedSize: BlockPixelSize(width: 300, height: 240),
+            makeView: { _ in AnyView(EmptyView()) }
+        ).validationError)
+    }
+
+    func testDrawerBoxAllowsFullRectangleAndClampsOutside() {
+        // 夹具以像素声明（档跨度 × 默认格 150/120）。
+        let box = fixtureBox(sizes: [.medium, .large], defaultSize: .medium)
+        XCTAssertEqual(box.min, BlockPixelSize(width: 300, height: 120))
+        XCTAssertEqual(box.max, BlockPixelSize(width: 300, height: 240))
+        XCTAssertEqual(box.recommended, BlockPixelSize(width: 300, height: 120))
+        let block = NotchBlock(
+            id: "boxy", displayName: "boxy", kind: .drawer,
+            minSize: box.min, maxSize: box.max, recommendedSize: box.recommended,
+            makeView: { _ in AnyView(EmptyView()) }
+        )
+        // 在默认格（150×120）下换算成盒 [2×1 ... 2×2]：盒内任意整数跨可达。
+        XCTAssertTrue(block.allows(GridSpan(columns: 2, rows: 1), cellWidth: 150, cellHeight: 120))
+        XCTAssertTrue(block.allows(GridSpan(columns: 2, rows: 2), cellWidth: 150, cellHeight: 120))
+        // 盒外（推荐与最大之外）拒绝 / 钳回。
+        XCTAssertFalse(block.allows(GridSpan(columns: 4, rows: 2), cellWidth: 150, cellHeight: 120))
+        XCTAssertFalse(block.allows(GridSpan(columns: 1, rows: 1), cellWidth: 150, cellHeight: 120))
+        XCTAssertEqual(
+            block.clamping(GridSpan(columns: 4, rows: 1), cellWidth: 150, cellHeight: 120),
+            GridSpan(columns: 2, rows: 1)
+        )
+        XCTAssertEqual(
+            block.clamping(GridSpan(columns: 1, rows: 1), cellWidth: 150, cellHeight: 120),
+            GridSpan(columns: 2, rows: 1)
+        )
+        // 全局像素下限：不允许声明小于 75×60。
+        XCTAssertEqual(
+            NotchBlock.globalMinimumPixel,
+            BlockPixelSize(width: 75, height: 60)
+        )
+    }
+
+    // MARK: 物理像素 → 格跨换算（用户改格子尺寸后组件物理尺寸仍落在声明区间）
+
+    /// 换算主路径：像素三档按当前格子换算成允许格跨盒。
+    func testPixelBoxConversionAtVariousCellSizes() {
+        let block = NotchBlock(
+            id: "px", displayName: "px", kind: .drawer,
+            minSize: BlockPixelSize(width: 300, height: 240),
+            maxSize: BlockPixelSize(width: 600, height: 480),
+            recommendedSize: BlockPixelSize(width: 300, height: 240),
+            makeView: { _ in AnyView(EmptyView()) }
+        )
+        XCTAssertNil(block.validationError)
+
+        // 默认格 150×120：300×240 → 2×2，600×480 → 4×4，推荐 2×2。
+        let `default` = block.sizeBox(cellWidth: 150, cellHeight: 120)
+        XCTAssertEqual(`default`?.min, GridSpan(columns: 2, rows: 2))
+        XCTAssertEqual(`default`?.max, GridSpan(columns: 4, rows: 4))
+        XCTAssertEqual(`default`?.recommended, GridSpan(columns: 2, rows: 2))
+
+        // 格子调小（75×60，最小格）：物理 300×240 需要 4×4 格兜底。
+        let small = block.sizeBox(cellWidth: 75, cellHeight: 60)
+        XCTAssertEqual(small?.min, GridSpan(columns: 4, rows: 4))
+        XCTAssertEqual(small?.max, GridSpan(columns: 8, rows: 8))
+        XCTAssertEqual(small?.recommended, GridSpan(columns: 4, rows: 4))
+
+        // 格子调大（280×240，最大格）：1 格 280 宽已超 min 300 时，min 兜底 1×1。
+        let big = block.sizeBox(cellWidth: 280, cellHeight: 240)
+        XCTAssertEqual(big?.min.columns, 2, "280 宽下一格不够 300，min 需 2 格")
+        XCTAssertEqual(big?.max.columns, 2, "600/280=2 格封顶（3 格 840 超 max）")
+        XCTAssertEqual(big?.recommended, GridSpan(columns: 2, rows: 1))
+    }
+
+    /// max 档连一格都装不下（格子比声明 max 还大）时以 1×1 兜底显示。
+    func testPixelBoxCollapsesToGlobalMinimumWhenCellExceedsMax() {
+        let block = NotchBlock(
+            id: "tiny", displayName: "tiny", kind: .drawer,
+            minSize: BlockPixelSize(width: 150, height: 120),
+            maxSize: BlockPixelSize(width: 180, height: 140),
+            recommendedSize: BlockPixelSize(width: 150, height: 120),
+            makeView: { _ in AnyView(EmptyView()) }
+        )
+        // 280 格宽 > 声明的 max 180：1×1 兜底（物理超 max 不可避免，允许显示）。
+        let box = block.sizeBox(cellWidth: 280, cellHeight: 240)
+        XCTAssertEqual(box?.min, GridSpan.globalMinimum)
+        XCTAssertEqual(box?.max, GridSpan.globalMinimum)
+        XCTAssertEqual(box?.recommended, GridSpan.globalMinimum)
+    }
+
+    /// 推荐像素换算成格跨后必须落回允许盒内（min ≤ recommended ≤ max，逐轴）。
+    func testPixelBoxRecommendedAlwaysInsideDeclaredBox() {
+        let cases: [(BlockPixelSize, BlockPixelSize, BlockPixelSize)] = [
+            (BlockPixelSize(width: 150, height: 120),
+             BlockPixelSize(width: 600, height: 480),
+             BlockPixelSize(width: 300, height: 240)),
+            (BlockPixelSize(width: 75, height: 60),
+             BlockPixelSize(width: 225, height: 180),
+             BlockPixelSize(width: 150, height: 120)),
+        ]
+        for (min, max, rec) in cases {
+            let block = NotchBlock(
+                id: "px", displayName: "px", kind: .drawer,
+                minSize: min, maxSize: max, recommendedSize: rec,
+                makeView: { _ in AnyView(EmptyView()) }
+            )
+            XCTAssertNil(block.validationError)
+            for cell in [(150.0, 120.0), (75.0, 60.0), (280.0, 240.0), (200.0, 180.0)] {
+                let box = block.sizeBox(cellWidth: cell.0, cellHeight: cell.1)
+                guard let box else { return XCTFail("抽屉块必须能换算") }
+                let span = box.recommended
+                XCTAssertGreaterThanOrEqual(span.columns, box.min.columns)
+                XCTAssertLessThanOrEqual(span.columns, box.max.columns)
+                XCTAssertGreaterThanOrEqual(span.rows, box.min.rows)
+                XCTAssertLessThanOrEqual(span.rows, box.max.rows)
+            }
+        }
     }
 
     // MARK: 编辑模式契约：无空行 + 缩放推挤（面板按需增减高的布局基础）
@@ -1240,7 +1462,8 @@ private func layoutIssueKind(_ issue: LayoutEngine.LayoutIssue) -> String {
     case .overlap: return "overlap"
     case .outOfBounds: return "outOfBounds"
     case .unknownBlock: return "unknownBlock"
-    case .sizeNotSupported: return "sizeNotSupported"
-    default: return "other"
+    case .compactBlockKindMismatch: return "compactBlockKindMismatch"
+    case .drawerBlockKindMismatch: return "drawerBlockKindMismatch"
+    case .schemaVersionMismatch: return "schemaVersionMismatch"
     }
 }

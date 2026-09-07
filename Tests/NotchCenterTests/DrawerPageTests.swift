@@ -37,17 +37,23 @@ final class DrawerPageTests: XCTestCase {
         pluginID: String = "com.test.plugin",
         blockID: String,
         kind: BlockKind,
-        sizes: Set<BlockSize> = [],
-        defaultSize: BlockSize? = nil
+        sizes: Set<FixtureSize> = [],
+        defaultSize: FixtureSize? = nil
     ) {
-        registry["\(pluginID)|\(blockID)"] = NotchBlock(
-            id: blockID,
-            displayName: blockID,
-            kind: kind,
-            supportedSizes: sizes,
-            defaultSize: defaultSize,
-            makeView: { _ in AnyView(EmptyView()) }
-        )
+        let makeView: @MainActor (BlockContext) -> AnyView = { _ in AnyView(EmptyView()) }
+        switch kind {
+        case .compact:
+            registry["\(pluginID)|\(blockID)"] = NotchBlock(
+                id: blockID, displayName: blockID, kind: kind, makeView: makeView
+            )
+        case .drawer:
+            let box = fixtureBox(sizes: sizes, defaultSize: defaultSize)
+            registry["\(pluginID)|\(blockID)"] = NotchBlock(
+                id: blockID, displayName: blockID, kind: kind,
+                minSize: box.min, maxSize: box.max, recommendedSize: box.recommended,
+                makeView: makeView
+            )
+        }
     }
 
     private func loadModel(from fileURL: URL) throws -> LayoutModel {

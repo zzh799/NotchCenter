@@ -353,7 +353,12 @@ final class SystemMonitorTests: XCTestCase {
             XCTAssertEqual(block.kind, .drawer)
         }
         let overview = blocks.first { $0.id == "system.overview" }
-        XCTAssertEqual(overview?.supportedSpans, [
+        XCTAssertEqual(overview?.minSize, BlockPixelSize(width: 150, height: 120))
+        XCTAssertEqual(overview?.maxSize, BlockPixelSize(width: 600, height: 480))
+        XCTAssertEqual(overview?.recommendedSize, BlockPixelSize(width: 300, height: 240))
+        // 旧声明的每个跨度都应在默认格（150×120）换算的矩形盒内
+        // （包络迁移不丢尺寸能力）。
+        for span in [
             GridSpan(columns: 1, rows: 1),
             GridSpan(columns: 1, rows: 2),
             GridSpan(columns: 2, rows: 1),
@@ -361,12 +366,16 @@ final class SystemMonitorTests: XCTestCase {
             GridSpan(columns: 4, rows: 2),
             GridSpan(columns: 4, rows: 3),
             GridSpan(columns: 4, rows: 4),
-        ])
+        ] {
+            XCTAssertTrue(
+                overview?.allows(span, cellWidth: 150, cellHeight: 120) ?? false,
+                "overview 盒须含 \(span.columns)×\(span.rows)"
+            )
+        }
         let single = blocks.first { $0.id == "system.cpu" }
-        XCTAssertEqual(single?.supportedSpans, [
-            GridSpan(columns: 1, rows: 1),
-            GridSpan(columns: 2, rows: 1),
-        ])
+        XCTAssertEqual(single?.minSize, BlockPixelSize(width: 150, height: 120))
+        XCTAssertEqual(single?.maxSize, BlockPixelSize(width: 300, height: 120))
+        XCTAssertEqual(single?.recommendedSize, BlockPixelSize(width: 150, height: 120))
     }
 
     // MARK: 跨度 → 布局映射
@@ -379,17 +388,16 @@ final class SystemMonitorTests: XCTestCase {
         XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: 4, heightRows: 2), .sparklineRow)
         XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: 4, heightRows: 3), .sparklineRow)
         XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: 4, heightRows: 4), .sparklineGrid)
-        // 无 span 上下文（组件目录预览等）按 defaultSize 的网格形态渲染。
+        // 无 span 上下文（防御路径）按推荐的网格形态（2×2 sparklineGrid）渲染。
         XCTAssertEqual(OverviewArrangement.forSpan(widthColumns: nil, heightRows: nil), .sparklineGrid)
     }
 
-    func testSingleBlockFormReadsSpanBeforeSize() {
-        // 抽屉路径 size 恒 nil，2×1 判定必须走 span。
-        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: 2, heightRows: 1, size: nil), .sparkline)
-        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: 1, heightRows: 1, size: nil), .mini)
-        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: nil, heightRows: nil, size: .medium), .sparkline)
-        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: nil, heightRows: nil, size: .small), .mini)
-        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: nil, heightRows: nil, size: nil), .mini)
+    func testSingleBlockFormReadsSpan() {
+        // 抽屉与目录预览路径都下发 span；2×1 判定走 span → sparkline。
+        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: 2, heightRows: 1), .sparkline)
+        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: 1, heightRows: 1), .mini)
+        // 无 span 上下文（防御路径）：按推荐 1×1 的 mini 形态。
+        XCTAssertEqual(MetricCellForm.forSpan(widthColumns: nil, heightRows: nil), .mini)
     }
 
     // MARK: store 节奏与生命周期

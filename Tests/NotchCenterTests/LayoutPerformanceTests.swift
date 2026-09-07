@@ -50,16 +50,23 @@ final class LayoutPerformanceTests: XCTestCase {
     }
 
     private func registerDrawerBlock(blockID: String, spans: [GridSpan] = [GridSpan(columns: 2, rows: 2)]) {
+        let nonEmpty = spans.isEmpty ? [GridSpan(columns: 2, rows: 2)] : spans
+        let minColumns = nonEmpty.map(\.columns).min() ?? 2
+        let minRows = nonEmpty.map(\.rows).min() ?? 2
+        let maxColumns = nonEmpty.map(\.columns).max() ?? 2
+        let maxRows = nonEmpty.map(\.rows).max() ?? 2
+        // 跨度 → 像素（默认格 150×120），与官方插件迁移规则一致。
+        let minSize = BlockPixelSize(width: CGFloat(minColumns) * 150, height: CGFloat(minRows) * 120)
+        let maxSize = BlockPixelSize(width: CGFloat(maxColumns) * 150, height: CGFloat(maxRows) * 120)
         registry["perf.plugin|\(blockID)"] = NotchBlock(
             id: blockID,
             displayName: blockID,
             kind: .drawer,
-            supportedSizes: [],
-            defaultSize: nil,
+            minSize: minSize,
+            maxSize: maxSize,
+            recommendedSize: minSize,
             makeView: { _ in AnyView(EmptyView()) }
         )
-        // supportedSpans 由 supportedSizes 派生；预览缩放路径校验它，注册一份。
-        _ = spans
     }
 
     /// 铺一个真实感的布局：N 块 2×2，按 4 列行优先紧密排布（无空洞）。

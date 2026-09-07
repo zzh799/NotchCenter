@@ -316,35 +316,24 @@ final class DisplayPluginTests: XCTestCase {
 
     func testArrangementSelectsCompactOnlyFor1By1Span() {
         XCTAssertEqual(
-            BrightnessSliderArrangement.forSpan(widthColumns: 1, heightRows: 1, size: nil),
+            BrightnessSliderArrangement.forSpan(widthColumns: 1, heightRows: 1),
             .compact)
         XCTAssertEqual(
-            BrightnessSliderArrangement.forSpan(widthColumns: 1, heightRows: 1, size: .medium),
-            .compact,
-            "抽屉路径恒有 span，size 不参与判定")
-        XCTAssertEqual(
-            BrightnessSliderArrangement.forSpan(widthColumns: 2, heightRows: 1, size: nil),
+            BrightnessSliderArrangement.forSpan(widthColumns: 2, heightRows: 1),
             .rows)
         XCTAssertEqual(
-            BrightnessSliderArrangement.forSpan(widthColumns: 4, heightRows: 2, size: nil),
+            BrightnessSliderArrangement.forSpan(widthColumns: 4, heightRows: 2),
             .rows)
         XCTAssertEqual(
-            BrightnessSliderArrangement.forSpan(widthColumns: 1, heightRows: 2, size: nil),
+            BrightnessSliderArrangement.forSpan(widthColumns: 1, heightRows: 2),
             .rows,
             "未声明 1 列 × 多行的跨度；即便出现也不回退紧凑（防回归）")
     }
 
-    func testArrangementFallbackUsesSizeForSpanlessContexts() {
+    func testArrangementSpanlessFallbackUsesRows() {
+        // 目录预览等无 span 上下文的防御回退：按推荐 2×1 的行式形态。
         XCTAssertEqual(
-            BrightnessSliderArrangement.forSpan(widthColumns: nil, heightRows: nil, size: .small),
-            .compact,
-            "目录预览等无 span 上下文按 size 兜底")
-        XCTAssertEqual(
-            BrightnessSliderArrangement.forSpan(widthColumns: nil, heightRows: nil, size: .medium),
+            BrightnessSliderArrangement.forSpan(widthColumns: nil, heightRows: nil),
             .rows)
-        XCTAssertEqual(
-            BrightnessSliderArrangement.forSpan(widthColumns: nil, heightRows: nil, size: nil),
-            .rows,
-            "完全无上下文时回退行式（defaultSize 非 small）")
     }
 }

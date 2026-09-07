@@ -105,21 +105,23 @@ final class DrawerInteractionStateTests: XCTestCase {
             "a",
             translation: .zero,
             placement: placement(columns: 2, rows: 3),
-            supportedSpans: [GridSpan(columns: 1, rows: 1), GridSpan(columns: 2, rows: 3)],
+            minSize: GridSpan(columns: 1, rows: 1),
+            maxSize: GridSpan(columns: 2, rows: 3),
             metrics: metrics
         )
         XCTAssertEqual(state.previewSpan(for: "a"), GridSpan(columns: 2, rows: 3))
         XCTAssertTrue(state.isResizing("a"))
     }
 
-    func testResizeSnapsToSupportedSpan() {
+    func testResizeClampsToBoxUpperSpan() {
         let state = DrawerInteractionState(bridge: Recorder().bridge())
-        // 向右下拖 300/264 pt ≈ (1.85, 2) 格 → 吸附到 3×4。
+        // 向右下拖 300/264 pt ≈ (1.85, 2) 格 → 越过死区量化到 3×4 = 盒上界。
         state.updateResize(
             "a",
             translation: CGSize(width: 300, height: 264),
             placement: placement(columns: 1, rows: 2),
-            supportedSpans: [GridSpan(columns: 1, rows: 2), GridSpan(columns: 3, rows: 4)],
+            minSize: GridSpan(columns: 1, rows: 2),
+            maxSize: GridSpan(columns: 3, rows: 4),
             metrics: metrics
         )
         XCTAssertEqual(state.previewSpan(for: "a"), GridSpan(columns: 3, rows: 4))
@@ -132,7 +134,8 @@ final class DrawerInteractionStateTests: XCTestCase {
             "a",
             translation: .zero,
             placement: placement(),
-            supportedSpans: [GridSpan(columns: 1, rows: 1)],
+            minSize: GridSpan(columns: 1, rows: 1),
+            maxSize: GridSpan(columns: 1, rows: 1),
             metrics: metrics
         )
         state.beginDrag("a")
@@ -207,7 +210,8 @@ final class DrawerInteractionStateTests: XCTestCase {
             "a",
             translation: .zero,
             placement: placement(),
-            supportedSpans: [GridSpan(columns: 1, rows: 1)],
+            minSize: GridSpan(columns: 1, rows: 1),
+            maxSize: GridSpan(columns: 1, rows: 1),
             metrics: metrics
         )
         state.commitResize("a")

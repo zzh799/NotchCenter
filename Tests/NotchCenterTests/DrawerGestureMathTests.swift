@@ -90,13 +90,13 @@ final class DrawerGestureMathTests: XCTestCase {
         XCTAssertEqual(target.column, -2)
     }
 
-    // MARK: - ResizeSpanResolver
+    // MARK: - ResizeSpanResolver（盒语义：逐轴死区量化 + 钳进 [min...max]）
 
-    private let wideSpans = [
-        GridSpan(columns: 1, rows: 2),
-        GridSpan(columns: 2, rows: 2),
-        GridSpan(columns: 4, rows: 2)
-    ]
+    /// 常见盒：宽 1×2…4×2（等价旧 wideSpans 的包络盒）。
+    private let box = (
+        min: GridSpan(columns: 1, rows: 2),
+        max: GridSpan(columns: 4, rows: 2)
+    )
 
     func testPressWithZeroTranslationKeepsCurrentSpan() {
         // 按下瞬间位移为零：目标即当前尺寸，不会瞬间缩小。
@@ -105,137 +105,119 @@ final class DrawerGestureMathTests: XCTestCase {
             base: base,
             translation: .zero,
             current: base,
-            supportedSpans: wideSpans,
+            minSize: box.min,
+            maxSize: box.max,
             metrics: metrics
         )
         XCTAssertEqual(resolved, base)
     }
 
     func testDeadBandJitterDoesNotToggleSpan() {
-        // 半格边界（81pt = 0.5 格）附近抖动：死区吸收，档位不动。
+        // 半格边界（81pt = 0.5 格）附近抖动：死区吸收，跨度不动。
         // 没有死区时这里会在 2×2 与 3×2 之间逐事件翻转（预览闪烁）。
         var current = GridSpan(columns: 2, rows: 2)
         for offset in [81, 95, 78, 88, 82, 79] {
-            guard let next = ResizeSpanResolver.resolve(
+            current = ResizeSpanResolver.resolve(
                 base: GridSpan(columns: 2, rows: 2),
                 translation: CGSize(width: CGFloat(offset), height: 0),
                 current: current,
-                supportedSpans: wideSpans,
+                minSize: box.min,
+                maxSize: box.max,
                 metrics: metrics
-            ) else { continue }
-            current = next
+            )
         }
         XCTAssertEqual(current, GridSpan(columns: 2, rows: 2))
     }
 
     func testSwitchesBeyondDeadBand() {
-        // 150pt ≈ 0.93 格，越过 0.5 + band 的死区边界 → 量化值升到 3 格。
-        let quantized = ResizeSpanResolver.quantized(
+        // 150pt ≈ 0.93 格，越过 0.5 + band 的死区边界 → 量化值升到 3 格；
+        // 盒内 3 列可直接停靠（全矩形可达，无需落在离散档上）。
+        let resolved = ResizeSpanResolver.resolve(
             base: GridSpan(columns: 2, rows: 2),
             translation: CGSize(width: 150, height: 0),
             current: GridSpan(columns: 2, rows: 2),
+            minSize: box.min,
+            maxSize: box.max,
             metrics: metrics
         )
-        XCTAssertEqual(quantized.columns, 3)
+        XCTAssertEqual(resolved, GridSpan(columns: 3, rows: 2))
     }
 
-    func testLargeDragSnapsToLargestSupportedSpan() {
-        // 300pt ≈ 1.85 格 → 量化 4 格 → 吸附到 4×2。
+    func testLargeDragClampsToDeclaredMaxSize() {
+        // 300pt ≈ 1.85 格 → 量化远超 4 → 钳到盒上界 4×2（不再吸附后取最近档）。
         let resolved = ResizeSpanResolver.resolve(
             base: GridSpan(columns: 2, rows: 2),
             translation: CGSize(width: 300, height: 0),
             current: GridSpan(columns: 2, rows: 2),
-            supportedSpans: wideSpans,
+            minSize: box.min,
+            maxSize: box.max,
             metrics: metrics
         )
         XCTAssertEqual(resolved, GridSpan(columns: 4, rows: 2))
     }
 
-    func testEquidistantSpanKeepsFirstCandidate() {
-        // 量化到 3 格时，(2,2) 与 (4,2) 的 L1 距离都是 1；严格 `<` 才替换，
-        // 于是保留先出现的 (2,2)。只锁定现状，不要在业务上依赖这个顺序。
+    func testShrinkClampsToDeclaredMinSize() {
+        // 向左猛拖：量化低于 1 → 钳到盒下界 1 列（不得小于组件最小尺寸）。
+        let resolved = ResizeSpanResolver.resolve(
+            base: GridSpan(columns: 3, rows: 2),
+            translation: CGSize(width: -162 * 20, height: 0),
+            current: GridSpan(columns: 3, rows: 2),
+            minSize: box.min,
+            maxSize: box.max,
+            metrics: metrics
+        )
+        XCTAssertEqual(resolved, GridSpan(columns: 1, rows: 2))
+    }
+
+    func testMinSizeAboveOneBlocksShrinkingBelowIt() {
+        // 组件最小宽 2 列：拖得再狠也停不下 1 列。
         let resolved = ResizeSpanResolver.resolve(
             base: GridSpan(columns: 2, rows: 2),
-            translation: CGSize(width: 150, height: 0),
+            translation: CGSize(width: -162 * 20, height: 0),
             current: GridSpan(columns: 2, rows: 2),
-            supportedSpans: wideSpans,
+            minSize: GridSpan(columns: 2, rows: 2),
+            maxSize: GridSpan(columns: 4, rows: 2),
             metrics: metrics
         )
         XCTAssertEqual(resolved, GridSpan(columns: 2, rows: 2))
     }
 
     func testRowClampUpperBound() {
-        let quantized = ResizeSpanResolver.quantized(
+        // 行上界 = min(声明 max 行, DrawerResizeLimits.maxRows)。
+        let resolved = ResizeSpanResolver.resolve(
             base: GridSpan(columns: 1, rows: 1),
             translation: CGSize(width: 0, height: 132 * 20),
             current: GridSpan(columns: 1, rows: 1),
+            minSize: GridSpan(columns: 1, rows: 1),
+            maxSize: GridSpan(columns: 1, rows: 8),
             metrics: metrics
         )
-        XCTAssertEqual(quantized.rows, DrawerResizeLimits.maxRows)
+        XCTAssertEqual(resolved.rows, DrawerResizeLimits.maxRows)
     }
 
-    func testColumnClampLowerBound() {
-        let quantized = ResizeSpanResolver.quantized(
-            base: GridSpan(columns: 2, rows: 2),
-            translation: CGSize(width: -162 * 20, height: 0),
-            current: GridSpan(columns: 2, rows: 2),
+    /// 存量超盒（插件更新后显示跨度在盒外）的手势语义：首个像素级位移即被
+    /// 钳进盒内（这里 4 行 > 声明 max 2 行，向下拖一格直接夹回 2）。
+    func testLegacyOutOfBoxSpanClampsIntoBoxOnFirstDrag() {
+        let resolved = ResizeSpanResolver.resolve(
+            base: GridSpan(columns: 2, rows: 4),
+            translation: CGSize(width: 162, height: 132),
+            current: GridSpan(columns: 2, rows: 4),
+            minSize: GridSpan(columns: 1, rows: 1),
+            maxSize: GridSpan(columns: 4, rows: 2),
             metrics: metrics
         )
-        XCTAssertEqual(quantized.columns, 1)
+        XCTAssertEqual(resolved, GridSpan(columns: 3, rows: 2))
     }
 
-    // KNOWN BUG：横向夹紧上界是常量 4，与 `effectiveMaxColumns()` 脱钩。
-    // 容量 < 4（用户把 maxColumns 调到 2/3，或屏幕窄）时，块仍能被撑到
-    // 4 列——`previewArrangement(resizing:)` 只 clamp originColumn、不截断
-    // width，于是能写出「跨度 4 > 容量 2」的布局。
-    // 修复 `DrawerResizeLimits.legacyColumnUpperBound` 时，把这条断言改成
-    // 「上界 = 容量」的期望值。
-    func testColumnUpperBoundIgnoresCapacity() {
+    func testZeroTranslationKeepsOutOfBoxLegacySpanClamped() {
+        // 存量 4×2 但声明 max 2×2：位移为零也应先钳回盒内（预览从盒内起步，
+        // 不会把"已超界"的显示尺寸当作可维持状态）。
         let resolved = ResizeSpanResolver.resolve(
-            base: GridSpan(columns: 1, rows: 2),
-            translation: CGSize(width: 162 * 10, height: 0),
-            current: GridSpan(columns: 1, rows: 2),
-            supportedSpans: wideSpans,
-            metrics: metrics
-        )
-        XCTAssertEqual(resolved, GridSpan(columns: 4, rows: 2))
-    }
-
-    /// 修复路径已留好：把容量作为上界传入即可，无需改调用点以外的代码。
-    func testColumnUpperBoundIsConfigurable() {
-        let resolved = ResizeSpanResolver.resolve(
-            base: GridSpan(columns: 1, rows: 2),
-            translation: CGSize(width: 162 * 10, height: 0),
-            current: GridSpan(columns: 1, rows: 2),
-            supportedSpans: wideSpans,
-            metrics: metrics,
-            columnUpperBound: 2
-        )
-        XCTAssertEqual(resolved, GridSpan(columns: 2, rows: 2))
-    }
-
-    func testEmptySupportedSpansYieldsNil() {
-        XCTAssertNil(
-            ResizeSpanResolver.resolve(
-                base: GridSpan(columns: 1, rows: 1),
-                translation: .zero,
-                current: GridSpan(columns: 1, rows: 1),
-                supportedSpans: [],
-                metrics: metrics
-            )
-        )
-    }
-
-    func testNearestSpanByManhattanDistance() {
-        // 距离相同时取数组第一个：不要依赖具体顺序，这里只是锁定现状。
-        let resolved = ResizeSpanResolver.resolve(
-            base: GridSpan(columns: 2, rows: 2),
+            base: GridSpan(columns: 4, rows: 2),
             translation: .zero,
-            current: GridSpan(columns: 2, rows: 2),
-            supportedSpans: [
-                GridSpan(columns: 3, rows: 3),
-                GridSpan(columns: 2, rows: 2)
-            ],
+            current: GridSpan(columns: 4, rows: 2),
+            minSize: GridSpan(columns: 1, rows: 1),
+            maxSize: GridSpan(columns: 2, rows: 2),
             metrics: metrics
         )
         XCTAssertEqual(resolved, GridSpan(columns: 2, rows: 2))

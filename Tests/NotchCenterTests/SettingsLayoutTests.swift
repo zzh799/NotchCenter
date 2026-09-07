@@ -92,17 +92,23 @@ final class BlockPlacementTests: XCTestCase {
         pluginID: String = "com.test.plugin",
         blockID: String,
         kind: BlockKind,
-        sizes: Set<BlockSize> = [],
-        defaultSize: BlockSize? = nil
+        sizes: Set<FixtureSize> = [],
+        defaultSize: FixtureSize? = nil
     ) {
-        registry["\(pluginID)|\(blockID)"] = NotchBlock(
-            id: blockID,
-            displayName: blockID,
-            kind: kind,
-            supportedSizes: sizes,
-            defaultSize: defaultSize,
-            makeView: { _ in AnyView(EmptyView()) }
-        )
+        let makeView: @MainActor (BlockContext) -> AnyView = { _ in AnyView(EmptyView()) }
+        switch kind {
+        case .compact:
+            registry["\(pluginID)|\(blockID)"] = NotchBlock(
+                id: blockID, displayName: blockID, kind: kind, makeView: makeView
+            )
+        case .drawer:
+            let box = fixtureBox(sizes: sizes, defaultSize: defaultSize)
+            registry["\(pluginID)|\(blockID)"] = NotchBlock(
+                id: blockID, displayName: blockID, kind: kind,
+                minSize: box.min, maxSize: box.max, recommendedSize: box.recommended,
+                makeView: makeView
+            )
+        }
     }
 
     // MARK: 快速区插入（紧凑块拖拽落点，屏幕位置语义）
