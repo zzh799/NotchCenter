@@ -11,6 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         EditMenuInstaller.install()
         panelController = NotchPanelController()
         panelController?.showDocked()
+        #if DEBUG
+        // 开发期调试：NOTCHCENTER_SIZE_LAB=1 启动直开块尺寸对照实验室（SizeLabWindow）。
+        if ProcessInfo.processInfo.environment["NOTCHCENTER_SIZE_LAB"] == "1" {
+            panelController?.showSizeLab()
+        }
+        #endif
         maybeRunSmokeTest()
         maybeRunPlacementProbe()
         maybeRunDragProbe()

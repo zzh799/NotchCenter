@@ -32,8 +32,8 @@ final class GridMetricsStore: ObservableObject, @unchecked Sendable {
     /// 各指标的合法区间（步长 1pt；写入前钳制，UI 滑杆共用同一区间）。
     static func range(for metric: Metric) -> ClosedRange<CGFloat> {
         switch metric {
-        case .cellWidth: return 90...280
-        case .cellHeight: return 70...240
+        case .cellWidth: return 75...280
+        case .cellHeight: return 60...240
         case .spacing: return 0...32
         case .contentPadding: return 0...40
         }
