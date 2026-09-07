@@ -60,7 +60,8 @@ final class BrightnessController: ObservableObject {
         self.backend = backend
     }
 
-    /// 展示行：初值回读中的屏也显示（滑杆禁用），仅隐藏判定不可调节的屏。
+    /// 展示行：初值回读中的屏也显示（滑杆位置留空槽占位，见
+    /// `DisplaySlidersBlockView`），仅隐藏判定不可调节的屏。
     var rows: [BrightnessDisplayModel] {
         orderedIDs.compactMap { models[$0] }.filter { $0.state != .failed }
     }
