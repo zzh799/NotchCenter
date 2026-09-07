@@ -94,11 +94,15 @@ extension LayoutEngine {
 
     /// 缩放实时预览（不落盘）：把 `placementID` 视为已改到目标跨度（原点不动，
     /// 仅按列跨度 clamp 到容量内），其余块推挤下移——上方块扩大时下方整块下移、
-    /// 面板随之增高的实时依据。跨度不在 supportedSpans 内返回空。
+    /// 面板随之增高的实时依据。目标在当前格子换算的块允许矩形盒外返回空。
     func previewArrangement(resizing placementID: String, toColumns: Int, toRows: Int) -> [String: GridOrigin] {
         guard var changed = drawerBlock(placementID: placementID),
               let definition = blockResolver(changed.pluginID, changed.blockID),
-              definition.supportedSpans.contains(GridSpan(columns: toColumns, rows: toRows)) else {
+              definition.allows(
+                  GridSpan(columns: toColumns, rows: toRows),
+                  cellWidth: NotchGridMetrics.cellWidth,
+                  cellHeight: NotchGridMetrics.cellHeight
+              ) else {
             return [:]
         }
         let bounds = validColumnRange(others: siblings(of: changed), width: toColumns)

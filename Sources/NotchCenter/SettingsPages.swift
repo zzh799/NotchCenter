@@ -196,6 +196,7 @@ enum ComponentCatalogBuilder {
                             region: block.kind == .compact ? .compact : .drawer,
                             placementID: placementID,
                             frame: frame,
+                            size: block.kind == .compact ? nil : span,
                             originColumn: 0,
                             originRow: 0,
                             widthColumns: span.columns,
@@ -237,17 +238,16 @@ enum ComponentCatalogBuilder {
             }
     }
 
-    /// 预览用跨度：默认尺寸档优先，否则取支持跨度里最小的一档。
+    /// 预览用跨度：抽屉块取推荐尺寸（优先显示档；物理像素按**当前格子**换算成
+    /// 格跨）；紧凑块（无尺寸声明）回退 1×1。
     private static func preferredSpan(for block: NotchBlock) -> GridSpan {
-        if let size = block.defaultSize {
-            return GridSpan(columns: size.gridSpan.columns, rows: size.gridSpan.rows)
+        if block.kind == .compact {
+            return GridSpan.globalMinimum
         }
-        guard let smallest = block.supportedSpans.sorted(by: { lhs, rhs in
-            (lhs.columns * lhs.rows, lhs.columns) < (rhs.columns * rhs.rows, rhs.columns)
-        }).first else {
-            return GridSpan(columns: 1, rows: 1)
-        }
-        return smallest
+        return block.sizeBox(
+            cellWidth: NotchGridMetrics.cellWidth,
+            cellHeight: NotchGridMetrics.cellHeight
+        )?.recommended ?? GridSpan.globalMinimum
     }
 
     /// 合成放置实例 ID：必须是合法 StateStore 键（仅字母数字与 . _ -）。

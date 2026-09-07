@@ -365,7 +365,7 @@ extension NotchPanelController {
                     region: .drawer,
                     placementID: placement.placementID,
                     frame: frame,
-                    size: nil,
+                    size: currentSpan,
                     originColumn: placement.originColumn,
                     originRow: placement.originRow,
                     widthColumns: placement.widthColumns,
@@ -401,12 +401,15 @@ extension NotchPanelController {
                 view = block.makeView(context)
             }
             cache[placement.placementID] = (key, view)
+            // 物理像素三档 → 当前格子的允许格跨盒（缩放钳制用；格子变化会经
+            // didChangeNotification 重建元素，盒随之刷新）。
+            let metrics = GridMetrics.current
+            let box = block.sizeBox(cellWidth: metrics.cellWidth, cellHeight: metrics.cellHeight)
             elements.append(DrawerElement(
                 placement: placement,
                 view: view,
-                supportedSpans: block.supportedSpans.sorted { lhs, rhs in
-                    lhs.columns == rhs.columns ? lhs.rows < rhs.rows : lhs.columns < rhs.columns
-                },
+                minSize: box?.min ?? GridSpan.globalMinimum,
+                maxSize: box?.max ?? GridSpan.globalMinimum,
                 currentSpan: currentSpan,
                 hasSettings: hasSettings
             ))

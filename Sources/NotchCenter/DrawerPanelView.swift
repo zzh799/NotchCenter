@@ -4,12 +4,14 @@ import SwiftUI
 
 // MARK: - 抽屉面板（文档 §5.3 / §5.5）
 
-/// 抽屉网格元素：已放置块 + 视图 + 支持的尺寸。
+/// 抽屉网格元素：已放置块 + 视图 + 尺寸盒（插件声明的最小/最大档）。
 struct DrawerElement: Identifiable {
     let placement: PlacedBlock
     let view: AnyView
-    /// 支持的完整跨度集合（列数 × 行数，来自块声明的 supportedSpans）。
-    let supportedSpans: [GridSpan]
+    /// 允许矩形盒的下角（来自块声明的 minSize；缩放预览/提交据此逐轴夹紧）。
+    let minSize: GridSpan
+    /// 允许矩形盒的上角（来自块声明的 maxSize）。
+    let maxSize: GridSpan
     /// 当前已提交的跨度（与 placement 一致；布局遗留数据可能为 nil）。
     let currentSpan: GridSpan?
     /// 插件是否提供设置界面（编辑模式左上角齿轮按钮的显隐条件）。
@@ -500,7 +502,8 @@ struct DrawerPanelView: View {
                     element.id,
                     translation: translation,
                     placement: element.placement,
-                    supportedSpans: element.supportedSpans,
+                    minSize: element.minSize,
+                    maxSize: element.maxSize,
                     metrics: GridMetrics.current
                 )
             },

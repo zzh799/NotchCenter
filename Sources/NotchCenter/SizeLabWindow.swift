@@ -482,6 +482,7 @@ private struct SizeLabView: View {
                         region: .drawer,
                         placementID: component.placementID,
                         frame: CGRect(origin: origin, size: size),
+                        size: GridSpan(columns: columnSpan, rows: rowSpan),
                         originColumn: 0,
                         originRow: 0,
                         widthColumns: columnSpan,

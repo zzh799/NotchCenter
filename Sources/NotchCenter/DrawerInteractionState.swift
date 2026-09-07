@@ -166,7 +166,8 @@ final class DrawerInteractionState: ObservableObject {
         _ placementID: String,
         translation: CGSize,
         placement: PlacedBlock,
-        supportedSpans: [GridSpan],
+        minSize: GridSpan,
+        maxSize: GridSpan,
         metrics: GridMetrics
     ) {
         if resizingPlacementID != placementID {
@@ -176,14 +177,15 @@ final class DrawerInteractionState: ObservableObject {
             phase = .resizing(placementID: placementID, span: base)
         }
         guard let base = resizeBase,
-              case .resizing(_, let current) = phase,
-              let candidate = ResizeSpanResolver.resolve(
-                  base: base,
-                  translation: translation,
-                  current: current,
-                  supportedSpans: supportedSpans,
-                  metrics: metrics
-              ) else { return }
+              case .resizing(_, let current) = phase else { return }
+        let candidate = ResizeSpanResolver.resolve(
+            base: base,
+            translation: translation,
+            current: current,
+            minSize: minSize,
+            maxSize: maxSize,
+            metrics: metrics
+        )
 
         guard candidate != current else { return }
         phase = .resizing(placementID: placementID, span: candidate)

@@ -17,18 +17,6 @@ import NotchCenterKit
 enum DrawerResizeLimits {
     /// 纵向无容量概念，纯手感上限。
     static let maxRows = 6
-
-    /// 横向夹紧上界。
-    ///
-    /// ⚠️ **已知 bug，本次重构刻意保留旧行为**：它与 `effectiveMaxColumns()`
-    /// 脱钩——`previewArrangement(resizing:)` 只 clamp `originColumn`、
-    /// **不截断 width**，所以当 capacity < 4（用户把 maxColumns 调到 2/3，
-    /// 或屏幕窄）时，能把块撑到 4 列并塞到 `originColumn = -2`，写出
-    /// 「跨度 4 > 容量 2」的布局。
-    ///
-    /// 修复方式：改成 `max(1, capacity)`，并同步 `DrawerGestureMathTests` 中
-    /// 标注 `KNOWN BUG` 的那条断言。
-    static let legacyColumnUpperBound = 4
 }
 
 /// 拖拽位移 → 目标格。
@@ -69,61 +57,30 @@ enum ResizeSpanResolver {
         )
     }
 
-    /// 死区量化 + 夹紧（列 `1...columnUpperBound`，行 `1...maxRows`）。
+    /// 死区量化 + 逐轴钳进块的允许矩形盒（列 `[minSize.columns...maxSize.columns]`、
+    /// 行 `[minSize.rows...min(maxSize.rows, maxRows)]`），盒内任意整数跨可达。
     ///
     /// 量化经 `ResizeHysteresis` 死区迟滞：朴素 round() 会在半格边界处随
     /// ±1px 抖动来回翻转，预览随之闪烁。
-    static func quantized(
-        base: GridSpan,
-        translation: CGSize,
-        current: GridSpan,
-        metrics: GridMetrics,
-        columnUpperBound: Int = DrawerResizeLimits.legacyColumnUpperBound
-    ) -> GridSpan {
-        let raw = continuous(base: base, translation: translation, metrics: metrics)
-        return GridSpan(
-            columns: min(
-                max(ResizeHysteresis.quantized(raw.columns, current: current.columns), 1),
-                columnUpperBound
-            ),
-            rows: min(
-                max(ResizeHysteresis.quantized(raw.rows, current: current.rows), 1),
-                DrawerResizeLimits.maxRows
-            )
-        )
-    }
-
-    /// 位移 → 候选跨度：量化后吸附到 `supportedSpans` 中 L1 距离最近的一个。
     ///
-    /// - Returns: 吸附后的跨度；`supportedSpans` 为空时返回 nil（调用方保持原样）。
-    ///
-    /// 距离相同时取数组中第一个——与抽出前一致（严格 `<` 才替换），顺序
-    /// 依赖 `supportedSpans` 自身的稳定性，不要在调用方依赖具体顺序。
+    /// 存量超盒布局（插件更新后显示跨度落在盒外）的手势语义：预览目标从
+    /// 按下瞬间的当前跨度起被钳进盒内——首个像素级位移即夹到最近的盒边界
+    /// （不得大于最大 / 小于最小），与"存量照显、下次拖拽即夹"的产品策略一致。
     static func resolve(
         base: GridSpan,
         translation: CGSize,
         current: GridSpan,
-        supportedSpans: [GridSpan],
-        metrics: GridMetrics,
-        columnUpperBound: Int = DrawerResizeLimits.legacyColumnUpperBound
-    ) -> GridSpan? {
-        let raw = quantized(
-            base: base,
-            translation: translation,
-            current: current,
-            metrics: metrics,
-            columnUpperBound: columnUpperBound
+        minSize: GridSpan,
+        maxSize: GridSpan,
+        metrics: GridMetrics
+    ) -> GridSpan {
+        let raw = continuous(base: base, translation: translation, metrics: metrics)
+        let quantizedColumns = ResizeHysteresis.quantized(raw.columns, current: current.columns)
+        let quantizedRows = ResizeHysteresis.quantized(raw.rows, current: current.rows)
+        return GridSpan(
+            columns: min(max(quantizedColumns, minSize.columns), maxSize.columns),
+            rows: min(max(quantizedRows, minSize.rows), min(maxSize.rows, DrawerResizeLimits.maxRows))
         )
-        var nearest: GridSpan?
-        var nearestDistance = Int.max
-        for span in supportedSpans {
-            let distance = abs(span.columns - raw.columns) + abs(span.rows - raw.rows)
-            if distance < nearestDistance {
-                nearestDistance = distance
-                nearest = span
-            }
-        }
-        return nearest
     }
 }
 

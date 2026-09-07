@@ -37,15 +37,10 @@ extension LayoutEngine {
             if blockResolver(block.pluginID, block.blockID) == nil {
                 issues.append(.unknownBlock(pluginID: block.pluginID, blockID: block.blockID))
             }
-            if let definition = blockResolver(block.pluginID, block.blockID),
-               case .drawer = definition.kind {
-                let declared = definition.supportedSpans.contains(
-                    GridSpan(columns: block.widthColumns, rows: block.heightRows)
-                )
-                if !declared {
-                    issues.append(.sizeNotSupported(placementID: block.placementID))
-                }
-            }
+            // 尺寸盒校验自三档模型起移出 validate()：存量布局中"显示跨度落在
+            // 插件声明盒外"是插件更新后的合法窗口期（照常显示、下次拖拽被钳进
+            // 盒内），不再视为损坏。运行时仍拒绝非法**声明**（NotchBlock
+            // validationError），越界/重叠检查在上方保持。
         }
 
         for slot in model.compactSlots {

@@ -14,13 +14,17 @@
 #                                  外部显式设 NOTCHCENTER_SIZE_LAB=0 可关闭）
 #   build.sh test [<filter>]       tuist generate + xcodebuild test 跑全量测试；
 #                                  <filter> 定向复验（套件名或 套件/用例，映射 -only-testing）
-#   build.sh package [-i|--install] [-g|--github] [--no-dmg]
+#   build.sh verify-sizes          官方插件「最小尺寸遮挡校验」定向门禁（几何判定 +
+#                                  插件探针声明，等价 test 里对应套件的子集，快速反馈用）
+#   build.sh package [-i|--install] [-g|--github] [--no-dmg] [--skip-size-check]
 #                                  发布打包：通用架构 .app + 内置插件 bundle + 共享框架
 #                                  + zip + dmg + 各自 sha256（可选公证），产物在 dist.noindex/；
 #                                  dmg 与 zip 同时产出（拖拽到 /Applications 安装），可用
 #                                  --no-dmg 仅出 zip；-i/--install 把 .app 复制到 /Applications
 #                                  覆盖安装；-g/--github 把 zip 与 dmg 一并发布到 GitHub
-#                                  Release（latest 标签，覆盖式更新，需已安装并登录 gh CLI）
+#                                  Release（latest 标签，覆盖式更新，需已安装并登录 gh CLI）。
+#                                  打包前默认先跑官方插件最小尺寸遮挡校验门禁
+#                                  （BlockMinSizeVerificationTests），--skip-size-check 跳过
 #   build.sh clean                 删除 .build 与 dist.noindex（均为纯可再生制品）
 #
 # 环境变量（仅 package）：APP_VERSION、BUILD_NUMBER、SIGN_IDENTITY、NOTARY_PROFILE。
@@ -47,7 +51,7 @@ API_RANGE_XML="${API_RANGE//</&lt;}"   # XML 转义（解析后仍是 1.0..<2.0�
 die() { echo "错误：$*" >&2; exit 1; }
 
 usage() {
-  sed -n '6,21p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '6,41p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # ---- Tuist 定位 --------------------------------------------------------------
@@ -390,14 +394,27 @@ cmd_test() {
   fi
 }
 
+# 官方插件「打包期最小尺寸遮挡校验」定向门禁：几何判定器单测 + 官方抽屉块
+# 探针声明校验（BlockSizeVerifierTests 管"判定对不对"，BlockMinSizeVerificationTests
+# 管"官方插件 minSize 下会不会互遮/溢出"）。package 预检跑后者即可；本命令两者都跑。
+cmd_verify_sizes() {
+  cd "$ROOT_DIR"
+  discover_plugins
+  run_generate
+  run_xcodebuild "Debug" "$ROOT_DIR/.build/xcode" test \
+    -only-testing NotchCenterTests/BlockSizeVerifierTests \
+    -only-testing NotchCenterTests/BlockMinSizeVerificationTests
+}
+
 cmd_package() {
-  local install_to_applications=0 publish_github=0 make_dmg=1
+  local install_to_applications=0 publish_github=0 make_dmg=1 skip_size_check=0
   while (( $# > 0 )); do
     case "$1" in
-      -i|--install) install_to_applications=1 ;;
-      -g|--github)  publish_github=1 ;;
-      --no-dmg)     make_dmg=0 ;;
-      *) usage >&2; die "未知参数：$1（package 可用 -i|--install、-g|--github、--no-dmg）" ;;
+      -i|--install)       install_to_applications=1 ;;
+      -g|--github)        publish_github=1 ;;
+      --no-dmg)           make_dmg=0 ;;
+      --skip-size-check)  skip_size_check=1 ;;
+      *) usage >&2; die "未知参数：$1（package 可用 -i|--install、-g|--github、--no-dmg、--skip-size-check）" ;;
     esac
     shift
   done
@@ -405,6 +422,15 @@ cmd_package() {
   cd "$ROOT_DIR"
   discover_plugins
   run_generate
+
+  # 打包预检：官方插件「最小尺寸遮挡校验」（原始需求：插件打包时校验组件在
+  # 最小尺寸下不会互遮/溢出）。失败即中止打包，--skip-size-check 可逃生。
+  if (( ! skip_size_check )); then
+    echo "Preflight: 官方插件最小尺寸遮挡校验（BlockMinSizeVerificationTests）..."
+    run_xcodebuild "Debug" "$ROOT_DIR/.build/xcode" test \
+      -only-testing NotchCenterTests/BlockMinSizeVerificationTests
+    echo "Preflight 通过。"
+  fi
 
   local app_name="NotchCenter"
   local app_version="${APP_VERSION:-1.0.0}"
@@ -651,6 +677,7 @@ main() {
     dev)     cmd_dev "$@" ;;
     run)     cmd_run "$@" ;;
     test)    cmd_test ;;
+    verify-sizes) cmd_verify_sizes ;;
     package) cmd_package "$@" ;;
     clean)   cmd_clean ;;
     help|-h|--help) usage ;;

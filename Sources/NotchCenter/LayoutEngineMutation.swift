@@ -310,12 +310,24 @@ extension LayoutEngine {
 
     /// 自动放置到第一个可用位置；超出最大列数后自动换行。
     /// 落位后压实空行/空列（左扩布局可能存在负列空洞）。
+    ///
+    /// - Parameters:
+    ///   - cellWidth/cellHeight: 当前格子内容尺寸（点）。块的推荐尺寸是物理
+    ///     像素（`NotchBlock` 三档），落位前必须换算成格跨。默认取实时 store
+    ///     （`NotchGridMetrics`），宿主调用无需传；测试可显式传确定值。
     @discardableResult
-    func autoPlaceDrawerBlock(pluginID: String, blockID: String, page: Int = 0) -> PlacedBlock? {
+    func autoPlaceDrawerBlock(
+        pluginID: String,
+        blockID: String,
+        page: Int = 0,
+        cellWidth: CGFloat = NotchGridMetrics.cellWidth,
+        cellHeight: CGFloat = NotchGridMetrics.cellHeight
+    ) -> PlacedBlock? {
         guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
             return nil
         }
-        let span = (block.defaultSize ?? .small).gridSpan
+        let span = block.sizeBox(cellWidth: cellWidth, cellHeight: cellHeight)?.recommended
+            ?? GridSpan.globalMinimum
         let columns = effectiveMaxColumns()
         let occupied = occupiedRects(page: page, excluding: nil)
 
@@ -364,20 +376,26 @@ extension LayoutEngine {
     /// 在指定网格位置放置抽屉块（设置面板拖拽落点，文档 §5.3）：
     /// 落点被占/越界时按行优先扫描最近可用位置（与 `moveDrawerBlock`
     /// 同一语义）；无处可放返回 nil。行仅向下增长（row < 0 一律按 0 计）。
+    /// - Parameters:
+    ///   - cellWidth/cellHeight: 当前格子内容尺寸（点），用于把块的物理像素
+    ///     推荐档换算成落位格跨（默认 150×120 为出厂默认，宿主调用应传当前值）。
     @discardableResult
     func placeDrawerBlock(
         pluginID: String,
         blockID: String,
         column: Int,
         row: Int,
-        page: Int = 0
+        page: Int = 0,
+        cellWidth: CGFloat = 150,
+        cellHeight: CGFloat = 120
     ) -> PlacedBlock? {
         guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
             return nil
         }
-        let span = (block.defaultSize ?? .small).gridSpan
+        let span = block.sizeBox(cellWidth: cellWidth, cellHeight: cellHeight)?.recommended
+            ?? GridSpan.globalMinimum
         guard let origin = nearestFreeOrigin(
-            for: span,
+            for: (span.columns, span.rows),
             preferredColumn: column,
             preferredRow: row,
             page: page,
@@ -611,17 +629,10 @@ extension LayoutEngine {
         return true
     }
 
-    /// 在支持的尺寸等级间切换块尺寸（编辑模式，文档 §5.5）。
-    @discardableResult
-    func resizeDrawerBlock(placementID: String, to size: BlockSize) -> Bool {
-        resizeDrawerBlock(
-            placementID: placementID,
-            toColumns: size.gridSpan.columns,
-            toRows: size.gridSpan.rows
-        )
-    }
-
-    /// 缩放块到任意声明的跨度（编辑模式）：跨度必须在块的 supportedSpans 内。
+    /// 缩放块到盒内任意跨度（编辑模式）：目标必须在块的允许矩形盒
+    /// `[minSize...maxSize]`（按**当前格子**换算，物理像素声明）内——盒外的
+    /// 目标一律拒绝（存量超盒块"照显不预重排、首次拖拽即被钳进盒内"的策略
+    /// 由手势层钳制实现，此处是提交闸门）。
     /// 扩大与下方块重叠时不再回退，而是按阅读顺序推挤下移（与拖拽同一
     /// 逐块安放语义）；缩小留下的空行随后压实。左上角原点保持不变
     /// （仅当合并后跨度过容量时向左收紧，原点可为负——左扩）。
@@ -632,7 +643,11 @@ extension LayoutEngine {
         }
         let block = model.drawerBlocks[index]
         guard let definition = blockResolver(block.pluginID, block.blockID),
-              definition.supportedSpans.contains(GridSpan(columns: toColumns, rows: toRows)) else {
+              definition.allows(
+                  GridSpan(columns: toColumns, rows: toRows),
+                  cellWidth: NotchGridMetrics.cellWidth,
+                  cellHeight: NotchGridMetrics.cellHeight
+              ) else {
             return false
         }
 

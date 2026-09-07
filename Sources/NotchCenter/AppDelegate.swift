@@ -202,9 +202,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             print("!!! 没有可用抽屉块，探针结束")
             return
         }
-        let span = block.defaultSize.map {
-            GridSpan(columns: $0.gridSpan.columns, rows: $0.gridSpan.rows)
-        } ?? GridSpan(columns: 1, rows: 1)
+        let span = block.sizeBox(
+            cellWidth: NotchGridMetrics.cellWidth,
+            cellHeight: NotchGridMetrics.cellHeight
+        )?.recommended ?? GridSpan.globalMinimum
         let payload = BlockDragCoordinator.Payload(
             pluginID: entry.id,
             blockID: block.id,

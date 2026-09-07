@@ -20,7 +20,6 @@ final class LayoutEngine: ObservableObject {
         case unknownBlock(pluginID: String, blockID: String)
         case compactBlockKindMismatch(placementID: String)
         case drawerBlockKindMismatch(placementID: String)
-        case sizeNotSupported(placementID: String)
     }
 
     /// 布局模型真源。setter 为模块内可见（原为 `private(set)`，拆分到独立

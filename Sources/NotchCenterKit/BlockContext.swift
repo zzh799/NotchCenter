@@ -17,8 +17,10 @@ public struct BlockLayoutInfo {
     public let placementID: String
     /// 块的当前 frame（面板本地坐标；紧凑区为槽位矩形，抽屉区为网格矩形）。
     public let frame: CGRect
-    /// 抽屉块当前尺寸等级；紧凑块为 nil。
-    public let size: BlockSize?
+    /// 抽屉块当前占用跨度（列×行）；紧凑块为 nil。宿主始终按真实跨度下发
+    /// （存量超盒布局照传实际跨度，不做钳制）；组件目录等无落位上下文处为 nil，
+    /// 插件应回退自己的推荐形态。
+    public let size: GridSpan?
     /// 抽屉网格位置（格子单元坐标）；紧凑块为 nil。
     public let originColumn: Int?
     /// 抽屉网格位置（格子单元坐标）；紧凑块为 nil。
@@ -43,7 +45,7 @@ public struct BlockLayoutInfo {
         region: BlockRegion,
         placementID: String,
         frame: CGRect,
-        size: BlockSize? = nil,
+        size: GridSpan? = nil,
         originColumn: Int? = nil,
         originRow: Int? = nil,
         widthColumns: Int? = nil,
