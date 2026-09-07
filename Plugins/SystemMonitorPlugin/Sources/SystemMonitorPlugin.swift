@@ -22,6 +22,22 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
 
     // MARK: 块声明
 
+    /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe）：单指标块与总览块的内容
+    /// 都随跨度形态自适应填充、块内边距 10，无固定叠加区带，结构上不溢出邻居
+    /// （单指标 2×1 的 sparkline 与 1×1 mini 均落在内容区内）；声明内容区为
+    /// 唯一探针，兜住 minSize 比内边距还小的越界回归。
+    private static func monitorContentProbes(for size: CGSize) -> [BlockProbe] {
+        let inset: CGFloat = 10
+        return [
+            BlockProbe(
+                id: "content",
+                rect: CGRect(
+                    x: inset, y: inset,
+                    width: max(size.width - inset * 2, 0),
+                    height: max(size.height - inset * 2, 0))),
+        ]
+    }
+
     private static func instanceModel(for context: BlockContext) -> SystemMonitorInstanceModel {
         SystemMonitorInstanceRegistry.shared.model(
             placementID: context.placementID,
@@ -35,13 +51,16 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
             id: id,
             displayName: L(kind.displayNameKey),
             kind: .drawer,
-            supportedSizes: [.small, .medium],
-            defaultSize: .small,
-            supportedGridSpans: [],
+            minSize: BlockPixelSize(width: 150, height: 120),
+            maxSize: BlockPixelSize(width: 300, height: 120),
+            recommendedSize: BlockPixelSize(width: 150, height: 120),
             interaction: .expandDrawer,
             symbolName: kind.symbolName,
             instanceSettingsView: { context in
                 AnyView(SingleInstanceSettingsView(kind: kind, instance: instanceModel(for: context)))
+            },
+            probes: { info in
+                monitorContentProbes(for: info.frame.size)
             },
             makeView: { context in
                 AnyView(MetricBlockView(
@@ -50,11 +69,11 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
                     placementID: context.placementID,
                     isPreview: context.layoutInfo.isPreview,
                     // 宿主按跨度变化重走 makeView（BlockViewCacheKey 含跨度），
-                    // 2×1 档在创建期即展开 sparkline；抽屉路径 size 恒 nil，判定走 span。
+                    // 2×1 档在创建期即展开 sparkline；无 span 上下文（目录预览
+                    // 等）按推荐 1×1 的 mini 形态兜底。
                     showsSparkline: MetricCellForm.forSpan(
                         widthColumns: context.layoutInfo.widthColumns,
-                        heightRows: context.layoutInfo.heightRows,
-                        size: context.layoutInfo.size
+                        heightRows: context.layoutInfo.heightRows
                     ) == .sparkline
                 ))
             }
@@ -65,17 +84,18 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
         id: "system.overview",
         displayName: L("block.overview.name"),
         kind: .drawer,
-        supportedSizes: [.small, .medium, .large, .extraLarge],
-        defaultSize: .large,
-        supportedGridSpans: [
-            GridSpan(columns: 1, rows: 2),
-            GridSpan(columns: 4, rows: 3),
-            GridSpan(columns: 4, rows: 4),
-        ],
+        minSize: BlockPixelSize(width: 150, height: 120),
+        maxSize: BlockPixelSize(width: 600, height: 480),
+        // 推荐 2×2（默认档）；盒内任意整数跨可达（1×1 / 1×2 / 2×1 / 2×2 /
+        // 4×2 / 4×3 / 4×4 皆在其中），布局随跨度切换（OverviewArrangement）。
+        recommendedSize: BlockPixelSize(width: 300, height: 240),
         interaction: .expandDrawer,
         symbolName: "speedometer",
         instanceSettingsView: { context in
             AnyView(OverviewInstanceSettingsView(instance: instanceModel(for: context)))
+        },
+        probes: { info in
+            monitorContentProbes(for: info.frame.size)
         },
         makeView: { context in
             AnyView(OverviewBlockView(

@@ -490,7 +490,8 @@ struct OverviewBlockView: View {
     @ObservedObject var instance: SystemMonitorInstanceModel
     let placementID: String
     let isPreview: Bool
-    /// 抽屉路径宿主恒填跨度；组件目录预览等无 span 上下文为 nil（按 defaultSize 网格渲染）。
+    /// 抽屉与目录预览路径宿主恒填跨度；nil 仅出现在无落位上下文的防御路径
+    ///（OverviewArrangement 按推荐 2×2 的网格形态兜底）。
     let widthColumns: Int?
     let heightRows: Int?
 

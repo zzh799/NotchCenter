@@ -120,9 +120,9 @@ enum QuickButtonBoxLayout {
         }
     }
 
-    /// 由块尺寸等级换算容量（无布局信息时的回落）。
-    static func capacity(forSize size: BlockSize?) -> Int {
+    /// 由块当前跨度换算容量（无布局信息时的回落：按 4×2 封顶容量）。
+    static func capacity(forSize size: GridSpan?) -> Int {
         guard let size else { return capacity(for: GridSpan(columns: 4, rows: 2)) }
-        return capacity(for: GridSpan(columns: size.gridSpan.columns, rows: size.gridSpan.rows))
+        return capacity(for: size)
     }
 }

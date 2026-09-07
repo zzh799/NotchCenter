@@ -20,18 +20,32 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
         )
     }
 
+    /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe）：列表在块内 ScrollView
+    /// 纵向滚动、顶行按钮悬浮，结构上不溢出邻居；声明整内容区为唯一探针，
+    /// 兜住块级内边距缩成负值等越界回归。
+    private static func clipboardLayoutProbes(for size: CGSize) -> [BlockProbe] {
+        [
+            BlockProbe(
+                id: "clipboard.content",
+                rect: CGRect(x: 0, y: 0, width: size.width, height: size.height)),
+        ]
+    }
+
     public static var blocks: [NotchBlock] {
         [
             NotchBlock(
                 id: "clipboard.history",
                 displayName: L("block.drawer.name"),
                 kind: .drawer,
-                supportedSizes: [.large, .extraLarge],
-                defaultSize: .large,
-                supportedGridSpans: [],
+                minSize: BlockPixelSize(width: 300, height: 240),
+                maxSize: BlockPixelSize(width: 600, height: 240),
+                recommendedSize: BlockPixelSize(width: 300, height: 240),
                 symbolName: "clipboard",
                 instanceSettingsView: { context in
                     AnyView(ClipboardInstanceSettingsView(instance: instanceModel(for: context)))
+                },
+                probes: { info in
+                    Self.clipboardLayoutProbes(for: info.frame.size)
                 },
                 makeView: { context in
                     AnyView(ClipboardHistoryBlockView(

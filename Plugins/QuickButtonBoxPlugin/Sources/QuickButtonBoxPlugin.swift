@@ -17,18 +17,36 @@ public final class QuickButtonBoxPlugin: NSObject, NotchCenterPlugin, NotchCente
         )
     }
 
+    /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe）：盒内 LazyVGrid 自适应
+    /// 列数、超容量动作由宿主拒绝入盒（不滚动），结构上不溢出邻居；声明内容区
+    /// （整卡内边距 10 以内）为唯一探针，兜住 minSize 比内边距还小的越界回归。
+    private static func quickButtonBoxLayoutProbes(for size: CGSize) -> [BlockProbe] {
+        let inset: CGFloat = 10
+        return [
+            BlockProbe(
+                id: "quickbuttonbox.content",
+                rect: CGRect(
+                    x: inset, y: inset,
+                    width: max(size.width - inset * 2, 0),
+                    height: max(size.height - inset * 2, 0))),
+        ]
+    }
+
     public static var blocks: [NotchBlock] {
         [
             NotchBlock(
                 id: "quickbuttonbox.grid",
                 displayName: L("block.name"),
                 kind: .drawer,
-                supportedSizes: [.large, .extraLarge],
-                defaultSize: .extraLarge,
-                supportedGridSpans: [],
+                minSize: BlockPixelSize(width: 300, height: 240),
+                maxSize: BlockPixelSize(width: 600, height: 240),
+                recommendedSize: BlockPixelSize(width: 600, height: 240),
                 symbolName: "square.grid.3x3",
                 instanceSettingsView: { context in
                     AnyView(QuickButtonBoxManageView(context: context))
+                },
+                probes: { info in
+                    Self.quickButtonBoxLayoutProbes(for: info.frame.size)
                 },
                 makeView: { context in
                     AnyView(QuickButtonBoxView(context: context))

@@ -7,23 +7,48 @@ import SwiftUI
 /// 均可放；宿主统一标准样式渲染）；抽屉笔记本块（多标签 Markdown 编辑器）
 /// 仍以组件块提供。
 @objc(NotesPlugin) @MainActor public final class NotesPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
+    /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe；几何区带镜像 NotebookBlockView /
+    /// MarkdownEditorViews 的布局常量——改动布局时同步这里）。
+    /// 区带意图：顶部分页条 34pt（toolbarHeight）+ 间隔 8（editorSpacing）+
+    /// 文本区下限 120pt（editorHeight clamp）+ 底栏 38+1（toolbar + separator）。
+    /// 竖轴总和 201 必须 ≤ minSize.height；违规说明块缩到比自身结构还矮，会向
+    /// 邻居溢出（宿主卡片不裁切）。
+    private static func notesLayoutProbes(for size: CGSize) -> [BlockProbe] {
+        let pagerHeight: CGFloat = 34
+        let spacing: CGFloat = 8
+        let textMinimumHeight: CGFloat = 120
+        let footerHeight: CGFloat = 39
+        return [
+            BlockProbe(
+                id: "notes.pager",
+                rect: CGRect(x: 0, y: 0, width: size.width, height: pagerHeight)),
+            BlockProbe(
+                id: "notes.textArea",
+                rect: CGRect(
+                    x: 0, y: pagerHeight + spacing,
+                    width: size.width, height: textMinimumHeight)),
+            BlockProbe(
+                id: "notes.footer",
+                rect: CGRect(
+                    x: 0, y: max(size.height - footerHeight, pagerHeight + spacing + textMinimumHeight),
+                    width: size.width, height: footerHeight)),
+        ]
+    }
+
     public static var blocks: [NotchBlock] = [
         NotchBlock(
             id: "notes.notebook",
             displayName: L("notes.block.notebook"),
             kind: .drawer,
-            supportedSizes: [.large, .extraLarge],
-            defaultSize: .extraLarge,
-            // 自由跨度：允许竖向加高（2/4 列 × 3-4 行）。编辑模式向下扩大时
-            // 推挤下方块、面板按需增高——没有这些跨度时纵向拖动无法生效
-            //（nearest 永远回到 2 行高的档位）。
-            supportedGridSpans: [
-                GridSpan(columns: 2, rows: 3),
-                GridSpan(columns: 2, rows: 4),
-                GridSpan(columns: 4, rows: 3),
-                GridSpan(columns: 4, rows: 4),
-            ],
+            minSize: BlockPixelSize(width: 300, height: 240),
+            maxSize: BlockPixelSize(width: 600, height: 480),
+            // 推荐 4×2（默认档）；允许矩形盒内任意整数跨（含竖向加高 2/4 列 ×
+            // 3-4 行）。编辑模式向下扩大时推挤下方块、面板按需增高。
+            recommendedSize: BlockPixelSize(width: 600, height: 240),
             symbolName: "book",
+            probes: { info in
+                notesLayoutProbes(for: info.frame.size)
+            },
             makeView: { context in
                 AnyView(NotesBlockView(
                     store: NotesModel.shared.resolve(stateStore: context.stateStore),

@@ -11,19 +11,37 @@ import SwiftUI
 /// 显示样式（余量环 / 余量表 / 峰谷时钟）与峰谷倒计时开关按实例单独
 /// 设置——持久化在 Kit 的 placementStore，经 instanceSettingsView 编辑。
 @objc(OpenCodeUsagePlugin) @MainActor public final class OpenCodeUsagePlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
+    /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe）：视图按样式（环/条/表盘）
+    /// 自适应绘制、内容区统一内边距 10，整体随实例样式填充分布；声明内容区为
+    /// 唯一探针，兜住内边距与 minSize 的矛盾型回归。
+    private static func opencodeLayoutProbes(for size: CGSize) -> [BlockProbe] {
+        let inset: CGFloat = 10
+        return [
+            BlockProbe(
+                id: "opencode.content",
+                rect: CGRect(
+                    x: inset, y: inset,
+                    width: max(size.width - inset * 2, 0),
+                    height: max(size.height - inset * 2, 0))),
+        ]
+    }
+
     /// 块声明。视图工厂与实例设置视图都以 BlockContext 为输入，从中解析出
     /// 该放置实例的共享外观模型；必须用含 instanceSettingsView 的完整 init。
     private static let block = NotchBlock(
         id: "opencode.usage",
         displayName: L("block.displayName"),
         kind: .drawer,
-        supportedSizes: [.small, .medium],
-        defaultSize: .medium,
-        supportedGridSpans: [],
+        minSize: BlockPixelSize(width: 150, height: 120),
+        maxSize: BlockPixelSize(width: 300, height: 120),
+        recommendedSize: BlockPixelSize(width: 300, height: 120),
         interaction: .expandDrawer,
         symbolName: "gauge",
         instanceSettingsView: { context in
             AnyView(OpenCodeUsageInstanceSettingsView(instance: instanceModel(for: context)))
+        },
+        probes: { info in
+            opencodeLayoutProbes(for: info.frame.size)
         },
         makeView: { context in
             AnyView(OpenCodeUsageBlockView(instance: instanceModel(for: context)))

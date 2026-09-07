@@ -13,15 +13,50 @@ import SwiftUI
 /// 另有状态栏菜单项；设置覆盖计时 / 随机提示音 / 声音效果三组。
 @objc(PomodoroPlugin) @MainActor
 public final class PomodoroPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
+    /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe；区带镜像
+    /// PomodoroBlockViews.runningContent 的布局常量——运行中为最满形态：
+    /// 内边距 14、行距 9、头部 ≈34、进度条 4、控制钮 28）。
+    /// 意图：三行固定区带须完整落在 minSize 盒内且互不重叠；盒高小于总需求
+    /// （14+34+9+4+9+28+14=112）时控制钮行越界 → 会向邻居溢出。
+    private static func pomodoroLayoutProbes(for size: CGSize) -> [BlockProbe] {
+        let inset: CGFloat = 14
+        let spacing: CGFloat = 9
+        let headerHeight: CGFloat = 34
+        let barHeight: CGFloat = 4
+        let controlsHeight: CGFloat = 28
+        let contentWidth = max(size.width - inset * 2, 0)
+        let headerRect = CGRect(x: inset, y: inset, width: contentWidth, height: headerHeight)
+        let barRect = CGRect(
+            x: inset,
+            y: inset + headerHeight + spacing,
+            width: contentWidth,
+            height: barHeight)
+        // 最末区带并入底部内边距，使越界触发点与真实总需求（112）一致。
+        let controlsRect = CGRect(
+            x: inset,
+            y: inset + headerHeight + spacing + barHeight + spacing,
+            width: contentWidth,
+            height: controlsHeight + inset)
+        return [
+            BlockProbe(id: "pomodoro.header", rect: headerRect),
+            BlockProbe(id: "pomodoro.progress", rect: barRect),
+            BlockProbe(id: "pomodoro.controls", rect: controlsRect),
+        ]
+    }
+
     public static var blocks: [NotchBlock] {
         [
             NotchBlock(
                 id: "pomodoro.timer",
                 displayName: L("block.drawer.name"),
                 kind: .drawer,
-                supportedSizes: [.medium, .large],
-                defaultSize: .medium,
+                minSize: BlockPixelSize(width: 300, height: 120),
+                maxSize: BlockPixelSize(width: 300, height: 240),
+                recommendedSize: BlockPixelSize(width: 300, height: 120),
                 symbolName: "timer",
+                probes: { info in
+                    Self.pomodoroLayoutProbes(for: info.frame.size)
+                },
                 makeView: { context in
                     AnyView(PomodoroDrawerBlockView(context: context))
                 }

@@ -3,9 +3,10 @@ import SwiftUI
 
 // MARK: - 抽屉块视图
 //
-// 版式由块跨度决定：宿主抽屉上下文只填 widthColumns/heightRows（layoutInfo.size
-// 恒为 nil，仅组件目录预览等无 span 上下文才兜底用 size，见 SystemMonitor 同款
-// 注释）——形态在视图创建期即确定（宿主块缓存键含跨度，跨度变化重走 makeView）。
+// 版式由块跨度决定：宿主在抽屉与目录预览路径都下发 widthColumns/heightRows
+//（layoutInfo.size = 当前真实跨度，与 width/height 同值）；nil 仅出现在无
+// 落位上下文的防御路径，按推荐 2×1 的 rows 形态兜底——形态在视图创建期即
+// 确定（宿主块缓存键含跨度，跨度变化重走 makeView）。
 //
 // 两形态共用同一「随条目适应」容器：条目总高 ≤ 块高 → 整组垂直居中（不滚），
 // 超高（条目多，放不下） → 块内滚动。差异只在行的摆法：
@@ -21,13 +22,12 @@ enum BrightnessSliderArrangement: Equatable {
 
     static func forSpan(
         widthColumns: Int?,
-        heightRows: Int?,
-        size: BlockSize?
+        heightRows: Int?
     ) -> BrightnessSliderArrangement {
         if let columns = widthColumns, let rows = heightRows {
             return columns == 1 && rows == 1 ? .compact : .rows
         }
-        return size == .small ? .compact : .rows
+        return .rows
     }
 }
 
@@ -38,8 +38,7 @@ struct DisplaySlidersBlockView: View {
     private var arrangement: BrightnessSliderArrangement {
         BrightnessSliderArrangement.forSpan(
             widthColumns: context.layoutInfo.widthColumns,
-            heightRows: context.layoutInfo.heightRows,
-            size: context.layoutInfo.size
+            heightRows: context.layoutInfo.heightRows
         )
     }
 

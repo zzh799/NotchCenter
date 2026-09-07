@@ -8,14 +8,35 @@ import SwiftUI
 /// 提供一个抽屉块：服务名 + 运行开关，点击空白区打开网页，
 /// 长按弹出浮窗展示自启开关 / PID / 端口 / 状态 / 重启。
 @objc(DshPlugin) @MainActor public final class DshPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
+    /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe）：单行「状态点 + 服务名 +
+    /// 状态 + 开关」水平布局（内容水平内边距 10、自然行高 ≈16），无固定叠加
+    /// 区带、结构上不会块内自叠；行带须完整落在 minSize 盒内。
+    private static func dshLayoutProbes(for size: CGSize) -> [BlockProbe] {
+        let horizontalInset: CGFloat = 10
+        let rowHeight: CGFloat = 16
+        return [
+            BlockProbe(
+                id: "dsh.serviceRow",
+                rect: CGRect(
+                    x: horizontalInset,
+                    y: max((size.height - rowHeight) / 2, 0),
+                    width: max(size.width - horizontalInset * 2, 0),
+                    height: rowHeight)),
+        ]
+    }
+
     public static var blocks: [NotchBlock] = [
         NotchBlock(
             id: "dsh.service",
             displayName: L("dsh.block.name"),
             kind: .drawer,
-            supportedSizes: [.small, .medium],
-            defaultSize: .small,
+            minSize: BlockPixelSize(width: 150, height: 120),
+            maxSize: BlockPixelSize(width: 300, height: 120),
+            recommendedSize: BlockPixelSize(width: 150, height: 120),
             symbolName: "server.rack",
+            probes: { info in
+                dshLayoutProbes(for: info.frame.size)
+            },
             makeView: { _ in
                 AnyView(DshServiceBlockView())
             }

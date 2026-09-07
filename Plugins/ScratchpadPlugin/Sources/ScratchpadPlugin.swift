@@ -18,19 +18,29 @@ import SwiftUI
             id: ScratchpadPlugin.shelfBlockID,
             displayName: L("block.shelf.name"),
             kind: .drawer,
-            supportedSizes: [.medium, .large, .wide, .extraLarge],
-            defaultSize: .large,
-            // 自由跨度：网格上限内的所有组合（1×1 到 4×4）都支持。
-            supportedGridSpans: Set(
-                (1...4).flatMap { columns in
-                    (1...4).map { rows in
-                        GridSpan(columns: columns, rows: rows)
-                    }
-                }
-            ),
+            minSize: BlockPixelSize(width: 150, height: 120),
+            maxSize: BlockPixelSize(width: 600, height: 480),
+            // 推荐 2×2（默认档）；允许盒内任意整数跨——原先 1×1 到 4×4 的
+            // 自由跨度集合即为全矩形盒，声明语义等价。
+            recommendedSize: BlockPixelSize(width: 300, height: 240),
             // 横向文件架：内容溢出时滑动让路归文件架（宿主探针核实），
             // 空/未满放行切页。
             symbolName: "tray.full",
+            probes: { info in
+                // 打包期最小尺寸遮挡校验：整面自适应文件架（横向 ScrollView +
+                // 纵向 padding 6；内容超高/超宽均内部滚动，结构上不溢出邻居），
+                // 声明内容区为唯一探针——minSize 比 12pt 内边距还小时越界报警。
+                let size = info.frame.size
+                let inset: CGFloat = 6
+                return [
+                    BlockProbe(
+                        id: "shelf.content",
+                        rect: CGRect(
+                            x: inset, y: inset,
+                            width: max(size.width - inset * 2, 0),
+                            height: max(size.height - inset * 2, 0))),
+                ]
+            },
             makeView: { context in
                 AnyView(ScratchpadShelfBlockView(context: context))
             }

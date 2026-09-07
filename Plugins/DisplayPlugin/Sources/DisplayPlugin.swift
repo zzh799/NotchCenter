@@ -16,11 +16,29 @@ public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugin
                 id: "brightness.sliders",
                 displayName: L("block.drawer.name"),
                 kind: .drawer,
-                supportedSizes: [.small, .medium, .large, .extraLarge],
-                defaultSize: .medium,
+                minSize: BlockPixelSize(width: 150, height: 120),
+                maxSize: BlockPixelSize(width: 600, height: 240),
+                recommendedSize: BlockPixelSize(width: 300, height: 120),
                 symbolName: "sun.max",
                 // 滑杆只经命中测试消费鼠标拖拽，不消费滚轮横向增量：
                 // 块上横向轻扫照常切页，与拖滑杆调亮度互不干扰。
+                probes: { info in
+                    // 打包期最小尺寸遮挡校验：两形态（1×1 紧凑两行 / 行式）共用
+                    // ViewThatFits 容器，超高条目自动转块内 ScrollView，结构上不
+                    // 溢出邻居；声明内容区为唯一探针（紧凑形态内边距 8/10 是
+                    // 更小的内容盒，两形态内容都落在其中）。
+                    let size = info.frame.size
+                    let topInset: CGFloat = 8
+                    let leadingInset: CGFloat = 10
+                    return [
+                        BlockProbe(
+                            id: "display.content",
+                            rect: CGRect(
+                                x: leadingInset, y: topInset,
+                                width: max(size.width - leadingInset * 2, 0),
+                                height: max(size.height - topInset * 2, 0))),
+                    ]
+                },
                 makeView: { context in
                     AnyView(DisplaySlidersBlockView(context: context))
                 }

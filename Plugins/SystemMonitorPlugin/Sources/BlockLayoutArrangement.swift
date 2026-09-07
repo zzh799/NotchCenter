@@ -2,10 +2,10 @@ import NotchCenterKit
 
 // MARK: - 跨度 → 布局形态映射（纯逻辑，视图与测试共用）
 //
-// 宿主抽屉路径构建 BlockContext 时只填 widthColumns/heightRows，layoutInfo.size
-// 恒为 nil（不派生尺寸档），尺寸判定一律走 span；size 仅作无 span 上下文
-//（组件目录预览等）的兜底。跨度变化会重走 makeView（BlockViewCacheKey 含跨度），
-// 形态在视图创建期即确定，无需运行时切换。
+// 宿主在抽屉与目录预览路径都下发 widthColumns/heightRows（layoutInfo.size =
+// 当前真实跨度，与 width/height 同值）；nil 仅出现在无落位上下文的防御路径，
+// 按推荐 1×1 的 mini / sparklineGrid 形态兜底。跨度变化会重走 makeView
+//（BlockViewCacheKey 含跨度），形态在视图创建期即确定，无需运行时切换。
 
 /// 总览块（system.overview）跨度 → 布局形态。
 enum OverviewArrangement: Equatable {
@@ -37,10 +37,11 @@ enum MetricCellForm: Equatable {
     /// 2×1：左值列 + sparkline。
     case sparkline
 
-    static func forSpan(widthColumns: Int?, heightRows: Int?, size: BlockSize?) -> MetricCellForm {
+    static func forSpan(widthColumns: Int?, heightRows: Int?) -> MetricCellForm {
         if let columns = widthColumns, let rows = heightRows {
             return columns >= 2 && rows == 1 ? .sparkline : .mini
         }
-        return size == .medium ? .sparkline : .mini
+        // 无落位上下文（防御路径）：按推荐 1×1 的 mini 形态。
+        return .mini
     }
 }
