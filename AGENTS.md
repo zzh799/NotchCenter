@@ -18,7 +18,7 @@
 ```bash
 ./scripts/build.sh dev|run [debug|release]  # 构建 + 组装插件 bundle / 启动
 ./scripts/build.sh test                     # 全量测试
-./scripts/build.sh package [-i|-g]          # 发布 .app + zip(可选安装 / GitHub Release)
+./scripts/build.sh package [-i|-g]          # 发布 .app + zip + dmg(可选安装 / GitHub Release)
 ./scripts/build.sh clean                    # 清理 .build 与 dist.noindex
 ```
 

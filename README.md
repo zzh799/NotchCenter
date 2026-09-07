@@ -17,10 +17,15 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 
 ## 下载与安装
 
-- [下载最新版](https://github.com/zzh799/NotchCenter/releases/latest/download/NotchCenter.zip)
+- [下载最新版（dmg）](https://github.com/zzh799/NotchCenter/releases/latest/download/NotchCenter.dmg)
+- [下载最新版（zip）](https://github.com/zzh799/NotchCenter/releases/latest/download/NotchCenter.zip)
 
 
 下载包同时支持 Apple Silicon 和 Intel，要求 macOS 15 或更高版本。
+
+**dmg 安装**：挂载后把 `NotchCenter.app` 拖入“应用程序”。
+
+**zip 安装**：
 
 1. 解压 `NotchCenter.zip`，将 `NotchCenter.app` 移入“应用程序”。
 2. 首次启动时右键点击应用，选择“打开”。

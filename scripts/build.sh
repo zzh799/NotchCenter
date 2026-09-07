@@ -12,12 +12,13 @@
 #                                  支持 --full/-f 强制全量构建）
 #   build.sh test [<filter>]       tuist generate + xcodebuild test 跑全量测试；
 #                                  <filter> 定向复验（套件名或 套件/用例，映射 -only-testing）
-#   build.sh package [-i|--install] [-g|--github]
+#   build.sh package [-i|--install] [-g|--github] [--no-dmg]
 #                                  发布打包：通用架构 .app + 内置插件 bundle + 共享框架
-#                                  + zip + sha256（可选公证），产物在 dist.noindex/；
-#                                  -i/--install 把 .app 复制到 /Applications 覆盖安装；
-#                                  -g/--github 把 zip 发布到 GitHub Release（latest 标签，
-#                                  覆盖式更新，需已安装并登录 gh CLI）
+#                                  + zip + dmg + 各自 sha256（可选公证），产物在 dist.noindex/；
+#                                  dmg 与 zip 同时产出（拖拽到 /Applications 安装），可用
+#                                  --no-dmg 仅出 zip；-i/--install 把 .app 复制到 /Applications
+#                                  覆盖安装；-g/--github 把 zip 与 dmg 一并发布到 GitHub
+#                                  Release（latest 标签，覆盖式更新，需已安装并登录 gh CLI）
 #   build.sh clean                 删除 .build 与 dist.noindex（均为纯可再生制品）
 #
 # 环境变量（仅 package）：APP_VERSION、BUILD_NUMBER、SIGN_IDENTITY、NOTARY_PROFILE。
@@ -385,12 +386,13 @@ cmd_test() {
 }
 
 cmd_package() {
-  local install_to_applications=0 publish_github=0
+  local install_to_applications=0 publish_github=0 make_dmg=1
   while (( $# > 0 )); do
     case "$1" in
       -i|--install) install_to_applications=1 ;;
       -g|--github)  publish_github=1 ;;
-      *) usage >&2; die "未知参数：$1（package 可用 -i|--install、-g|--github）" ;;
+      --no-dmg)     make_dmg=0 ;;
+      *) usage >&2; die "未知参数：$1（package 可用 -i|--install、-g|--github、--no-dmg）" ;;
     esac
     shift
   done
@@ -407,6 +409,8 @@ cmd_package() {
   local app_dir="$dist_dir/$app_name.app"
   local zip_path="$dist_dir/$app_name.zip"
   local checksum_path="$zip_path.sha256"
+  local dmg_path="$dist_dir/$app_name.dmg"
+  local dmg_checksum_path="$dmg_path.sha256"
   local sign_identity="${SIGN_IDENTITY:--}"
   local notary_profile="${NOTARY_PROFILE:-}"
 
@@ -435,7 +439,7 @@ cmd_package() {
   fi
 
   rm -rf "$app_dir"
-  rm -f "$zip_path" "$checksum_path"
+  rm -f "$zip_path" "$checksum_path" "$dmg_path" "$dmg_checksum_path"
   mkdir -p "$dist_dir"
   # 以 Xcode 产物为基底（已含 Info.plist、本地化资源、NotchCenterKit 框架），
   # 再补齐 LaunchdControlKit 与插件 bundle。
@@ -521,7 +525,29 @@ cmd_package() {
     ditto --norsrc -c -k --keepParent "$app_dir" "$zip_path"
   }
 
+  # 生成 .dmg：临时暂存目录放入 .app 与一个指向 /Applications 的软链，
+  # 用户挂载后拖拽 app 即可安装；用系统自带 hdiutil，无需任何第三方依赖。
+  # 公证场景下 .app 在 staple 后才重做 dmg，保证镜像内已含工签票据。
+  create_dmg() {
+    if (( ! make_dmg )); then return 0; fi
+    (
+      local staging
+      staging="$(mktemp -d)"
+      cp -R "$app_dir" "$staging/$app_name.app"
+      ln -s /Applications "$staging/Applications"
+      rm -f "$dmg_path"
+      hdiutil create \
+        -volname "$app_name" \
+        -srcfolder "$staging" \
+        -ov \
+        -format UDZO \
+        "$dmg_path"
+      rm -rf "$staging"
+    )
+  }
+
   create_archive
+  create_dmg
 
   if [[ -n "$notary_profile" ]]; then
     if [[ "$sign_identity" == "-" ]]; then
@@ -533,21 +559,30 @@ cmd_package() {
     codesign --verify --deep --strict --verbose=2 "$app_dir"
     spctl --assess --type execute --verbose=2 "$app_dir"
     create_archive
+    create_dmg
   fi
 
   (
     cd "$dist_dir"
     shasum -a 256 "$app_name.zip" > "$app_name.zip.sha256"
+    if (( make_dmg )); then
+      shasum -a 256 "$app_name.dmg" > "$app_name.dmg.sha256"
+    fi
   )
 
   echo "Built $app_dir"
   echo "Architectures: $archs"
   echo "Archive: $zip_path"
   echo "Checksum: $checksum_path"
+  if (( make_dmg )); then
+    echo "Disk image: $dmg_path"
+    echo "Checksum: $dmg_checksum_path"
+  fi
 
   # 发布到 GitHub Release：与 CI 的 main 分支路径一致——强制移动 latest 标签到当前
   # 提交，存在 latest Release 则覆盖附件，否则创建；最后标记为 latest 版本。
   # 本地发布要求 gh 已登录（gh auth status）；仓库从 git remote 自动推断。
+  # zip 与 dmg（及各自校验和）一并上传。
   if (( publish_github )); then
     command -v gh >/dev/null 2>&1 || die "未安装 gh CLI（brew install gh）"
     gh auth status >/dev/null 2>&1 || die "gh 未登录，请先 gh auth login"
@@ -559,17 +594,19 @@ cmd_package() {
     local head_sha
     head_sha="$(git rev-parse HEAD)"
 
-    echo "Publishing $zip_path to GitHub Release '$release_tag'..."
+    echo "Publishing artifacts to GitHub Release '$release_tag'..."
     git tag -f "$release_tag" "$head_sha"
     git push --force origin "refs/tags/$release_tag"
 
     if gh release view "$release_tag" >/dev/null 2>&1; then
       gh release upload "$release_tag" \
         "$zip_path" "$checksum_path" \
+        ${make_dmg:+"$dmg_path" "$dmg_checksum_path"} \
         --clobber
     else
       gh release create "$release_tag" \
         "$zip_path" "$checksum_path" \
+        ${make_dmg:+"$dmg_path" "$dmg_checksum_path"} \
         --verify-tag \
         --title "$release_title" \
         --notes "$release_notes"

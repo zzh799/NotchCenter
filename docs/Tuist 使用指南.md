@@ -24,7 +24,7 @@ tuist version           # 校验（首次需保证 mise shim 在 PATH 上）
 ./scripts/build.sh dev [debug|release] --full   # 强制全量构建（跳过增量指纹判断，重新 generate + build）
 ./scripts/build.sh run [debug|release]   # dev 之后立即启动宿主 .app 内部二进制（同支持 --full/-f）
 ./scripts/build.sh test [<filter>]       # 全量测试；<filter> 定向复验（套件或 套件/用例）
-./scripts/build.sh package [-i] [-g]     # 发布通用 .app + zip + sha256（-i 安装，-g 发 Release）
+./scripts/build.sh package [-i] [-g]     # 发布通用 .app + zip + dmg + sha256（-i 安装，-g 发 Release，--no-dmg 仅出 zip）
 ./scripts/build.sh clean                 # 清理 .build 与 dist.noindex
 ```
 

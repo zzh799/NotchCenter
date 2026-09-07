@@ -66,11 +66,15 @@ jobs:
             gh release upload "$RELEASE_TAG" \
               dist.noindex/NotchCenter.zip \
               dist.noindex/NotchCenter.zip.sha256 \
+              dist.noindex/NotchCenter.dmg \
+              dist.noindex/NotchCenter.dmg.sha256 \
               --clobber
           else
             gh release create "$RELEASE_TAG" \
               dist.noindex/NotchCenter.zip \
               dist.noindex/NotchCenter.zip.sha256 \
+              dist.noindex/NotchCenter.dmg \
+              dist.noindex/NotchCenter.dmg.sha256 \
               --verify-tag \
               --title "$RELEASE_TITLE" \
               --notes "$RELEASE_NOTES"
