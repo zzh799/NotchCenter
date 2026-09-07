@@ -1,11 +1,47 @@
 import NotchCenterKit
 import SwiftUI
 
-// MARK: - 抽屉块视图（每屏一行：屏名 + 亮度滑杆）
+// MARK: - 抽屉块视图
+//
+// 版式由块跨度决定：宿主抽屉上下文只填 widthColumns/heightRows（layoutInfo.size
+// 恒为 nil，仅组件目录预览等无 span 上下文才兜底用 size，见 SystemMonitor 同款
+// 注释）——形态在视图创建期即确定（宿主块缓存键含跨度，跨度变化重走 makeView）。
+//
+// 两形态共用同一「随条目适应」容器：条目总高 ≤ 块高 → 整组垂直居中（不滚），
+// 超高（条目多，放不下） → 块内滚动。差异只在行的摆法：
+// - 1×1（compact）：每台屏「屏名一行 + 亮度滑杆一行」上下堆叠。
+// - 其余跨度（rows）：每台屏一行横向「屏名 + 滑杆」（历史版式）。
+
+/// 亮度滑杆块的版式形态：跨度 → 布局（纯逻辑，视图与测试共用）。
+enum BrightnessSliderArrangement: Equatable {
+    /// 1×1：每台屏「屏名 + 滑杆」两行紧凑堆叠。
+    case compact
+    /// ≥2 列或 ≥2 行：每台屏一行横向「屏名 + 滑杆」。
+    case rows
+
+    static func forSpan(
+        widthColumns: Int?,
+        heightRows: Int?,
+        size: BlockSize?
+    ) -> BrightnessSliderArrangement {
+        if let columns = widthColumns, let rows = heightRows {
+            return columns == 1 && rows == 1 ? .compact : .rows
+        }
+        return size == .small ? .compact : .rows
+    }
+}
 
 struct DisplaySlidersBlockView: View {
     let context: BlockContext
     @ObservedObject private var controller = BrightnessController.shared
+
+    private var arrangement: BrightnessSliderArrangement {
+        BrightnessSliderArrangement.forSpan(
+            widthColumns: context.layoutInfo.widthColumns,
+            heightRows: context.layoutInfo.heightRows,
+            size: context.layoutInfo.size
+        )
+    }
 
     var body: some View {
         let size = context.layoutInfo.frame.size
@@ -14,16 +50,9 @@ struct DisplaySlidersBlockView: View {
                 if controller.rows.isEmpty {
                     emptyState
                 } else {
-                    ScrollView(.vertical) {
-                        VStack(spacing: 12) {
-                            ForEach(controller.rows) { model in
-                                BrightnessRowView(
-                                    model: model,
-                                    isPreview: context.layoutInfo.isPreview)
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
+                    switch arrangement {
+                    case .compact: compactLayout
+                    case .rows: rowsLayout
                     }
                 }
             }
@@ -50,9 +79,66 @@ struct DisplaySlidersBlockView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    // MARK: 版式布局
+
+    private var compactLayout: some View {
+        adaptiveStack(insets: CompactBrightnessMetrics.insets) {
+            compactRows
+        }
+    }
+
+    /// 1×1 紧凑行：每台屏「屏名 + 滑杆」两行，屏间 `rowSpacing` 分隔。
+    private var compactRows: some View {
+        VStack(spacing: CompactBrightnessMetrics.rowSpacing) {
+            ForEach(controller.rows) { model in
+                CompactBrightnessRowView(
+                    model: model,
+                    isPreview: context.layoutInfo.isPreview)
+            }
+        }
+    }
+
+    /// 行式（历史版式，多屏每屏一行横向滑杆）。
+    private var rowsLayout: some View {
+        adaptiveStack(insets: RowsBrightnessMetrics.insets) {
+            rowViews
+        }
+    }
+
+    private var rowViews: some View {
+        VStack(spacing: RowsBrightnessMetrics.rowSpacing) {
+            ForEach(controller.rows) { model in
+                BrightnessRowView(
+                    model: model,
+                    isPreview: context.layoutInfo.isPreview)
+            }
+        }
+    }
+
+    /// 随条目适应的共用容器：`ViewThatFits` 沿竖直方向做二选一，免去手工预算
+    /// 行高带来的边界抖动——候选 1 整组垂直居中（条目总高 ≤ 块高时命中，单屏
+    /// 或少量屏即整组居中），候选 2 ScrollView 兜底（条目多、超高时块内滚动）。
+    /// 1×1 与其余尺寸共用同一容器，行为一致。
+    private func adaptiveStack<Content: View>(
+        insets: EdgeInsets,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ViewThatFits(in: .vertical) {
+            content()
+                .padding(insets)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ScrollView {
+                content()
+                    .padding(insets)
+            }
+        }
+    }
 }
 
-/// 行内滑杆的版式常量：占位空槽对齐滑杆高度，避免初值落定时行高跳动。
+// MARK: - 版式常量
+
+/// 行式滑杆的版式常量：占位空槽对齐滑杆高度，避免初值落定时行高跳动。
 private enum BrightnessRowMetrics {
     /// `.controlSize(.small)` 滑杆的标准高度（实测 16pt）。
     static let sliderHeight: CGFloat = 16
@@ -60,32 +146,43 @@ private enum BrightnessRowMetrics {
     static let trackHeight: CGFloat = 3
 }
 
-private struct BrightnessRowView: View {
+/// 1×1 紧凑两行式的版式常量。
+private enum CompactBrightnessMetrics {
+    /// 块内容四周留白（比行式的 14/12 收一点，1×1 宽高都紧张）。
+    static let insets = EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10)
+    /// 屏与屏之间的间距。
+    static let rowSpacing: CGFloat = 8
+    /// 同一屏内「屏名」与「滑杆」之间的间距。
+    static let rowInnerSpacing: CGFloat = 3
+}
+
+/// 行式（≥2 列或 ≥2 行）的版式常量。
+private enum RowsBrightnessMetrics {
+    /// 块内容四周留白。
+    static let insets = EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14)
+    /// 屏与屏之间的间距。
+    static let rowSpacing: CGFloat = 12
+}
+
+// MARK: - 滑杆（两形态共用的唯一实现）
+
+/// 单台屏的亮度滑杆或其回读占位槽。两套版式共用这一份交互与样式，
+/// 拖动 → DDC 写入、回读中占位、跨实例同步等语义集中在此。
+private struct BrightnessSliderControl: View {
     @ObservedObject var model: BrightnessDisplayModel
     let isPreview: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "sun.max")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.5))
-            Text(model.display.name)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.75))
-                .lineLimit(1)
-                .help(model.display.name)
-            // 只在初值回读完成后才渲染滑杆：滑杆若以 0 出生，之后赋上真值的那
-            // 次变化只要落在任一 `.animation(_:value:)` 事务里就会被插值成
-            // 「从 0 涨到当前亮度」的假动画——进入设置「组件」页时抽屉切编辑
-            // 态的过渡恰好盖住这段窗口（块视图随编辑态重建，DDC 回读几十毫秒
-            // 内落定）。改为占位空槽，滑杆首次出现时已是真值，无中间态可插值。
-            if model.state == .ready {
-                slider
-            } else {
-                pendingTrack
-            }
+        // 只在初值回读完成后才渲染滑杆：滑杆若以 0 出生，之后赋上真值的那
+        // 次变化只要落在任一 `.animation(_:value:)` 事务里就会被插值成
+        // 「从 0 涨到当前亮度」的假动画——进入设置「组件」页时抽屉切编辑
+        // 态的过渡恰好盖住这段窗口（块视图随编辑态重建，DDC 回读几十毫秒
+        // 内落定）。改为占位空槽，滑杆首次出现时已是真值，无中间态可插值。
+        if model.state == .ready {
+            slider
+        } else {
+            pendingTrack
         }
-        .opacity(model.state == .ready ? 1 : 0.4)
     }
 
     /// 回读中的占位空槽（静态，不动画）：与滑杆等高，保留行的呼吸感。
@@ -131,5 +228,53 @@ private struct BrightnessRowView: View {
         .transaction { $0.animation = nil }
         .accessibilityLabel(Text(LF("a11y.slider.label", model.display.name)))
         .accessibilityValue(Text("\(Int(model.percent.rounded()))%"))
+    }
+}
+
+// MARK: - 行式行（≥2 列或 ≥2 行）
+
+private struct BrightnessRowView: View {
+    @ObservedObject var model: BrightnessDisplayModel
+    let isPreview: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sun.max")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.5))
+            Text(model.display.name)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(1)
+                .help(model.display.name)
+            BrightnessSliderControl(model: model, isPreview: isPreview)
+        }
+        .opacity(model.state == .ready ? 1 : 0.4)
+    }
+}
+
+// MARK: - 1×1 紧凑行（单台屏：屏名一行 + 滑杆一行）
+
+private struct CompactBrightnessRowView: View {
+    @ObservedObject var model: BrightnessDisplayModel
+    let isPreview: Bool
+
+    var body: some View {
+        VStack(spacing: CompactBrightnessMetrics.rowInnerSpacing) {
+            // 屏名一行：图标 + 名称整体居中（1×1 是块内唯一可读标签）。
+            HStack(spacing: 5) {
+                Image(systemName: "sun.max")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.45))
+                Text(model.display.name)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(1)
+                    .help(model.display.name)
+            }
+            .frame(maxWidth: .infinity)
+            BrightnessSliderControl(model: model, isPreview: isPreview)
+        }
+        .opacity(model.state == .ready ? 1 : 0.4)
     }
 }

@@ -1,11 +1,13 @@
 import CoreGraphics
 import Foundation
+import NotchCenterKit
 import XCTest
 @testable import DisplayPlugin
 
 /// DisplayPlugin 纯逻辑回归：DDC/CI 帧编解码（m1ddc/ddcctl 布局对照）、
-/// 写入合并状态机、百分比 ↔ DDC 值映射、外接屏候选过滤，以及经假后端
-/// 驱动的初值回退 / 连续失败隐藏 / 合并收敛。不触碰真实 IOKit。
+/// 写入合并状态机、百分比 ↔ DDC 值映射、外接屏候选过滤、块版式形态映射
+///（跨度 → 1×1 紧凑 / 行式），以及经假后端驱动的初值回退 / 连续失败隐藏 /
+/// 合并收敛。不触碰真实 IOKit。
 final class DisplayPluginTests: XCTestCase {
     // MARK: 帧编解码
 
@@ -308,5 +310,41 @@ final class DisplayPluginTests: XCTestCase {
         controller.requestWrite(model, percent: 30)
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(backend.writes.count, writesBefore, "对已移除屏的尾随写入被丢弃")
+    }
+
+    // MARK: 版式形态映射（跨度 → 1×1 紧凑 / 行式）
+
+    func testArrangementSelectsCompactOnlyFor1By1Span() {
+        XCTAssertEqual(
+            BrightnessSliderArrangement.forSpan(widthColumns: 1, heightRows: 1, size: nil),
+            .compact)
+        XCTAssertEqual(
+            BrightnessSliderArrangement.forSpan(widthColumns: 1, heightRows: 1, size: .medium),
+            .compact,
+            "抽屉路径恒有 span，size 不参与判定")
+        XCTAssertEqual(
+            BrightnessSliderArrangement.forSpan(widthColumns: 2, heightRows: 1, size: nil),
+            .rows)
+        XCTAssertEqual(
+            BrightnessSliderArrangement.forSpan(widthColumns: 4, heightRows: 2, size: nil),
+            .rows)
+        XCTAssertEqual(
+            BrightnessSliderArrangement.forSpan(widthColumns: 1, heightRows: 2, size: nil),
+            .rows,
+            "未声明 1 列 × 多行的跨度；即便出现也不回退紧凑（防回归）")
+    }
+
+    func testArrangementFallbackUsesSizeForSpanlessContexts() {
+        XCTAssertEqual(
+            BrightnessSliderArrangement.forSpan(widthColumns: nil, heightRows: nil, size: .small),
+            .compact,
+            "目录预览等无 span 上下文按 size 兜底")
+        XCTAssertEqual(
+            BrightnessSliderArrangement.forSpan(widthColumns: nil, heightRows: nil, size: .medium),
+            .rows)
+        XCTAssertEqual(
+            BrightnessSliderArrangement.forSpan(widthColumns: nil, heightRows: nil, size: nil),
+            .rows,
+            "完全无上下文时回退行式（defaultSize 非 small）")
     }
 }

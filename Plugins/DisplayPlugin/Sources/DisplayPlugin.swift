@@ -1,10 +1,13 @@
 import NotchCenterKit
 import SwiftUI
 
-/// DisplayPlugin（官方显示器亮度插件）：经 DDC/CI 调节外接显示器亮度，
-/// 抽屉块内每屏一行滑杆。Apple Silicon 走 IOAVService 路线（忠实移植
-/// m1ddc，MIT），Intel 走 IOKit IOI2C 公开 API；决策记录见 Agent Note
-/// 2026-09-05-display-plugin-ddc，能力边界见插件 README。
+/// DisplayPlugin（官方显示器亮度插件）：经 DDC/CI 调节外接显示器亮度。
+/// Apple Silicon 走 IOAVService 路线（忠实移植 m1ddc，MIT），Intel 走
+/// IOKit IOI2C 公开 API；决策记录见 Agent Note 2026-09-05-display-plugin-ddc，
+/// 能力边界见插件 README。
+///
+/// 版式随块跨度自适应：1×1（small）每台屏「屏名 + 滑杆」两行紧凑堆叠，
+/// 其余尺寸维持历史「每屏一行横向滑杆」（见 DisplaySlidersBlockView）。
 @objc(DisplayPlugin) @MainActor
 public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
     public static var blocks: [NotchBlock] {
@@ -13,7 +16,7 @@ public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugin
                 id: "brightness.sliders",
                 displayName: L("block.drawer.name"),
                 kind: .drawer,
-                supportedSizes: [.medium, .large, .extraLarge],
+                supportedSizes: [.small, .medium, .large, .extraLarge],
                 defaultSize: .medium,
                 symbolName: "sun.max",
                 // 滑杆只经命中测试消费鼠标拖拽，不消费滚轮横向增量：
