@@ -221,7 +221,9 @@ struct DrawerPanelView: View {
                 icons: ui.drawerPageIcons,
                 activePage: ui.drawerActivePage,
                 isEditing: ui.isEditing,
-                showsAddButtons: ui.isEditing && isTopBarHovering,
+                // 拖动胶囊排序进行中隐藏加号：指针必然压在顶栏上，加号常亮会
+                // 干扰拖动预览；隐藏只是 opacity 0，槽位占位不变、行宽恒定。
+                showsAddButtons: ui.isEditing && isTopBarHovering && !isCapsuleDragging,
                 swipe: ui.drawerSwipe,
                 onSelect: actions.onSelectPage,
                 onAdd: actions.onAddPage,
