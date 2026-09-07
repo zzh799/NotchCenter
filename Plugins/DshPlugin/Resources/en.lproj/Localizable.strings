@@ -33,6 +33,10 @@
 "dsh.label.status" = "Status";
 "dsh.launchAtLogin" = "Launch at Login";
 "dsh.restart" = "Restart";
+"dsh.openWeb" = "Open Web";
+
+/* 块悬停提示（点击 = 启停，长按 = 浮窗） */
+"dsh.block.help" = "Click to start or stop · long-press for details";
 
 /* 快捷动作 */
 "quick.toggle.name" = "Toggle DSH Service";

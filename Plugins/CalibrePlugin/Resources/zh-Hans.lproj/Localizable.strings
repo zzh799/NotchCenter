@@ -24,6 +24,10 @@
 "calibre.popover.port" = "端口";
 "calibre.popover.launchAtLogin" = "登录时启动";
 "calibre.popover.restart" = "重启";
+"calibre.popover.openWeb" = "打开网页";
+
+/* 块悬停提示（点击 = 启停，长按 = 浮窗） */
+"calibre.block.help" = "点击启停 · 长按查看详情";
 
 /* 动作进行中的 busy 提示（浮窗 message 与块副标题共用） */
 "calibre.action.starting" = "正在启动…";

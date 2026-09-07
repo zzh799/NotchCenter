@@ -11,6 +11,8 @@ import SwiftUI
     /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe）：单行「状态点 + 服务名 +
     /// 状态 + 开关」水平布局（内容水平内边距 10、自然行高 ≈16），无固定叠加
     /// 区带、结构上不会块内自叠；行带须完整落在 minSize 盒内。
+    /// 窄块（< 110pt）改走紧凑「图标 + 名称」（见 `ServiceBlockCompactMetrics`），
+    /// 同为居中单行带，探针几何不变。
     private static func dshLayoutProbes(for size: CGSize) -> [BlockProbe] {
         let horizontalInset: CGFloat = 10
         let rowHeight: CGFloat = 16
@@ -30,9 +32,9 @@ import SwiftUI
             id: "dsh.service",
             displayName: L("dsh.block.name"),
             kind: .drawer,
-            minSize: BlockPixelSize(width: 150, height: 120),
+            minSize: BlockPixelSize(width: 75, height: 60),
             maxSize: BlockPixelSize(width: 300, height: 120),
-            recommendedSize: BlockPixelSize(width: 150, height: 120),
+            recommendedSize: BlockPixelSize(width: 75, height: 60),
             symbolName: "server.rack",
             probes: { info in
                 dshLayoutProbes(for: info.frame.size)

@@ -36,21 +36,17 @@ struct DshPopoverContentView: View {
                 .disabled(monitor.isBusy)
             }
 
-            Button {
-                monitor.restart()
-            } label: {
-                Label(L("dsh.restart"), systemImage: "arrow.clockwise")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.92))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.white.opacity(0.055))
-                    )
+            // 重启与「打开网页」并排一行：网页入口从块的点击动作移入浮窗，
+            // 两个动作等宽，浮窗高度不变。
+            HStack(spacing: 8) {
+                actionButton(L("dsh.restart"), systemImage: "arrow.clockwise", disabled: monitor.isBusy) {
+                    monitor.restart()
+                }
+                // 打开网页不改系统状态，busy 期间仍可用（探测端口优先，回退硬编码 URL）。
+                actionButton(L("dsh.openWeb"), systemImage: "safari") {
+                    monitor.openWeb()
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(monitor.isBusy)
 
             if let message = monitor.message {
                 Text(message)
@@ -60,6 +56,28 @@ struct DshPopoverContentView: View {
             }
         }
         .padding(14)
+    }
+
+    /// 浮窗底部动作按钮：白底 0.055 + 发丝圆角，与项目按钮观感一致。
+    private func actionButton(
+        _ title: String,
+        systemImage: String,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.92))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.white.opacity(0.055))
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
     }
 
     private var statusText: String {

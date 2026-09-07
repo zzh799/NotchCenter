@@ -28,4 +28,13 @@ final class CalibrePluginTests: XCTestCase {
         XCTAssertEqual(contents["StandardErrorPath"] as? String, CalibreServiceConfig.stderrLogPath)
         XCTAssertNotEqual(contents["StandardOutPath"] as? String, contents["StandardErrorPath"] as? String)
     }
+
+    func testCompactLayoutThreshold() {
+        // 窄块（< 110pt）隐藏指示灯 / 状态 / 端口 / 开关，退化为「图标 + 名称」。
+        XCTAssertEqual(ServiceBlockCompactMetrics.widthThreshold, 110)
+        XCTAssertTrue(ServiceBlockCompactMetrics.isCompact(width: 75))
+        XCTAssertTrue(ServiceBlockCompactMetrics.isCompact(width: 109.9))
+        XCTAssertFalse(ServiceBlockCompactMetrics.isCompact(width: 110))
+        XCTAssertFalse(ServiceBlockCompactMetrics.isCompact(width: 150))
+    }
 }
