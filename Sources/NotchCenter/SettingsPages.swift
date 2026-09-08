@@ -19,7 +19,7 @@ struct GeneralSettingsPage: View {
                 SettingsSection(title: L("settings.section.interaction")) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(L("settings.triggerMode"))
-                            .font(.system(size: 12))
+                            .font(NotchTokens.Text.system(12))
                             .foregroundStyle(.white.opacity(0.72))
                         Picker("", selection: $settingsStore.triggerMode) {
                             ForEach(SettingsStore.TriggerMode.allCases) { mode in
@@ -35,7 +35,7 @@ struct GeneralSettingsPage: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle(isOn: launchAtLoginBinding) {
                             Text(L("settings.launchAtLogin"))
-                                .font(.system(size: 12))
+                                .font(NotchTokens.Text.system(12))
                                 .foregroundStyle(.white.opacity(0.72))
                         }
                         if let hint = launchAtLoginHint {
@@ -360,7 +360,7 @@ struct ComponentsSettingsPage: View {
                     }
                     if groups.isEmpty {
                         Text(L("settings.components.empty"))
-                            .font(.system(size: 12))
+                            .font(NotchTokens.Text.system(12))
                             .foregroundStyle(.white.opacity(0.35))
                             .padding(.top, 40)
                     }
@@ -435,7 +435,7 @@ struct ComponentsSettingsPage: View {
     private var pluginSidebar: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(L("settings.components.groups"))
-                .font(.system(size: 10, weight: .semibold))
+                .font(NotchTokens.Text.system(10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.35))
                 .padding(.horizontal, 14)
                 .padding(.top, 16)
@@ -461,12 +461,12 @@ struct ComponentsSettingsPage: View {
         } label: {
             HStack(spacing: 6) {
                 Text(group.displayName)
-                    .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
+                    .font(NotchTokens.Text.system(11.5, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(.white.opacity(isSelected ? 0.92 : 0.62))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Text("\(group.count)")
-                    .font(.system(size: 10, weight: .medium).monospacedDigit())
+                    .font(NotchTokens.Text.system(10, weight: .medium).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.3))
             }
             .padding(.horizontal, 8)
@@ -485,9 +485,9 @@ struct ComponentsSettingsPage: View {
     private var hint: some View {
         HStack(spacing: 8) {
             Image(systemName: "hand.draw")
-                .font(.system(size: 11, weight: .semibold))
+                .font(NotchTokens.Text.system(11, weight: .semibold))
             Text(L("settings.components.hint"))
-                .font(.system(size: 11.5))
+                .font(NotchTokens.Text.system(11.5))
         }
         .foregroundStyle(.white.opacity(0.55))
         .padding(.horizontal, 10)
@@ -501,7 +501,7 @@ struct ComponentsSettingsPage: View {
     private func groupSection(_ group: ComponentCatalogGroup) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(group.displayName)
-                .font(.system(size: 13, weight: .semibold))
+                .font(NotchTokens.Text.system(13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.86))
 
             // 快捷按钮与抽屉组件合并到同一网格混排（紧凑块在前），
@@ -612,11 +612,11 @@ private struct ComponentCard: View {
 
             VStack(alignment: .center, spacing: 2) {
                 Text(item.displayName)
-                    .font(.system(size: 11.5, weight: .medium))
+                    .font(NotchTokens.Text.system(11.5, weight: .medium))
                     .foregroundStyle(.white.opacity(isHovering ? 0.95 : 0.86))
                     .lineLimit(1)
                 Text(item.isCompact ? L("settings.components.compact") : spanText)
-                    .font(.system(size: 9.5, weight: .medium))
+                    .font(NotchTokens.Text.system(9.5, weight: .medium))
                     .foregroundStyle(.white.opacity(0.38))
             }
         }
@@ -645,12 +645,12 @@ private struct ComponentCard: View {
         .overlay(alignment: .topTrailing) {
             if item.quickActionID != nil {
                 Image(systemName: "square.grid.3x3")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(NotchTokens.Text.system(9, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.62))
                     .padding(5)
                     .background(
                         Circle()
-                            .fill(Color(red: 0.05, green: 0.05, blue: 0.06).opacity(0.92))
+                            .fill(NotchTokens.Surface.window.opacity(0.92))
                     )
                     .overlay(
                         Circle()
@@ -712,17 +712,17 @@ private struct QuickActionCard: View {
             )
             VStack(alignment: .leading, spacing: 1) {
                 Text(action.displayName)
-                    .font(.system(size: 11.5, weight: .medium))
+                    .font(NotchTokens.Text.system(11.5, weight: .medium))
                     .foregroundStyle(.white.opacity(isHovering ? 0.95 : 0.85))
                     .lineLimit(1)
                 Text(sourceName)
-                    .font(.system(size: 9.5, weight: .medium))
+                    .font(NotchTokens.Text.system(9.5, weight: .medium))
                     .foregroundStyle(.white.opacity(0.38))
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
             Image(systemName: "line.3.horizontal")
-                .font(.system(size: 10, weight: .semibold))
+                .font(NotchTokens.Text.system(10, weight: .semibold))
                 .foregroundStyle(.white.opacity(isHovering ? 0.5 : 0.3))
         }
         .padding(.horizontal, 10)
@@ -812,7 +812,7 @@ struct LayoutSettingsPage: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
                     Text(L("settings.columns"))
-                        .font(.system(size: 12))
+                        .font(NotchTokens.Text.system(12))
                         .foregroundStyle(.white.opacity(0.72))
                         .frame(width: 76, alignment: .leading)
                     ColumnRangeSlider(
@@ -845,7 +845,7 @@ struct LayoutSettingsPage: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     Text(L("settings.layout.minRows"))
-                        .font(.system(size: 12))
+                        .font(NotchTokens.Text.system(12))
                         .foregroundStyle(.white.opacity(0.72))
                     Spacer(minLength: 0)
                     Picker("", selection: minRowsBinding) {
@@ -904,7 +904,7 @@ private struct MetricsSlider: View {
         let range = GridMetricsStore.range(for: metric)
         HStack(spacing: 12) {
             Text(title)
-                .font(.system(size: 12))
+                .font(NotchTokens.Text.system(12))
                 .foregroundStyle(.white.opacity(0.72))
                 .frame(width: 76, alignment: .leading)
             sliderControl(range)
@@ -938,7 +938,7 @@ private struct MetricsSlider: View {
         .multilineTextAlignment(.trailing)
         .frame(width: 48)
         .textFieldStyle(.roundedBorder)
-        .font(.system(size: 11).monospacedDigit())
+        .font(NotchTokens.Text.system(11).monospacedDigit())
     }
 }
 
@@ -989,7 +989,7 @@ private struct GridMetricsPreview: View {
                     Int(store.spacing)
                 )
             )
-            .font(.system(size: 10).monospacedDigit())
+            .font(NotchTokens.Text.system(10).monospacedDigit())
             .foregroundStyle(.white.opacity(0.4))
             .offset(y: 16)
         }
@@ -1007,7 +1007,7 @@ struct SettingsSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(NotchTokens.Text.system(11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.42))
             content()
         }
@@ -1063,7 +1063,7 @@ struct DebugSettingsPage: View {
                     controller.showSizeLab()
                 } label: {
                     Text(L("settings.debug.sizeLab.open"))
-                        .font(.system(size: 12, weight: .medium))
+                        .font(NotchTokens.Text.system(12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.85))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -1088,7 +1088,7 @@ struct DebugSettingsPage: View {
     ) -> some View {
         HStack(spacing: 12) {
             Text(title)
-                .font(.system(size: 12))
+                .font(NotchTokens.Text.system(12))
                 .foregroundStyle(.white.opacity(0.72))
                 .frame(width: 76, alignment: .leading)
             Slider(
@@ -1118,7 +1118,7 @@ struct DebugSettingsPage: View {
             .multilineTextAlignment(.trailing)
             .frame(width: 48)
             .textFieldStyle(.roundedBorder)
-            .font(.system(size: 11).monospacedDigit())
+            .font(NotchTokens.Text.system(11).monospacedDigit())
             .onSubmit { controller.applySettingsWindowSize() }
         }
     }

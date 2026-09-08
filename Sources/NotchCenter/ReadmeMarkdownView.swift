@@ -1,3 +1,4 @@
+import NotchCenterKit
 import SwiftUI
 
 // MARK: - 设置面板插件说明文档（轻量 Markdown 渲染）
@@ -89,21 +90,21 @@ struct ReadmeMarkdownView: View {
         switch block {
         case let .heading(level, text):
             Text(text)
-                .font(.system(size: level <= 1 ? 15 : level == 2 ? 13 : 12, weight: .bold))
+                .font(NotchTokens.Text.system(level <= 1 ? 15 : level == 2 ? 13 : 12, weight: .bold))
                 .foregroundStyle(.white.opacity(0.92))
                 .padding(.top, level <= 2 ? 4 : 2)
         case let .bullet(text):
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Text("•")
-                    .font(.system(size: 11))
+                    .font(NotchTokens.Text.system(11))
                     .foregroundStyle(.white.opacity(0.45))
                 inlineText(text)
-                    .font(.system(size: 11))
+                    .font(NotchTokens.Text.system(11))
                     .foregroundStyle(.white.opacity(0.66))
             }
         case let .code(lines):
             Text(lines.joined(separator: "\n"))
-                .font(.system(size: 10, design: .monospaced))
+                .font(NotchTokens.Text.system(10, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.72))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
@@ -113,7 +114,7 @@ struct ReadmeMarkdownView: View {
                 )
         case let .paragraph(text):
             inlineText(text)
-                .font(.system(size: 11))
+                .font(NotchTokens.Text.system(11))
                 .foregroundStyle(.white.opacity(0.66))
         }
     }

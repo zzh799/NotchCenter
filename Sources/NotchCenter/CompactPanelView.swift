@@ -66,8 +66,9 @@ struct CompactPanelView: View {
                 if showsBand {
                     TopAttachedRoundedShape(radius: cornerRadius)
                         .fill(
-                            Color(red: 0.02, green: 0.02, blue: 0.025)
-                                .opacity(isHovering ? 0.99 : 0.96)
+                            // Surface.drawer 自带 0.98 不透明度：常态再乘 0.98 ≈ 原 0.96，悬停回满档
+                            // （≈ 展开抽屉底色，展开瞬间无跳变）。
+                            NotchTokens.Surface.drawer.opacity(isHovering ? 1 : 0.98)
                         )
                         .overlay {
                             TopAttachedRoundedShape(radius: cornerRadius)
@@ -355,7 +356,7 @@ private struct CompactBlockContainer: View {
             .onEnded { value in
                 let contentX = contentX(for: value)
                 let target = strip.screenInsertionIndex(atContentX: contentX)
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                withAnimation(NotchTokens.Motion.expand) {
                     dragOffset = 0
                     isDragging = false
                 }
@@ -413,18 +414,18 @@ private struct SummaryChipView: View {
             HStack(spacing: SummaryChipMetrics.symbolTextGap) {
                 if let symbolName = summary.symbolName {
                     Image(systemName: symbolName)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(NotchTokens.Text.system(13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.85))
                         .frame(width: SummaryChipMetrics.symbolWidth)
                 }
                 Text(summary.title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(NotchTokens.Text.system(12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.92))
                     .lineLimit(1)
                     .layoutPriority(1)
                 if let subtitle = summary.subtitle, !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(.system(size: 11, weight: .regular))
+                        .font(NotchTokens.Text.system(11, weight: .regular))
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(1)
                         .truncationMode(.tail)

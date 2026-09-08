@@ -181,7 +181,8 @@ struct DrawerBlockContainer: View {
             isHighlighted: isResizing || isResizeHandleHovering
         )
         .scaleEffect(isResizing ? 1.12 : 1)
-        .animation(.spring(response: 0.24, dampingFraction: 0.72), value: isResizing)
+        // 缩放握把拾起弹入：原自造 0.24/0.72 收敛至抽屉几何 spring 族。
+        .animation(NotchTokens.Motion.expand, value: isResizing)
         .padding(5)
         .contentShape(Rectangle())
         .onHover { isResizeHandleHovering = $0 }

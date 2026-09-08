@@ -1,3 +1,4 @@
+import NotchCenterKit
 import SwiftUI
 
 /// 顶部圆角遮罩形状（贴近刘海观感）。
@@ -87,7 +88,7 @@ struct EditGlyphButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: fontSize))
+                .font(NotchTokens.Text.system(fontSize))
                 .foregroundStyle(.white.opacity(0.85))
                 .frame(width: side, height: side)
                 .contentShape(Rectangle())

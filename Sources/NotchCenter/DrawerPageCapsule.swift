@@ -394,17 +394,17 @@ private struct DrawerPagePill: View {
             if let icon {
                 HStack(spacing: 3) {
                     Image(systemName: icon)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(NotchTokens.Text.system(10, weight: .semibold))
                     if !label.isEmpty {
                         Text(label)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(NotchTokens.Text.system(10, weight: .medium))
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
                 }
             } else {
                 Text(label)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(NotchTokens.Text.system(10, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .padding(.horizontal, 4)

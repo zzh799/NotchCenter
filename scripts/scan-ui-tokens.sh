@@ -4,7 +4,7 @@
 #   的 `NotchTokens`(DESIGN.md spec 的代码化唯一事实源)。
 #   宿主 UI 一律引用 token;插件 UI 推荐引用,插件自有视觉(含数据可视化语义色)
 #   可收敛为插件内命名常量/调色板——此类命中仍计数,按基线/豁免口径登记于
-#   docs/UI规范整改追踪.md。
+#   docs/agent-notes/archive/2026-09-08-UI规范整改追踪.md。
 #
 # 规则:
 #   color-rgb  硬编码 RGB 色值构造(Color(red: / Color(white: / NSColor(srgbRed:)

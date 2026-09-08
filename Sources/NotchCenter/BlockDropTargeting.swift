@@ -140,7 +140,7 @@ extension NotchPanelController {
     ) {
         guard let draggingSlot, let screenPosition else {
             if uiState.dropPreview != nil {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                withAnimation(NotchTokens.Motion.expand) {
                     uiState.dropPreview = nil
                 }
             }
@@ -158,7 +158,7 @@ extension NotchPanelController {
             uiState.dropPreview = preview
             return
         }
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+        withAnimation(NotchTokens.Motion.expand) {
             uiState.dropPreview = preview
         }
     }

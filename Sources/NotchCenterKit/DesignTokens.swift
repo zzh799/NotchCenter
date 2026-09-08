@@ -54,6 +54,11 @@ public enum NotchTokens {
         public static let editorPanel: Color = Color(red: 0.06, green: 0.06, blue: 0.07)
         /// Markdown 快捷工具栏背景。
         public static let editorToolbar: Color = Color(red: 0.055, green: 0.055, blue: 0.065)
+        /// 设置窗口底色（普通窗体 chrome，不透明近黑灰带微蓝；DESIGN §2.1 补录）。
+        /// 浮层级压暗底（拖拽预览胶囊、组件卡角标 scrim）同族收敛，按需叠局部 alpha。
+        public static let window: Color = Color(red: 0.055, green: 0.055, blue: 0.062)
+        /// 插件管理列表/详情面板底色（窗口内更亮一阶的内容面板）。
+        public static let windowPane: Color = Color(red: 0.08, green: 0.08, blue: 0.09)
         /// 卡片/条目常态填充（BlockCard 常态、剪贴行常态）。
         public static let fill: Color = .white.opacity(0.025)
         /// 卡片/条目悬停填充。

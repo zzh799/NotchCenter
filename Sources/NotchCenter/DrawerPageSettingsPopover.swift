@@ -1,3 +1,4 @@
+import NotchCenterKit
 import SwiftUI
 
 // MARK: - 页面设置浮窗（分页胶囊齿轮角标触发）
@@ -47,11 +48,11 @@ struct DrawerPageSettingsPopover: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(L("panel.page.settings.name"))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(NotchTokens.Text.system(11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.42))
                 TextField("", text: $draftTitle)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(NotchTokens.Text.system(12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.95))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
@@ -71,7 +72,7 @@ struct DrawerPageSettingsPopover: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(L("panel.page.settings.icon"))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(NotchTokens.Text.system(11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.42))
                 LazyVGrid(
                     columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 8),
@@ -112,7 +113,7 @@ struct DrawerPageSettingsPopover: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 13))
+                .font(NotchTokens.Text.system(13))
                 .foregroundStyle(.white.opacity(isSelected ? 0.95 : 0.62))
                 .frame(maxWidth: .infinity)
                 .frame(height: 24)

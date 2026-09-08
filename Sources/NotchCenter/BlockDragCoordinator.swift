@@ -576,19 +576,19 @@ private struct DragPreviewChip: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: state.symbolName ?? "square.grid.2x2")
-                .font(.system(size: 11, weight: .semibold))
+                .font(NotchTokens.Text.system(11, weight: .semibold))
             Text(state.title)
-                .font(.system(size: 12, weight: .medium))
+                .font(NotchTokens.Text.system(12, weight: .medium))
                 .lineLimit(1)
             Image(systemName: state.isValid ? "plus.circle.fill" : "xmark.circle.fill")
-                .font(.system(size: 11, weight: .semibold))
+                .font(NotchTokens.Text.system(11, weight: .semibold))
         }
         .foregroundStyle(.white.opacity(state.isValid ? 0.92 : 0.7))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(
             Capsule(style: .continuous)
-                .fill(Color(red: 0.06, green: 0.06, blue: 0.07).opacity(0.96))
+                .fill(NotchTokens.Surface.window.opacity(0.96))
         )
         .overlay(
             Capsule(style: .continuous)

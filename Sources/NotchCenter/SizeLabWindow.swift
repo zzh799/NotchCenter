@@ -170,7 +170,7 @@ private struct SizeLabView: View {
             Divider().overlay(Color.white.opacity(0.06))
             footer
         }
-        .background(Color(red: 0.02, green: 0.02, blue: 0.025).opacity(0.98))
+        .background(NotchTokens.Surface.drawer)
         .environment(\.colorScheme, .dark)
         .frame(minWidth: 900, minHeight: 620)
         .onAppear {
@@ -208,7 +208,7 @@ private struct SizeLabView: View {
                 .padding(2)
             } label: {
                 Text("最小单元格")
-                    .font(.system(size: 10))
+                    .font(NotchTokens.Text.system(10))
                     .foregroundStyle(.secondary)
             }
             .fixedSize()
@@ -221,13 +221,13 @@ private struct SizeLabView: View {
                 .padding(2)
             } label: {
                 Text("对比范围")
-                    .font(.system(size: 10))
+                    .font(NotchTokens.Text.system(10))
                     .foregroundStyle(.secondary)
             }
             .fixedSize()
 
             Toggle("网格底衬", isOn: $showsGrid)
-                .font(.system(size: 11))
+                .font(NotchTokens.Text.system(11))
 
             Spacer()
 
@@ -238,9 +238,9 @@ private struct SizeLabView: View {
             } label: {
                 Text("恢复线上默认")
             }
-            .font(.system(size: 11))
+            .font(NotchTokens.Text.system(11))
         }
-        .font(.system(size: 11))
+        .font(NotchTokens.Text.system(11))
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
@@ -288,7 +288,7 @@ private struct SizeLabView: View {
         .multilineTextAlignment(.trailing)
         .frame(width: 40)
         .textFieldStyle(.roundedBorder)
-        .font(.system(size: 11).monospacedDigit())
+        .font(NotchTokens.Text.system(11).monospacedDigit())
     }
 
     private func numberField(_ value: Binding<Int>, range: ClosedRange<Int>) -> some View {
@@ -296,7 +296,7 @@ private struct SizeLabView: View {
             .multilineTextAlignment(.trailing)
             .frame(width: 40)
             .textFieldStyle(.roundedBorder)
-            .font(.system(size: 11).monospacedDigit())
+            .font(NotchTokens.Text.system(11).monospacedDigit())
     }
 
     /// 步进箭头（无标签，紧贴输入框）；步进与键入写同一个钳制绑定。
@@ -366,7 +366,7 @@ private struct SizeLabView: View {
 
     private func spanBadge(_ cell: SizeLabCell) -> some View {
         Text("\(cell.columns)×\(cell.rows)  \(Int(cell.size.width))×\(Int(cell.size.height))")
-            .font(.system(size: 9, weight: .medium).monospacedDigit())
+            .font(NotchTokens.Text.system(9, weight: .medium).monospacedDigit())
             .foregroundStyle(.white.opacity(0.55))
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
@@ -398,7 +398,7 @@ private struct SizeLabView: View {
             Text("组件经 makeView(BlockContext) 创建，与抽屉同一渲染管线")
                 .foregroundStyle(.secondary)
         }
-        .font(.system(size: 10).monospacedDigit())
+        .font(NotchTokens.Text.system(10).monospacedDigit())
         .foregroundStyle(.white.opacity(0.5))
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -424,10 +424,10 @@ private struct SizeLabView: View {
         BlockCard(hoverEffect: true) { _ in
             VStack(spacing: 8) {
                 Image(systemName: "square.grid.2x2")
-                    .font(.system(size: 22, weight: .light))
+                    .font(NotchTokens.Text.system(22, weight: .light))
                     .foregroundStyle(.white.opacity(0.7))
                 Text("占位卡")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(NotchTokens.Text.system(12, weight: .medium))
                     .foregroundStyle(.white.opacity(0.8))
                 ProgressView(value: 0.6)
                     .frame(width: 80)

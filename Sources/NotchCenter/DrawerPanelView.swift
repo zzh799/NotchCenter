@@ -124,7 +124,7 @@ struct DrawerPanelView: View {
         )
         .background(
             TopAttachedRoundedShape(radius: cornerRadius)
-                .fill(Color(red: 0.02, green: 0.02, blue: 0.025).opacity(0.98))
+                .fill(NotchTokens.Surface.drawer)
         )
         .clipShape(TopAttachedRoundedShape(radius: cornerRadius))
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
@@ -639,7 +639,7 @@ private struct TopBarButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .semibold))
+                .font(NotchTokens.Text.system(11, weight: .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 24, height: 24)
                 .background(

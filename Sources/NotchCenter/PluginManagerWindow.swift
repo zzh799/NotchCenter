@@ -52,7 +52,7 @@ struct PluginManagerView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(red: 0.08, green: 0.08, blue: 0.09))
+        .background(NotchTokens.Surface.windowPane)
         .alert(
             L("manager.alert.title"),
             isPresented: Binding(
@@ -72,12 +72,12 @@ struct PluginManagerView: View {
         VStack(spacing: 0) {
             HStack {
                 Text(L("manager.header.plugins"))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(NotchTokens.Text.system(12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer()
                 Button(action: installBundle) {
                     Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(NotchTokens.Text.system(11, weight: .bold))
                 }
                 .buttonStyle(.plain)
                 .help(L("manager.install.help"))
@@ -103,7 +103,7 @@ struct PluginManagerView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(entry.metadata.displayName)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(NotchTokens.Text.system(12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
 
@@ -115,7 +115,7 @@ struct PluginManagerView: View {
                 }
 
                 Text(entry.metadata.pluginID)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(NotchTokens.Text.system(10, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.38))
                     .lineLimit(1)
             }
@@ -144,7 +144,7 @@ struct PluginManagerView: View {
 
     private func badge(_ text: String, tint: Color) -> some View {
         Text(text)
-            .font(.system(size: 8, weight: .semibold))
+            .font(NotchTokens.Text.system(8, weight: .semibold))
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .background(
@@ -162,10 +162,10 @@ struct PluginManagerView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(entry.metadata.displayName)
-                            .font(.system(size: 16, weight: .bold))
+                            .font(NotchTokens.Text.system(16, weight: .bold))
                             .foregroundStyle(.white.opacity(0.92))
                         Text(entry.metadata.pluginID)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(NotchTokens.Text.system(11, design: .monospaced))
                             .foregroundStyle(.white.opacity(0.45))
                     }
                     Spacer()
@@ -178,12 +178,12 @@ struct PluginManagerView: View {
                 }
 
                 Text(LF("manager.version.api", entry.metadata.pluginVersion, entry.metadata.apiVersion))
-                    .font(.system(size: 11))
+                    .font(NotchTokens.Text.system(11))
                     .foregroundStyle(.white.opacity(0.5))
 
                 if let description = entry.metadata.pluginDescription, !description.isEmpty {
                     Text(description)
-                        .font(.system(size: 11))
+                        .font(NotchTokens.Text.system(11))
                         .foregroundStyle(.white.opacity(0.6))
                 }
 
@@ -191,7 +191,7 @@ struct PluginManagerView: View {
 
                 if entry.loadError != nil {
                     Text(LF("manager.loadFailed", entry.loadError ?? ""))
-                        .font(.system(size: 11))
+                        .font(NotchTokens.Text.system(11))
                         .foregroundStyle(.red.opacity(0.9))
                 } else {
                     // 原插件设置嵌入的位置改为展示说明文档（插件 bundle 内 README.md）。
@@ -204,10 +204,10 @@ struct PluginManagerView: View {
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "shippingbox")
-                    .font(.system(size: 26))
+                    .font(NotchTokens.Text.system(26))
                     .foregroundStyle(.white.opacity(0.25))
                 Text(L("manager.selectHint"))
-                    .font(.system(size: 12))
+                    .font(NotchTokens.Text.system(12))
                     .foregroundStyle(.white.opacity(0.35))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -278,7 +278,7 @@ struct PluginReadmeSection: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text(L("manager.noReadme"))
-                        .font(.system(size: 11))
+                        .font(NotchTokens.Text.system(11))
                         .foregroundStyle(.white.opacity(0.4))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

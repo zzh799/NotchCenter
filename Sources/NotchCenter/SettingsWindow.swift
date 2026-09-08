@@ -1,4 +1,5 @@
 import AppKit
+import NotchCenterKit
 import QuartzCore
 import SwiftUI
 
@@ -60,7 +61,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // 面板内的开关/输入框需要正常接收键盘，不能只在需要时才成为 key。
         panel.becomesKeyOnlyIfNeeded = false
         panel.appearance = NSAppearance(named: .darkAqua)
-        panel.backgroundColor = NSColor(red: 0.055, green: 0.055, blue: 0.062, alpha: 1)
+        panel.backgroundColor = NSColor(NotchTokens.Surface.window)
         panel.animationBehavior = .none
 
         super.init(window: panel)
@@ -181,7 +182,7 @@ struct SettingsRootView: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(red: 0.055, green: 0.055, blue: 0.062))
+        .background(NotchTokens.Surface.window)
         .environment(\.colorScheme, .dark)
         // 尺寸绑定 SettingsStore（调试页可调）：窗口 setContentSize 与此
         // 保持一致，两处不同源会出现内容与窗口边界错位。
@@ -201,7 +202,7 @@ struct SettingsRootView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("NotchCenter")
-                .font(.system(size: 12, weight: .semibold))
+                .font(NotchTokens.Text.system(12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.5))
                 .padding(.horizontal, 14)
                 .padding(.top, 16)
@@ -218,9 +219,9 @@ struct SettingsRootView: View {
             } label: {
                 HStack(spacing: 7) {
                     Image(systemName: "power")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(NotchTokens.Text.system(11, weight: .semibold))
                     Text(L("settings.quit"))
-                        .font(.system(size: 12))
+                        .font(NotchTokens.Text.system(12))
                 }
                 .foregroundStyle(.white.opacity(0.45))
                 .padding(.horizontal, 14)
@@ -240,10 +241,10 @@ struct SettingsRootView: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: page.systemImage)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(NotchTokens.Text.system(12, weight: .medium))
                     .frame(width: 16)
                 Text(page.title)
-                    .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
+                    .font(NotchTokens.Text.system(12.5, weight: isSelected ? .semibold : .regular))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(.white.opacity(isSelected ? 0.92 : 0.6))

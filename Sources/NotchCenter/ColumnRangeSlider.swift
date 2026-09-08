@@ -1,3 +1,4 @@
+import NotchCenterKit
 import SwiftUI
 
 // MARK: - 双游标列数滑条（设置 → 布局「列数」区）
@@ -217,7 +218,7 @@ struct ColumnRangeSlider: View {
 
     private func measurementLabel(_ text: String, tag: String) -> some View {
         Text(text)
-            .font(.system(size: 10).monospacedDigit())
+            .font(NotchTokens.Text.system(10).monospacedDigit())
             .foregroundStyle(.white.opacity(0.45))
             .fixedSize()
             .background(

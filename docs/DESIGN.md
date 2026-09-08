@@ -26,6 +26,8 @@
 | 抽屉主背景 | `Color(red: 0.02, green: 0.02, blue: 0.025).opacity(0.98)` | NotebookView |
 | 笔记编辑器面板背景 | `Color(red: 0.06, green: 0.06, blue: 0.07)` | MarkdownEditorPanel |
 | Markdown 快捷工具栏背景 | `Color(red: 0.055, green: 0.055, blue: 0.065)` | MarkdownEditorPanel |
+| 设置窗口底色 | `Color(red: 0.055, green: 0.055, blue: 0.062)` | SettingsRootView / 设置窗口 NSColor |
+| 插件管理列表/详情面板底色 | `Color(red: 0.08, green: 0.08, blue: 0.09)` | PluginManagerView |
 | 文件暂存区背景（空闲） | `RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.025))` | FileShelfView |
 | 文件暂存区背景（拖入高亮） | `.white.opacity(0.055)` + 描边 `.white.opacity(0.16)` + 阴影 | FileShelfView |
 
@@ -229,4 +231,4 @@
 
 ## 14. 代码 Token（唯一事实源）
 
-本文 §2 配色 / §3 圆角 / §4 排版 / §5 间距 / §7 动效的数值已代码化为 `NotchCenterKit` 的 [`NotchTokens`](../Sources/NotchCenterKit/DesignTokens.swift)：`Foreground`（白 alpha 阶梯）、`Surface`、`Hairline`、`Semantic`、`Radius`、`Text`（预设 + `system(...)` 工厂）、`Space`、`Motion`。宿主 UI 一律引用 token；插件 UI 推荐引用，token 未覆盖的插件自有视觉可收敛为插件内命名常量/调色板（细则见 [`插件开发约定.md`](agents/插件开发约定.md)）。两侧均不写内联字面量；spec 角色之外的字号走 `Text.system(...)`。任一侧改动必须同步另一侧。存量整改进度见 [`UI规范整改追踪.md`](UI规范整改追踪.md)，扫描命令 `scripts/scan-ui-tokens.sh`（警告级）。
+本文 §2 配色 / §3 圆角 / §4 排版 / §5 间距 / §7 动效的数值已代码化为 `NotchCenterKit` 的 [`NotchTokens`](../Sources/NotchCenterKit/DesignTokens.swift)：`Foreground`（白 alpha 阶梯）、`Surface`、`Hairline`、`Semantic`、`Radius`、`Text`（预设 + `system(...)` 工厂）、`Space`、`Motion`。宿主 UI 一律引用 token；插件 UI 推荐引用，token 未覆盖的插件自有视觉可收敛为插件内命名常量/调色板（细则见 [`插件开发约定.md`](agents/插件开发约定.md)）。两侧均不写内联字面量；spec 角色之外的字号走 `Text.system(...)`。任一侧改动必须同步另一侧。存量整改进度见 [`UI规范整改追踪.md`](agent-notes/archive/2026-09-08-UI规范整改追踪.md)，扫描命令 `scripts/scan-ui-tokens.sh`（警告级）。

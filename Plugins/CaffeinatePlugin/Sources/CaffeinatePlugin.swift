@@ -93,7 +93,7 @@ private final class KeepAwakeModel {
 }
 
 /// 激活态底衬（防休眠开启时的深绿底）——插件自有状态语义色，白色层级
-/// 未覆盖，收敛为本地调色板（豁免登记见 docs/UI规范整改追踪.md）。
+/// 未覆盖，收敛为本地调色板（豁免登记见 docs/agent-notes/archive/2026-09-08-UI规范整改追踪.md）。
 private enum CaffeinatePalette {
     static let activeFill = Color(red: 0.17, green: 0.3, blue: 0.2).opacity(0.5)
 }
