@@ -48,7 +48,7 @@ struct SingleInstanceSettingsView: View {
     private var exclusionsField: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(L("settings.network.exclusions"))
-                .font(.system(size: 10, weight: .medium))
+                .font(NotchTokens.Text.system(10, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.6))
             TextField(
                 L("settings.network.exclusions"),
@@ -56,9 +56,9 @@ struct SingleInstanceSettingsView: View {
             )
             .textFieldStyle(.roundedBorder)
             .controlSize(.small)
-            .font(.system(size: 10))
+            .font(NotchTokens.Text.system(10))
             Text(L("settings.network.exclusions.hint"))
-                .font(.system(size: 9))
+                .font(NotchTokens.Text.system(9))
                 .foregroundStyle(Color.white.opacity(0.4))
         }
     }
@@ -85,12 +85,12 @@ struct SingleInstanceSettingsView: View {
     private func thresholdField(title: String, binding: Binding<Double>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 10, weight: .medium))
+                .font(NotchTokens.Text.system(10, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.6))
             TextField(title, value: binding, format: .number)
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
-                .font(.system(size: 10))
+                .font(NotchTokens.Text.system(10))
                 .monospacedDigit()
                 .frame(maxWidth: .infinity)
         }
@@ -201,7 +201,7 @@ struct SingleInstanceSettingsView: View {
     private func row<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 10, weight: .medium))
+                .font(NotchTokens.Text.system(10, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.6))
             content()
         }
@@ -210,7 +210,7 @@ struct SingleInstanceSettingsView: View {
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(NotchTokens.Text.toolbarSmall)
                 .foregroundStyle(Color.white.opacity(0.76))
             content()
         }
@@ -234,7 +234,7 @@ struct OverviewInstanceSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L("settings.section.general"))
-                .font(.system(size: 11, weight: .semibold))
+                .font(NotchTokens.Text.toolbarSmall)
                 .foregroundStyle(Color.white.opacity(0.76))
             Picker(L("settings.window"), selection: windowBinding) {
                 ForEach(InstanceConfigLogic.allowedWindows, id: \.self) { seconds in
@@ -244,15 +244,15 @@ struct OverviewInstanceSettingsView: View {
             .controlSize(.small)
 
             Text(L("settings.section.metrics"))
-                .font(.system(size: 11, weight: .semibold))
+                .font(NotchTokens.Text.toolbarSmall)
                 .foregroundStyle(Color.white.opacity(0.76))
             ForEach(MetricKind.allCases, id: \.self) { kind in
                 Toggle(isOn: toggleBinding(kind)) {
                     HStack(spacing: 5) {
                         Image(systemName: kind.symbolName)
-                            .font(.system(size: 10))
+                            .font(NotchTokens.Text.system(10))
                         Text(L(kind.displayNameKey))
-                            .font(.system(size: 11))
+                            .font(NotchTokens.Text.system(11))
                     }
                     .foregroundStyle(Color.white.opacity(0.85))
                 }

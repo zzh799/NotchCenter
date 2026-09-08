@@ -46,7 +46,7 @@ struct ClipboardHistoryBlockView: View {
                 }
                 listContent
             }
-            .animation(.easeOut(duration: 0.15), value: isSearchExpanded)
+            .animation(NotchTokens.Motion.hover, value: isSearchExpanded)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
@@ -98,8 +98,8 @@ struct ClipboardHistoryBlockView: View {
                 )
             }
         }
-        .animation(.easeOut(duration: 0.15), value: confirmingClear)
-        .animation(.easeOut(duration: 0.12), value: isHovering)
+        .animation(NotchTokens.Motion.hover, value: confirmingClear)
+        .animation(NotchTokens.Motion.hover, value: isHovering)
         .colorScheme(.dark)
     }
 
@@ -175,7 +175,7 @@ struct ClipboardHistoryBlockView: View {
             }
             TextField(L("drawer.search.placeholder"), text: $query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .font(NotchTokens.Text.system(12))
                 .foregroundStyle(.white.opacity(0.92))
                 .focused($searchFocused)
                 // 展开后立即可输入（面板 canBecomeKey，见 PanelWindows.swift）。
@@ -185,7 +185,7 @@ struct ClipboardHistoryBlockView: View {
                     query = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(NotchTokens.Text.system(12))
                         .foregroundStyle(.white.opacity(0.4))
                 }
                 .buttonStyle(.plain)
@@ -231,9 +231,9 @@ struct ClipboardHistoryBlockView: View {
     private var pausedBanner: some View {
         HStack(spacing: 6) {
             Image(systemName: "pause.circle.fill")
-                .font(.system(size: 11, weight: .medium))
+                .font(NotchTokens.Text.system(11, weight: .medium))
             Text(L("drawer.paused.banner"))
-                .font(.system(size: 11, weight: .medium))
+                .font(NotchTokens.Text.system(11, weight: .medium))
         }
         .foregroundStyle(.white.opacity(0.6))
         .frame(maxWidth: .infinity)
@@ -244,15 +244,15 @@ struct ClipboardHistoryBlockView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "clipboard")
-                .font(.system(size: 22, weight: .light))
+                .font(NotchTokens.Text.system(22, weight: .light))
                 .foregroundStyle(.white.opacity(0.4))
                 .frame(width: 52, height: 52)
                 .background(Circle().fill(.white.opacity(0.07)))
             Text(L("drawer.empty.title"))
-                .font(.system(size: 12, weight: .semibold))
+                .font(NotchTokens.Text.system(12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.8))
             Text(L("drawer.empty.hint"))
-                .font(.system(size: 10.5))
+                .font(NotchTokens.Text.system(10.5))
                 .foregroundStyle(.white.opacity(0.45))
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
@@ -264,10 +264,10 @@ struct ClipboardHistoryBlockView: View {
     private var searchEmptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 18, weight: .light))
+                .font(NotchTokens.Text.system(18, weight: .light))
                 .foregroundStyle(.white.opacity(0.35))
             Text(L("drawer.search.empty"))
-                .font(.system(size: 11))
+                .font(NotchTokens.Text.system(11))
                 .foregroundStyle(.white.opacity(0.5))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -326,7 +326,7 @@ private struct ClipboardSectionView: View {
             if showsTopDivider {
                 // 置顶组与最近组的组界发丝线（DESIGN.md §2.3 分隔线基准）。
                 Rectangle()
-                    .fill(.white.opacity(0.045))
+                    .fill(NotchTokens.Hairline.divider)
                     .frame(height: 1)
                     .padding(.horizontal, 12)
                     .accessibilityHidden(true)
@@ -361,12 +361,12 @@ private struct ClipboardRowView: View {
             HStack(spacing: 4) {
                 if justCopied {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.45, green: 0.85, blue: 0.55))
+                        .font(NotchTokens.Text.system(9, weight: .semibold))
+                        .foregroundStyle(NotchTokens.Semantic.accentGreen)
                         .accessibilityLabel(Text(L("drawer.button.copied")))
                 }
                 Text(entry.text)
-                    .font(.system(size: 11.5))
+                    .font(NotchTokens.Text.system(11.5))
                     .foregroundStyle(.white.opacity(0.92))
                     .lineLimit(1)
             }
@@ -389,20 +389,20 @@ private struct ClipboardRowView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
                 .fill(.white.opacity(justCopied ? 0.055 : 0.03))
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
                 .strokeBorder(.white.opacity(0.09), lineWidth: 1)
         }
-        .animation(.easeOut(duration: 0.12), value: justCopied)
+        .animation(NotchTokens.Motion.hover, value: justCopied)
         // 主体点击 = 写回、长按 = 全文预览：单手势管线（blockPopoverTrigger，
         // TapGesture 与长按并存真机不触发的红线结论），行尾图标按钮自行消费点击。
         .blockPopoverTrigger(
             onTap: { _ in onCopy() },
             onLongPress: { frame in presentPreview(frame) },
-            cornerRadius: 7
+            cornerRadius: NotchTokens.Radius.button
         )
         .contextMenu {
             Button(entry.pinned ? L("drawer.button.unpin") : L("drawer.button.pin"), action: onTogglePin)
@@ -431,7 +431,7 @@ private struct ClipboardRowView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 10, weight: .medium))
+                .font(NotchTokens.Text.system(10, weight: .medium))
                 .foregroundStyle(.white.opacity(isActive ? 0.92 : 0.5))
                 .frame(width: 22, height: 20)
                 .background {
@@ -458,7 +458,7 @@ private struct ClipboardEntryPreviewCard: View {
     var body: some View {
         ScrollView(.vertical) {
             Text(text)
-                .font(.system(size: 11.5))
+                .font(NotchTokens.Text.system(11.5))
                 .foregroundStyle(.white.opacity(0.92))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -479,7 +479,7 @@ struct ClipboardTrayView: View {
         let slot = context.layoutInfo.frame.size
         return ZStack {
             Image(systemName: store.isPaused ? "clipboard.fill" : "clipboard")
-                .font(.system(size: 13, weight: .medium))
+                .font(NotchTokens.Text.system(13, weight: .medium))
                 .foregroundStyle(.white.opacity(store.isPaused ? 0.4 : 0.72))
         }
         .frame(width: slot.width, height: slot.height)
@@ -497,7 +497,7 @@ struct ClipboardInstanceSettingsView: View {
     var body: some View {
         HStack {
             Text(L("settings.displayCount"))
-                .font(.system(size: 11, weight: .medium))
+                .font(NotchTokens.Text.system(11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.75))
             Spacer()
             Picker(L("settings.displayCount"), selection: displayCountBinding) {

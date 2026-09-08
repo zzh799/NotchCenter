@@ -1,3 +1,4 @@
+import NotchCenterKit
 import SwiftUI
 
 struct TabPagerControl: View {
@@ -73,7 +74,7 @@ struct TabPagerControl: View {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(NotchTokens.Text.system(12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
                     .frame(width: 24, height: 24)
                     .background(
@@ -92,7 +93,7 @@ struct TabPagerControl: View {
     }
 
     private var tabSwitchAnimation: Animation {
-        .spring(response: 0.26, dampingFraction: 0.82)
+        NotchTokens.Motion.tabSwitch
     }
 
     private func rememberCurrentSelection() {

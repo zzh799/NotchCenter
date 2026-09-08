@@ -14,9 +14,9 @@ struct OpenCodeUsagePopoverContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            Divider().overlay(Color.white.opacity(0.045))
+            Divider().overlay(NotchTokens.Hairline.divider)
             windowDetails
-            Divider().overlay(Color.white.opacity(0.045))
+            Divider().overlay(NotchTokens.Hairline.divider)
             // TimelineView 每秒驱动：指针、时钟文字与阶段倒计时实时走动。
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 PeakClockView(now: context.date)
@@ -31,13 +31,13 @@ struct OpenCodeUsagePopoverContentView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(L("popover.title"))
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.92))
+                .font(NotchTokens.Text.system(13, weight: .semibold, design: .rounded))
+                .foregroundStyle(NotchTokens.Foreground.body)
             Spacer()
             if let balance = store.snapshot?.zen?.balance {
                 Text(balance, format: .currency(code: "USD"))
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.92))
+                    .font(NotchTokens.Text.system(13, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(NotchTokens.Foreground.body)
             }
         }
     }
@@ -55,12 +55,12 @@ struct OpenCodeUsagePopoverContentView: View {
             }
         } else if let message = store.errorMessage {
             Text(message)
-                .font(.system(size: 10))
-                .foregroundStyle(Color.white.opacity(0.58))
+                .font(NotchTokens.Text.system(10))
+                .foregroundStyle(NotchTokens.Foreground.muted)
         } else {
             Text(store.isConfigured ? L("usage.loading") : L("usage.notConfigured"))
-                .font(.system(size: 10))
-                .foregroundStyle(Color.white.opacity(0.58))
+                .font(NotchTokens.Text.system(10))
+                .foregroundStyle(NotchTokens.Foreground.muted)
         }
     }
 
@@ -71,8 +71,8 @@ struct OpenCodeUsagePopoverContentView: View {
         if let payment = snapshot.zen?.paymentMethodType { parts.append(payment) }
         parts.append(LF("popover.updatedAgo", OpenCodeUsageParser.formatReset(seconds: max(0, Int(Date().timeIntervalSince(snapshot.updatedAt))))))
         return Text(parts.joined(separator: " · "))
-            .font(.system(size: 9))
-            .foregroundStyle(Color.white.opacity(0.38))
+            .font(NotchTokens.Text.system(9))
+            .foregroundStyle(NotchTokens.Foreground.disabled)
             .lineLimit(1)
     }
 }
@@ -86,13 +86,13 @@ private struct WindowDetailRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(kind.shortLabel)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.76))
+                .font(NotchTokens.Text.system(10, weight: .medium))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
                 .frame(width: 34, alignment: .leading)
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule().fill(NotchTokens.Surface.track)
                     Capsule()
                         .fill(Self.barColor(percent: window.percent))
                         .frame(width: geo.size.width * CGFloat(window.percent / 100))
@@ -101,19 +101,19 @@ private struct WindowDetailRow: View {
             .frame(height: 5)
 
             Text("\(window.percentText)%")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(NotchTokens.Text.system(10, weight: .medium, design: .monospaced))
                 .foregroundStyle(Self.barColor(percent: window.percent))
                 .frame(width: 30, alignment: .trailing)
                 .minimumScaleFactor(0.75)
         }
         HStack {
             Text(resetAbsoluteTime)
-                .font(.system(size: 9))
-                .foregroundStyle(Color.white.opacity(0.58))
+                .font(NotchTokens.Text.system(9))
+                .foregroundStyle(NotchTokens.Foreground.muted)
             Spacer()
             Text(LF("popover.resetsIn", OpenCodeUsageParser.formatReset(seconds: window.resetInSec)))
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundStyle(window.isRateLimited ? Color.red.opacity(0.9) : Color.white.opacity(0.58))
+                .font(NotchTokens.Text.system(9, weight: .medium, design: .monospaced))
+                .foregroundStyle(window.isRateLimited ? Color.red.opacity(0.9) : NotchTokens.Foreground.muted)
         }
         .padding(.leading, 42)
     }
@@ -139,12 +139,13 @@ private struct WindowDetailRow: View {
 
 /// 24 小时表盘（可复用组件）：轨道圆环 + 红/绿弧段 + 24 根刻度 + 单针 +
 /// 中心点。几何按直径等比缩放——浮窗与抽屉卡内的峰谷时钟共用同一实现。
+/// 峰/谷色统一取 `PeakClockPalette`（全插件唯一转换点）。
 struct PeakClockDial: View {
     let now: Date
     var diameter: CGFloat = 84
 
-    private static let peakColor = Color(red: PeakClockLogic.peakColor.red, green: PeakClockLogic.peakColor.green, blue: PeakClockLogic.peakColor.blue)
-    private static let offPeakColor = Color(red: PeakClockLogic.offPeakColor.red, green: PeakClockLogic.offPeakColor.green, blue: PeakClockLogic.offPeakColor.blue)
+    private static let peakColor = PeakClockPalette.peak
+    private static let offPeakColor = PeakClockPalette.offPeak
 
     var body: some View {
         let liveColor = PeakClockLogic.isPeak(now) ? Self.peakColor : Self.offPeakColor
@@ -198,8 +199,8 @@ struct PeakClockDial: View {
 struct PeakClockView: View {
     let now: Date
 
-    private static let peakColor = Color(red: PeakClockLogic.peakColor.red, green: PeakClockLogic.peakColor.green, blue: PeakClockLogic.peakColor.blue)
-    private static let offPeakColor = Color(red: PeakClockLogic.offPeakColor.red, green: PeakClockLogic.offPeakColor.green, blue: PeakClockLogic.offPeakColor.blue)
+    private static let peakColor = PeakClockPalette.peak
+    private static let offPeakColor = PeakClockPalette.offPeak
 
     var body: some View {
         let peak = PeakClockLogic.isPeak(now)
@@ -210,17 +211,17 @@ struct PeakClockView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(clockTime)
-                    .font(.system(size: 17, weight: .medium, design: .monospaced))
+                    .font(NotchTokens.Text.system(17, weight: .medium, design: .monospaced))
                     .foregroundStyle(liveColor)
                 HStack(spacing: 5) {
                     Circle()
                         .fill(liveColor)
                         .frame(width: 6, height: 6)
                     Text(peak ? L("clock.peakRemaining") : L("clock.offPeakRemaining"))
-                        .font(.system(size: 9))
-                        .foregroundStyle(Color.white.opacity(0.58))
+                        .font(NotchTokens.Text.system(9))
+                        .foregroundStyle(NotchTokens.Foreground.muted)
                     Text(PeakClockLogic.formatCountdown(PeakClockLogic.phaseRemainingSeconds(now)))
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .font(NotchTokens.Text.system(9, weight: .semibold, design: .monospaced))
                         .foregroundStyle(liveColor)
                 }
                 legend
@@ -238,9 +239,9 @@ struct PeakClockView: View {
     private var legend: some View {
         HStack(spacing: 4) {
             Circle().fill(Self.peakColor).frame(width: 6, height: 6)
-            Text(L("clock.peak")).font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.58))
+            Text(L("clock.peak")).font(NotchTokens.Text.system(9)).foregroundStyle(NotchTokens.Foreground.muted)
             Circle().fill(Self.offPeakColor).frame(width: 6, height: 6)
-            Text(L("clock.offPeak")).font(.system(size: 9)).foregroundStyle(Color.white.opacity(0.58))
+            Text(L("clock.offPeak")).font(NotchTokens.Text.system(9)).foregroundStyle(NotchTokens.Foreground.muted)
         }
     }
 }

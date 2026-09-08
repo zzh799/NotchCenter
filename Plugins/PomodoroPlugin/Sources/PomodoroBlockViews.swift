@@ -21,7 +21,7 @@ struct PomodoroCompactView: View {
             }
         } label: {
             Image(systemName: "timer")
-                .font(.system(size: 13, weight: .medium))
+                .font(NotchTokens.Text.system( 13, weight: .medium))
                 .foregroundStyle(.white.opacity(isRunning ? 0.95 : 0.72))
                 .frame(width: slot.width, height: slot.height)
                 .contentShape(Rectangle())
@@ -70,7 +70,7 @@ struct PomodoroDrawerBlockView: View {
                 store.start()
             } label: {
                 Label(L("drawer.startFocus"), systemImage: "play.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(NotchTokens.Text.system( 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.96))
                     .padding(.horizontal, 18)
                     .padding(.vertical, 8)
@@ -78,7 +78,7 @@ struct PomodoroDrawerBlockView: View {
             }
             .buttonStyle(.plain)
             Text(LF("drawer.focusFor", store.config.focusMinutes))
-                .font(.system(size: 11))
+                .font(NotchTokens.Text.system( 11))
                 .foregroundStyle(.white.opacity(0.55))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -97,16 +97,16 @@ struct PomodoroDrawerBlockView: View {
                             .fill(accent)
                             .frame(width: 6, height: 6)
                         Text(PomodoroTheme.phaseTitle(for: display))
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(NotchTokens.Text.system( 12, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.78))
                     }
                     Text(LF("drawer.completed", display.completedToday))
-                        .font(.system(size: 10))
+                        .font(NotchTokens.Text.system( 10))
                         .foregroundStyle(.white.opacity(0.5))
                 }
                 Spacer()
                 Text(pomodoroCountdownText(display.remainingSeconds))
-                    .font(.system(size: 28, weight: .semibold, design: .monospaced))
+                    .font(NotchTokens.Text.system( 28, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(.white.opacity(0.94))
             }
@@ -145,7 +145,7 @@ struct PomodoroDrawerBlockView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
+                .font(NotchTokens.Text.system( 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
                 .frame(width: 28, height: 28)
                 .background(Circle().fill(.white.opacity(0.09)))

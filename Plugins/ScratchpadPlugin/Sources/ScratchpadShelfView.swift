@@ -28,8 +28,8 @@ struct FileShelfView: View {
                 radius: 18,
                 y: 8
             )
-            .animation(.spring(response: 0.30, dampingFraction: 0.84), value: workspaceState.isShelfDropTargeted)
-            .animation(.spring(response: 0.32, dampingFraction: 0.82), value: store.items)
+            .animation(NotchTokens.Motion.shelfAppear, value: workspaceState.isShelfDropTargeted)
+            .animation(NotchTokens.Motion.shelfAppear, value: store.items)
             .onPreferenceChange(FileShelfItemFramePreferenceKey.self) { frames in
                 Task { @MainActor in
                     itemFrames = frames
@@ -57,12 +57,12 @@ struct FileShelfView: View {
             }
             .dropDestination(for: URL.self) { urls, _ in
                 let didAccept = store.acceptDrop(urls)
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
+                withAnimation(NotchTokens.Motion.shelfAppear) {
                     workspaceState.isShelfDropTargeted = false
                 }
                 return didAccept
             } isTargeted: { isTargeted in
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
+                withAnimation(NotchTokens.Motion.shelfAppear) {
                     workspaceState.isShelfDropTargeted = isTargeted
                         && !workspaceState.isDraggingShelfItem
                 }
@@ -142,7 +142,7 @@ struct FileShelfView: View {
             // Keep Quick Look consistent with removeSelectedItems(): the
             // panel must not keep showing files no longer on the shelf.
             previewController.close()
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+            withAnimation(NotchTokens.Motion.removal) {
                 store.removeAll()
             }
         } label: {
@@ -154,10 +154,10 @@ struct FileShelfView: View {
     private var dropPrompt: some View {
         HStack(spacing: 7) {
             Image(systemName: "tray.and.arrow.down")
-                .font(.system(size: 9, weight: .semibold))
+                .font(NotchTokens.Text.system(9, weight: .semibold))
 
             Text(L("drop.releaseToAdd"))
-                .font(.system(size: 10, weight: .semibold))
+                .font(NotchTokens.Text.dropHint)
         }
         .foregroundStyle(Color.white.opacity(0.58))
     }
@@ -165,11 +165,11 @@ struct FileShelfView: View {
     private var emptyPlaceholder: some View {
         VStack(spacing: 8) {
             Image(systemName: "tray")
-                .font(.system(size: 28, weight: .regular))
+                .font(NotchTokens.Text.system(28))
                 .foregroundStyle(.white.opacity(0.35))
 
             Text(L("shelf.empty.title"))
-                .font(.system(size: 11, weight: .medium))
+                .font(NotchTokens.Text.system(11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.55))
         }
         // .padding(16)

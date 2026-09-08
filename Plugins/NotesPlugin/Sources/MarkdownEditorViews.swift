@@ -1,5 +1,6 @@
 import AppKit
 import MarkdownEngine
+import NotchCenterKit
 import SwiftUI
 
 // MARK: - 编辑器面板
@@ -28,12 +29,12 @@ struct MarkdownEditorPanel: View {
             .frame(maxWidth: .infinity, minHeight: editorHeight, maxHeight: .infinity)
 
             Rectangle()
-                .fill(.white.opacity(0.045))
+                .fill(NotchTokens.Hairline.divider)
                 .frame(width: size.width, height: separatorHeight)
 
             MarkdownShortcutToolbar(editorInteractionState: editorInteractionState)
                 .frame(width: size.width, height: toolbarHeight)
-                .background(Color(red: 0.055, green: 0.055, blue: 0.065))
+                .background(NotchTokens.Surface.editorToolbar)
         }
         .frame(maxWidth: .infinity)
     }
@@ -80,7 +81,7 @@ struct MarkdownCommandLabel: View {
             Image(systemName: "strikethrough")
         case .inlineCode:
             Text("`")
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .font(NotchTokens.Text.code)
         case .link:
             Image(systemName: "link")
         case .quote:
@@ -129,8 +130,8 @@ struct MarkdownNoteEditor: View {
 
             if store.text(for: activeTabID).isEmpty {
                 Text(L("notes.placeholder.startTyping"))
-                    .font(.system(size: 15))
-                    .foregroundStyle(.white.opacity(0.24))
+                    .font(NotchTokens.Text.body)
+                    .foregroundStyle(NotchTokens.Foreground.placeholder)
                     .padding(.horizontal, 13)
                     .padding(.vertical, 12)
                     .allowsHitTesting(false)
@@ -179,18 +180,21 @@ struct MarkdownNoteEditor: View {
     }
 
     private var configuration: MarkdownEditorConfiguration {
+        // TextKit 字色走 Foreground 白 alpha 阶梯（DESIGN §2.2，经 NSColor 桥接）：
+        // 正文/静音/禁用/标题标记一一对应 token；删除线 0.62 不在阶梯上，就近取
+        // muted（0.58），不单开取值。
         let theme = MarkdownEditorTheme(
-            bodyText: NSColor(white: 0.92, alpha: 1),
-            mutedText: NSColor(white: 0.58, alpha: 1),
-            disabledText: NSColor(white: 0.38, alpha: 1),
-            headingMarker: NSColor(white: 0.44, alpha: 1),
+            bodyText: NSColor(NotchTokens.Foreground.body),
+            mutedText: NSColor(NotchTokens.Foreground.muted),
+            disabledText: NSColor(NotchTokens.Foreground.disabled),
+            headingMarker: NSColor(NotchTokens.Foreground.headingMarker),
             link: NSColor.systemBlue,
             incompleteLink: NSColor.systemBlue.withAlphaComponent(0.75),
             findMatchHighlight: NSColor.systemYellow.withAlphaComponent(0.55),
             findCurrentMatchHighlight: NSColor.systemYellow,
             latexLightModeText: .white,
             latexDarkModeText: .white,
-            strikethroughColor: NSColor(white: 0.62, alpha: 1)
+            strikethroughColor: NSColor(NotchTokens.Foreground.muted)
         )
 
         let services = MarkdownEditorServices(images: imageStore)

@@ -24,7 +24,7 @@ struct OpenCodeUsageInstanceSettingsView: View {
     private var appearanceSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L("settings.section.appearance"))
-                .font(.system(size: 11, weight: .semibold))
+                .font(NotchTokens.Text.toolbarSmall)
                 .foregroundStyle(Color.white.opacity(0.76))
 
             Picker(L("settings.displayStyle"), selection: styleBinding) {

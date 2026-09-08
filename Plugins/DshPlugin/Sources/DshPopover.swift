@@ -11,7 +11,7 @@ struct DshPopoverContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("DSH Web")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .font(NotchTokens.Text.system(13, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.white.opacity(0.92))
 
             row(L("dsh.label.status"), text: statusText, warning: isWarning)
@@ -23,7 +23,7 @@ struct DshPopoverContentView: View {
 
             HStack {
                 Text(L("dsh.launchAtLogin"))
-                    .font(.system(size: 11))
+                    .font(NotchTokens.Text.system(11))
                     .foregroundStyle(Color.white.opacity(0.76))
                 Spacer()
                 Toggle("", isOn: Binding(
@@ -50,7 +50,7 @@ struct DshPopoverContentView: View {
 
             if let message = monitor.message {
                 Text(message)
-                    .font(.system(size: 9))
+                    .font(NotchTokens.Text.system(9))
                     .foregroundStyle(Color.white.opacity(0.58))
                     .lineLimit(2)
             }
@@ -67,7 +67,7 @@ struct DshPopoverContentView: View {
     ) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 11, weight: .medium))
+                .font(NotchTokens.Text.system(11, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.92))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
@@ -101,11 +101,11 @@ struct DshPopoverContentView: View {
     private func row(_ title: String, text: String, warning: Bool) -> some View {
         HStack {
             Text(title)
-                .font(.system(size: 11))
+                .font(NotchTokens.Text.system(11))
                 .foregroundStyle(Color.white.opacity(0.58))
             Spacer()
             Text(text)
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .font(NotchTokens.Text.system(11, weight: .regular, design: .monospaced))
                 .foregroundStyle(warning ? Color.orange : Color.white.opacity(0.92))
         }
     }

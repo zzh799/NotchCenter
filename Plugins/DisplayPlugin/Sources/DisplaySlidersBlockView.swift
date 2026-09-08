@@ -68,12 +68,12 @@ struct DisplaySlidersBlockView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "sun.max")
-                .font(.system(size: 22, weight: .light))
+                .font(NotchTokens.Text.system( 22, weight: .light))
                 .foregroundStyle(.white.opacity(0.4))
                 .frame(width: 52, height: 52)
                 .background(Circle().fill(.white.opacity(0.07)))
             Text(L("drawer.empty.title"))
-                .font(.system(size: 12, weight: .semibold))
+                .font(NotchTokens.Text.system( 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.8))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -239,10 +239,10 @@ private struct BrightnessRowView: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "sun.max")
-                .font(.system(size: 11, weight: .medium))
+                .font(NotchTokens.Text.system( 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.5))
             Text(model.display.name)
-                .font(.system(size: 11, weight: .medium))
+                .font(NotchTokens.Text.system( 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(1)
                 .help(model.display.name)
@@ -263,10 +263,10 @@ private struct CompactBrightnessRowView: View {
             // 屏名一行：图标 + 名称整体居中（1×1 是块内唯一可读标签）。
             HStack(spacing: 5) {
                 Image(systemName: "sun.max")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(NotchTokens.Text.system( 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.45))
                 Text(model.display.name)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(NotchTokens.Text.system( 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1)
                     .help(model.display.name)

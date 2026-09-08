@@ -1,0 +1,24 @@
+{
+  "comment": "UI token 扫描基线(存量快照,只降不升)。更新: scripts/scan-ui-tokens.sh --update-baseline",
+  "files": {
+    "Plugins/CaffeinatePlugin/Sources/CaffeinatePlugin.swift": { "color-rgb": 1, "font-raw": 0, "spring-raw": 0 },
+    "Plugins/MediaControlsPlugin/Sources/MediaControlsBlockViews.swift": { "color-rgb": 1, "font-raw": 0, "spring-raw": 0 },
+    "Plugins/OpenCodeUsagePlugin/Sources/PeakClockLogic.swift": { "color-rgb": 2, "font-raw": 0, "spring-raw": 0 },
+    "Plugins/PomodoroPlugin/Sources/PomodoroTheme.swift": { "color-rgb": 3, "font-raw": 0, "spring-raw": 0 },
+    "Plugins/SystemMonitorPlugin/Sources/BlockViews.swift": { "color-rgb": 3, "font-raw": 0, "spring-raw": 0 },
+    "Sources/NotchCenter/BlockDragCoordinator.swift": { "color-rgb": 1, "font-raw": 3, "spring-raw": 0 },
+    "Sources/NotchCenter/BlockDropTargeting.swift": { "color-rgb": 0, "font-raw": 0, "spring-raw": 2 },
+    "Sources/NotchCenter/ColumnRangeSlider.swift": { "color-rgb": 0, "font-raw": 1, "spring-raw": 0 },
+    "Sources/NotchCenter/CompactPanelView.swift": { "color-rgb": 1, "font-raw": 3, "spring-raw": 1 },
+    "Sources/NotchCenter/DrawerBlockContainer.swift": { "color-rgb": 0, "font-raw": 0, "spring-raw": 1 },
+    "Sources/NotchCenter/DrawerPageCapsule.swift": { "color-rgb": 0, "font-raw": 3, "spring-raw": 0 },
+    "Sources/NotchCenter/DrawerPageSettingsPopover.swift": { "color-rgb": 0, "font-raw": 4, "spring-raw": 0 },
+    "Sources/NotchCenter/DrawerPanelView.swift": { "color-rgb": 1, "font-raw": 1, "spring-raw": 0 },
+    "Sources/NotchCenter/PanelDecoration.swift": { "color-rgb": 0, "font-raw": 1, "spring-raw": 0 },
+    "Sources/NotchCenter/PluginManagerWindow.swift": { "color-rgb": 1, "font-raw": 13, "spring-raw": 0 },
+    "Sources/NotchCenter/ReadmeMarkdownView.swift": { "color-rgb": 0, "font-raw": 5, "spring-raw": 0 },
+    "Sources/NotchCenter/SettingsPages.swift": { "color-rgb": 1, "font-raw": 24, "spring-raw": 0 },
+    "Sources/NotchCenter/SettingsWindow.swift": { "color-rgb": 2, "font-raw": 5, "spring-raw": 0 },
+    "Sources/NotchCenter/SizeLabWindow.swift": { "color-rgb": 1, "font-raw": 11, "spring-raw": 0 }
+  }
+}

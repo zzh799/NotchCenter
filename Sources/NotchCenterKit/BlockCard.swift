@@ -13,11 +13,12 @@ import SwiftUI
 // 填充 +0.03 ≈ 0.055。
 
 /// 卡片外观常量（DESIGN.md §2.1 近白半透明层级 / §2.3 发丝描边）。
+/// 数值以 `NotchTokens` 为唯一事实源，此处仅做组件级别名。
 enum BlockCardMetrics {
     /// 连续圆角半径（DESIGN.md §3 圆角统一偏好 `.continuous`）。
-    static let cornerRadius: CGFloat = 10
+    static let cornerRadius: CGFloat = NotchTokens.Radius.card
     /// 悬停反馈时长（DESIGN.md §4：悬停态 easeOut 0.10–0.13s）。
-    static let hoverAnimation = Animation.easeOut(duration: 0.12)
+    static let hoverAnimation = NotchTokens.Motion.hover
 }
 
 // MARK: - 卡片壳
@@ -64,14 +65,16 @@ public struct BlockCard<Content: View>: View {
 
     /// 白色 alpha 层级（DESIGN.md §2.2）：强调态 > 悬停 > 常态。
     private var fillColor: Color {
-        if highlighted { return Color.white.opacity(0.055) }
-        if isHovering { return Color.white.opacity(0.04) }
-        return Color.white.opacity(0.025)
+        if highlighted { return NotchTokens.Surface.fillHighlighted }
+        if isHovering { return NotchTokens.Surface.fillHover }
+        return NotchTokens.Surface.fill
     }
 
     private var strokeColor: Color {
+        // 强调描边 0.16 是按压/拖入高亮的配平值（介于常态 0.09 与
+        // chip 选中 0.20 之间），仅此组件使用，不单列 token。
         if highlighted { return Color.white.opacity(0.16) }
-        return Color.white.opacity(0.09)
+        return NotchTokens.Hairline.drawerEdge
     }
 }
 

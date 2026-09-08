@@ -51,19 +51,19 @@ struct QuickButtonBoxView: View {
                 )
             }
         }
-        .animation(.easeOut(duration: 0.15), value: pendingConfirm == nil)
+        .animation(NotchTokens.Motion.stateChange, value: pendingConfirm == nil)
     }
 
     private var emptyState: some View {
         VStack(spacing: 6) {
             Image(systemName: "square.grid.3x3")
-                .font(.system(size: 18, weight: .medium))
+                .font(NotchTokens.Text.system( 18, weight: .medium))
                 .foregroundStyle(.white.opacity(0.28))
             Text(L("block.empty"))
-                .font(.system(size: 12, weight: .semibold))
+                .font(NotchTokens.Text.system( 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.45))
             Text(L("block.empty.hint"))
-                .font(.system(size: 10.5))
+                .font(NotchTokens.Text.system( 10.5))
                 .foregroundStyle(.white.opacity(0.32))
                 .multilineTextAlignment(.center)
         }
@@ -135,7 +135,7 @@ private struct BoxActionButtonCell: View {
 private struct BoxActionMissingCell: View {
     var body: some View {
         Image(systemName: "questionmark")
-            .font(.system(size: 15, weight: .semibold))
+            .font(NotchTokens.Text.system( 15, weight: .semibold))
             .foregroundStyle(.white.opacity(0.22))
             .frame(width: QuickButtonBoxLayout.iconSize, height: QuickButtonBoxLayout.iconSize)
             .background(
@@ -179,17 +179,17 @@ struct QuickButtonBoxManageView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(L("panel.title"))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(NotchTokens.Text.system( 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
                 Spacer()
                 Text(LF("panel.capacity", model.actionIDs.count, capacity))
-                    .font(.system(size: 10, weight: .medium).monospacedDigit())
+                    .font(NotchTokens.Text.system( 10, weight: .medium).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.45))
             }
 
             if model.actionIDs.isEmpty {
                 Text(L("block.empty.hint"))
-                    .font(.system(size: 10.5))
+                    .font(NotchTokens.Text.system( 10.5))
                     .foregroundStyle(.white.opacity(0.4))
                     .padding(.vertical, 6)
             } else {
@@ -223,11 +223,11 @@ struct QuickButtonBoxManageView: View {
         }
         return HStack(spacing: 6) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .medium))
+                .font(NotchTokens.Text.system( 11, weight: .medium))
                 .foregroundStyle(.white.opacity(action == nil ? 0.25 : 0.8))
                 .frame(width: 16)
             Text(action?.displayName ?? L("action.unavailable"))
-                .font(.system(size: 11))
+                .font(NotchTokens.Text.system( 11))
                 .foregroundStyle(.white.opacity(action == nil ? 0.3 : 0.85))
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -258,7 +258,7 @@ struct QuickButtonBoxManageView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 9, weight: .semibold))
+                .font(NotchTokens.Text.system( 9, weight: .semibold))
                 .foregroundStyle(tint.opacity(disabled ? 0.2 : 0.6))
                 .frame(width: 16, height: 16)
                 .contentShape(Rectangle())

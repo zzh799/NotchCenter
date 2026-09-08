@@ -52,7 +52,7 @@ struct PomodoroSettingsView: View {
             }
 
             Text(L("settings.explanation"))
-                .font(.system(size: 11))
+                .font(NotchTokens.Text.system( 11))
                 .foregroundStyle(.white.opacity(0.5))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -67,7 +67,7 @@ struct PomodoroSettingsView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 10, weight: .bold))
+                .font(NotchTokens.Text.system( 10, weight: .bold))
                 .foregroundStyle(.white.opacity(0.45))
             content()
         }
@@ -82,7 +82,7 @@ struct PomodoroSettingsView: View {
     ) -> some View {
         HStack(spacing: 10) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(NotchTokens.Text.system( 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
                 .frame(width: 72, alignment: .leading)
             // macOS 14 的 Slider 没有 Int 泛型重载：Int 值经 Double 桥接，
@@ -99,7 +99,7 @@ struct PomodoroSettingsView: View {
             )
             .controlSize(.small)
             Text(unit(value.wrappedValue))
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(NotchTokens.Text.system( 11, weight: .medium, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(.white.opacity(0.6))
                 .frame(width: 54, alignment: .trailing)
@@ -109,7 +109,7 @@ struct PomodoroSettingsView: View {
     private func soundRow(_ title: String, value: Binding<String>) -> some View {
         HStack(spacing: 10) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(NotchTokens.Text.system( 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
                 .frame(width: 72, alignment: .leading)
             Picker("", selection: value) {
@@ -126,7 +126,7 @@ struct PomodoroSettingsView: View {
                 store.preview(value.wrappedValue)
             } label: {
                 Image(systemName: "speaker.wave.2")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(NotchTokens.Text.system( 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.7))
             }
             .buttonStyle(.plain)

@@ -104,14 +104,14 @@ private struct ScratchpadCompactView: View {
         let slot = context.layoutInfo.frame.size
         return ZStack(alignment: .topTrailing) {
             Image(systemName: "tray")
-                .font(.system(size: 13, weight: .medium))
+                .font(NotchTokens.Text.system(13, weight: .medium))
                 .foregroundStyle(.white.opacity(0.72))
                 .frame(width: slot.width, height: slot.height)
                 .contentShape(Rectangle())
 
             if itemCount > 0 {
                 Text("\(itemCount)")
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .font(NotchTokens.Text.system(8, weight: .bold, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(.horizontal, 3.5)
                     .padding(.vertical, 1)
@@ -196,11 +196,11 @@ private struct ClearConfirmationPopoverContentView: View {
         let totalCount = registry.totalItemCount
         VStack(spacing: 12) {
             Image(systemName: "tray.and.trash")
-                .font(.system(size: 20, weight: .medium))
+                .font(NotchTokens.Text.system(20, weight: .medium))
                 .foregroundStyle(.white.opacity(0.85))
 
             Text(L("clear.confirm.title"))
-                .font(.system(size: 13, weight: .semibold))
+                .font(NotchTokens.Text.system(13, weight: .semibold))
                 .foregroundStyle(.white)
 
             // 中英复数习惯不同：en 单数走独立键（无占位符），zh 两键同文。
@@ -211,7 +211,7 @@ private struct ClearConfirmationPopoverContentView: View {
                     Text(LF("clear.confirm.message", totalCount))
                 }
             }
-            .font(.system(size: 11))
+            .font(NotchTokens.Text.system(11))
             .foregroundStyle(.white.opacity(0.6))
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
@@ -219,7 +219,7 @@ private struct ClearConfirmationPopoverContentView: View {
             HStack(spacing: 8) {
                 Button(action: { BlockPopover.shared.dismiss() }) {
                     Text(L("common.cancel"))
-                        .font(.system(size: 11, weight: .medium))
+                        .font(NotchTokens.Text.system(11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.75))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)
@@ -231,7 +231,7 @@ private struct ClearConfirmationPopoverContentView: View {
 
                 Button(action: clearAll) {
                     Text(L("clear.confirm.removeAll"))
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(NotchTokens.Text.toolbarSmall)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)

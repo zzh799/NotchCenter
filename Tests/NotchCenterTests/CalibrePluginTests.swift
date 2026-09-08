@@ -1,3 +1,4 @@
+import NotchCenterKit
 import XCTest
 
 @testable import CalibrePlugin

@@ -19,6 +19,7 @@ import SwiftUI
 
 enum MetricPresentation {
     /// 方向色：读/下行蓝、写/上行橙。
+    /// （数据可视化语义色,经审计豁免于"白+alpha"规范,唯一定义处,勿散抄。）
     static func directionColor(inbound: Bool) -> Color {
         inbound ? Color(red: 0.42, green: 0.75, blue: 1.0) : Color(red: 1.0, green: 0.62, blue: 0.30)
     }
@@ -27,13 +28,13 @@ enum MetricPresentation {
     static func levelColor(for kind: MetricKind, level: LoadLevel) -> Color {
         switch level {
         case .high:
-            return Color(red: 1.0, green: 0.42, blue: 0.38)
+            return Color(red: 1.0, green: 0.42, blue: 0.38)   // 等级色豁免:数据可视化
         case .elevated:
-            return Color(red: 1.0, green: 0.78, blue: 0.35)
+            return Color(red: 1.0, green: 0.78, blue: 0.35)   // 等级色豁免:数据可视化
         case .normal:
             return kind == .memory
-                ? Color(red: 0.45, green: 0.85, blue: 0.55)
-                : Color.white.opacity(0.92)
+                ? NotchTokens.Semantic.accentGreen
+                : NotchTokens.Foreground.body
         }
     }
 
@@ -179,7 +180,7 @@ struct MiniBarView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.08))
+                Capsule().fill(NotchTokens.Surface.track)
                 Capsule()
                     .fill(color.opacity(0.85))
                     .frame(width: max(2, geo.size.width * CGFloat(fraction)))
@@ -227,10 +228,10 @@ struct MetricCell: View {
     private var header: some View {
         HStack(spacing: 4) {
             Image(systemName: kind.symbolName)
-                .font(.system(size: 9, weight: .medium))
+                .font(NotchTokens.Text.caption)
                 .foregroundStyle(Color.white.opacity(0.55))
             Text(L(kind.displayNameKey))
-                .font(.system(size: 9, weight: .semibold))
+                .font(NotchTokens.Text.system(9, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.55))
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -251,7 +252,7 @@ struct MetricCell: View {
     private var singleValue: some View {
         if let sample = latest {
             Text(percentText(sample))
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .font(NotchTokens.Text.system(17, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(levelColor(sample))
         } else {
@@ -263,7 +264,7 @@ struct MetricCell: View {
     private var dualValue: some View {
         if let sample = latest, kind == .disk, !sample.diskAvailable {
             Text(L("state.unavailable"))
-                .font(.system(size: 11, weight: .medium))
+                .font(NotchTokens.Text.system(11, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.45))
         } else if let sample = latest {
             VStack(alignment: .leading, spacing: 2) {
@@ -278,10 +279,10 @@ struct MetricCell: View {
     private func rateRow(sample: MetricSample, inbound: Bool) -> some View {
         HStack(spacing: 3) {
             Image(systemName: inbound ? "arrow.down" : "arrow.up")
-                .font(.system(size: 8, weight: .bold))
+                .font(NotchTokens.Text.system(8, weight: .bold))
                 .foregroundStyle(MetricPresentation.directionColor(inbound: inbound))
             Text(rateText(sample, inbound: inbound))
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(NotchTokens.Text.system(12, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(levelColor(sample))
         }
@@ -289,7 +290,7 @@ struct MetricCell: View {
 
     private var waiting: some View {
         Text(L("state.sampling"))
-            .font(.system(size: 11, weight: .medium))
+            .font(NotchTokens.Text.system(11, weight: .medium))
             .foregroundStyle(Color.white.opacity(0.4))
     }
 
@@ -569,9 +570,9 @@ struct OverviewBlockView: View {
     private var waitingPlaceholder: some View {
         HStack(spacing: 6) {
             Image(systemName: "gauge")
-                .font(.system(size: 10, weight: .medium))
+                .font(NotchTokens.Text.system(10, weight: .medium))
             Text(L("state.sampling"))
-                .font(.system(size: 10, weight: .medium))
+                .font(NotchTokens.Text.system(10, weight: .medium))
         }
         .foregroundStyle(Color.white.opacity(0.4))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -590,7 +591,7 @@ struct CompactMetricStrip: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(L(kind.displayNameKey))
-                .font(.system(size: 9, weight: .semibold))
+                .font(NotchTokens.Text.system(9, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.55))
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -604,17 +605,17 @@ struct CompactMetricStrip: View {
     private var valueText: some View {
         if let sample = latest, kind == .disk, !sample.diskAvailable {
             Text(L("state.unavailable"))
-                .font(.system(size: 10, weight: .medium))
+                .font(NotchTokens.Text.system(10, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.45))
         } else if let sample = latest {
             Text(valueString(sample))
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(NotchTokens.Text.system(12, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(levelColor(sample))
                 .lineLimit(1)
         } else {
             Text(L("state.sampling"))
-                .font(.system(size: 10, weight: .medium))
+                .font(NotchTokens.Text.system(10, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.4))
         }
     }

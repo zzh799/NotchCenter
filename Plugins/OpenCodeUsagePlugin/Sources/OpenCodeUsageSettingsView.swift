@@ -26,7 +26,7 @@ struct OpenCodeUsageSettingsView: View {
                     .frame(maxWidth: 260)
             } label: {
                 Text(L("settings.workspaceID"))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(NotchTokens.Text.system(12, weight: .semibold))
             }
 
             LabeledContent {
@@ -36,7 +36,7 @@ struct OpenCodeUsageSettingsView: View {
                     .frame(maxWidth: 260)
             } label: {
                 Text(L("settings.cookie"))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(NotchTokens.Text.system(12, weight: .semibold))
             }
             .help(L("settings.cookieHelp"))
 
@@ -47,7 +47,7 @@ struct OpenCodeUsageSettingsView: View {
                     .frame(maxWidth: 260)
             } label: {
                 Text(L("settings.baseURL"))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(NotchTokens.Text.system(12, weight: .semibold))
             }
 
             HStack(spacing: 8) {
@@ -56,19 +56,19 @@ struct OpenCodeUsageSettingsView: View {
                     .controlSize(.small)
                 if store.isConfigured {
                     Text(LF("settings.statusConfigured", store.maskedCookie.tail, workspaceSummary))
-                        .font(.system(size: 11))
+                        .font(NotchTokens.Text.system(11))
                         .foregroundStyle(.white.opacity(0.55))
                 }
             }
 
             Text(L("settings.explanation"))
-                .font(.system(size: 11))
+                .font(NotchTokens.Text.system(11))
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
 
             if let message {
                 Text(message)
-                    .font(.system(size: 11))
+                    .font(NotchTokens.Text.system(11))
                     // 成功/失败用显式状态区分：不再用文案前缀判断（本地化后前缀随语言变）。
                     .foregroundStyle(messageIsError ? Color.red.opacity(0.9) : Color.green.opacity(0.9))
             }

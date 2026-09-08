@@ -1,4 +1,5 @@
 import AppKit
+import NotchCenterKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -74,30 +75,30 @@ struct FileShelfChip: View {
 
                     if !isAvailable {
                         Image(systemName: "exclamationmark.circle.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.orange.opacity(0.72))
+                            .font(NotchTokens.Text.system(9))
+                            .foregroundStyle(NotchTokens.Semantic.unavailable)
                             .background(Circle().fill(Color.black))
                     }
                 }
 
                 Text(displayName)
-                    .font(.system(size: 9, weight: .medium))
+                    .font(NotchTokens.Text.caption)
                     .foregroundStyle(
-                        .white.opacity(
-                            isAvailable ? (isSelected ? 0.92 : 0.66) : 0.34
-                        )
+                        isAvailable
+                            ? (isSelected ? NotchTokens.Foreground.body : NotchTokens.Foreground.muted)
+                            : NotchTokens.Foreground.unavailable
                     )
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .frame(width: 52)
             }
-            .frame(width: 60, height: 54)
+            .frame(width: NotchTokens.Space.chipSize.width, height: NotchTokens.Space.chipSize.height)
 
             Button {
                 removeFromShelf()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 7, weight: .bold))
+                    .font(NotchTokens.Text.system(7, weight: .bold))
                     .frame(width: 14, height: 14)
             }
             .buttonStyle(ShelfRemoveButtonStyle())
@@ -108,7 +109,7 @@ struct FileShelfChip: View {
             .allowsHitTesting(isHovering)
         }
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous)
                 .fill(
                     .white.opacity(
                         isSelected ? 0.12 : (isHovering ? 0.065 : 0)
@@ -116,12 +117,12 @@ struct FileShelfChip: View {
                 )
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous)
                 .stroke(.white.opacity(isSelected ? 0.20 : 0), lineWidth: 1)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .animation(.easeOut(duration: 0.13), value: isHovering)
-        .animation(.easeOut(duration: 0.12), value: isSelected)
+        .contentShape(RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous))
+        .animation(NotchTokens.Motion.hover, value: isHovering)
+        .animation(NotchTokens.Motion.hover, value: isSelected)
         .help(
             isAvailable
                 ? LF("chip.help.available", displayName, fileKind)
@@ -156,11 +157,11 @@ struct FileShelfChip: View {
             Image(nsImage: thumbnail)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: 38, height: 30)
-                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .frame(width: NotchTokens.Space.thumbnailSize.width, height: NotchTokens.Space.thumbnailSize.height)
+                .clipShape(RoundedRectangle(cornerRadius: NotchTokens.Radius.thumbnail, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .stroke(.white.opacity(0.12), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: NotchTokens.Radius.thumbnail, style: .continuous)
+                        .stroke(NotchTokens.Hairline.thumbnail, lineWidth: 0.5)
                 }
         } else {
             Image(nsImage: fileIcon)
@@ -219,7 +220,7 @@ struct FileShelfChip: View {
     }
 
     private func removeFromShelf() {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+        withAnimation(NotchTokens.Motion.removal) {
             store.remove(item)
         }
     }

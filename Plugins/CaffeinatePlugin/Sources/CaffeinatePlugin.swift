@@ -92,6 +92,12 @@ private final class KeepAwakeModel {
     }
 }
 
+/// 激活态底衬（防休眠开启时的深绿底）——插件自有状态语义色，白色层级
+/// 未覆盖，收敛为本地调色板（豁免登记见 docs/UI规范整改追踪.md）。
+private enum CaffeinatePalette {
+    static let activeFill = Color(red: 0.17, green: 0.3, blue: 0.2).opacity(0.5)
+}
+
 /// 紧凑块视图：点击直接切换防休眠（interaction = .custom，不展开抽屉）。
 private struct KeepAwakeCompactView: View {
     let context: BlockContext
@@ -110,7 +116,7 @@ private struct KeepAwakeCompactView: View {
         } label: {
             ZStack {
                 Image(systemName: store.isKeepingAwake ? "cup.and.saucer.fill" : "cup.and.saucer")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(NotchTokens.Text.system( 13, weight: .medium))
                     .foregroundStyle(.white.opacity(store.isKeepingAwake ? 0.95 : 0.72))
             }
             .frame(width: slot.width, height: slot.height)
@@ -119,7 +125,7 @@ private struct KeepAwakeCompactView: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(
                         store.isKeepingAwake
-                            ? Color(red: 0.17, green: 0.3, blue: 0.2).opacity(0.5)
+                            ? CaffeinatePalette.activeFill
                             : .clear
                     )
             )
@@ -150,19 +156,19 @@ private struct KeepAwakeSettingsView: View {
                 set: { _ in store.toggleKeepAwake() }
             )) {
                 Text(L("caffeinate.settings.title"))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(NotchTokens.Text.system( 12, weight: .semibold))
             }
             .toggleStyle(.switch)
             .disabled(store.isChangingKeepAwake)
 
             Text(L("caffeinate.settings.description"))
-                .font(.system(size: 11))
+                .font(NotchTokens.Text.system( 11))
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
 
             if let message = store.keepAwakeErrorMessage {
                 Text(message)
-                    .font(.system(size: 11))
+                    .font(NotchTokens.Text.system( 11))
                     .foregroundStyle(.red.opacity(0.9))
             }
         }

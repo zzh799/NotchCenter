@@ -56,8 +56,8 @@ struct OpenCodeUsageBlockView: View {
                 ProgressView()
                     .controlSize(.small)
                 Text(L("usage.loading"))
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.58))
+                    .font(NotchTokens.Text.caption)
+                    .foregroundStyle(NotchTokens.Foreground.muted)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -89,7 +89,7 @@ struct OpenCodeUsageBlockView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(10)
+        .padding(NotchTokens.Space.cardPadding)
     }
 
     /// 峰谷时钟与余量环共用同一个直径：两者是同一块的可切换样式，
@@ -127,11 +127,11 @@ struct OpenCodeUsageBlockView: View {
     private func balanceRow(_ balance: Double) -> some View {
         HStack(spacing: 3) {
             Image(systemName: "circle.dollar")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.58))
+                .font(NotchTokens.Text.system(10, weight: .medium))
+                .foregroundStyle(NotchTokens.Foreground.muted)
             Text(balance, format: .currency(code: "USD"))
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.92))
+                .font(NotchTokens.Text.system(13, weight: .semibold, design: .rounded))
+                .foregroundStyle(NotchTokens.Foreground.body)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
@@ -145,56 +145,45 @@ struct OpenCodeUsageBlockView: View {
             let peak = PeakClockLogic.isPeak(context.date)
             HStack(spacing: 4) {
                 Image(systemName: peak ? "sun.max.fill" : "moon.fill")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(peak ? Self.peakIconColor : Self.offPeakIconColor)
+                    .font(NotchTokens.Text.caption)
+                    .foregroundStyle(peak ? PeakClockPalette.peak : PeakClockPalette.offPeak)
                 Text(PeakClockLogic.formatCountdown(PeakClockLogic.phaseRemainingSeconds(context.date)))
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.85))
+                    .font(NotchTokens.Text.system(13, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(NotchTokens.Foreground.hover)
             }
             .help(peak ? L("clock.peakRemaining") : L("clock.offPeakRemaining"))
         }
     }
-
-    private static let peakIconColor = Color(
-        red: PeakClockLogic.peakColor.red,
-        green: PeakClockLogic.peakColor.green,
-        blue: PeakClockLogic.peakColor.blue
-    )
-    private static let offPeakIconColor = Color(
-        red: PeakClockLogic.offPeakColor.red,
-        green: PeakClockLogic.offPeakColor.green,
-        blue: PeakClockLogic.offPeakColor.blue
-    )
 
     // MARK: 未配置 / 出错
 
     private var placeholder: some View {
         VStack(spacing: 5) {
             Image(systemName: "gauge")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.38))
+                .font(NotchTokens.Text.system(16, weight: .medium))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
             Text(L("usage.notConfigured"))
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.58))
+                .font(NotchTokens.Text.caption)
+                .foregroundStyle(NotchTokens.Foreground.muted)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(10)
+        .padding(NotchTokens.Space.cardPadding)
     }
 
     private var errorView: some View {
         VStack(spacing: 5) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color.orange.opacity(0.72))
+                .font(NotchTokens.Text.system(14, weight: .medium))
+                .foregroundStyle(NotchTokens.Semantic.unavailable)
             Text(store.errorMessage ?? L("usage.unavailable"))
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.58))
+                .font(NotchTokens.Text.caption)
+                .foregroundStyle(NotchTokens.Foreground.muted)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(10)
+        .padding(NotchTokens.Space.cardPadding)
     }
 
     // MARK: 刷新按钮
@@ -235,13 +224,13 @@ struct UsageMeterRow: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(kind.blockLabel)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.66))
+                .font(NotchTokens.Text.caption)
+                .foregroundStyle(NotchTokens.Foreground.muted)
                 .frame(width: 14, alignment: .leading)
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.08))
+                    Capsule().fill(NotchTokens.Surface.track)
                     Capsule()
                         .fill(UsageRingsView.ringColor(percent: window.percent))
                         .frame(width: geo.size.width * CGFloat(window.percent / 100))
@@ -250,7 +239,7 @@ struct UsageMeterRow: View {
             .frame(height: 4)
 
             Text("\(window.percentText)%")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(NotchTokens.Text.system(9, weight: .medium, design: .monospaced))
                 .foregroundStyle(UsageRingsView.ringColor(percent: window.percent))
                 .frame(width: 30, alignment: .trailing)
                 .minimumScaleFactor(0.75)

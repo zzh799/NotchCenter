@@ -247,7 +247,7 @@ private struct NotesCompactView: View {
         // 跟随宿主分配的槽位尺寸（紧凑区为刘海高度带内的小槽位）。
         let slot = context.layoutInfo.frame.size
         return Image(systemName: "note.text")
-            .font(.system(size: 13, weight: .medium))
+            .font(NotchTokens.Text.system(13, weight: .medium))
             .foregroundStyle(.white.opacity(0.72))
             .frame(width: slot.width, height: slot.height)
             .contentShape(Rectangle())
@@ -270,10 +270,10 @@ private struct NotesSettingsView: View {
             Text(store.tabs.count == 1
                  ? LF("notes.count.one", store.tabs.count)
                  : LF("notes.count.other", store.tabs.count))
-                .font(.system(size: 12, weight: .semibold))
+                .font(NotchTokens.Text.system(12, weight: .semibold))
 
             Text(L("notes.settings.description"))
-                .font(.system(size: 11))
+                .font(NotchTokens.Text.system(11))
                 .foregroundStyle(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
 

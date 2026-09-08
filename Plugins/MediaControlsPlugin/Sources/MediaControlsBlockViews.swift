@@ -44,15 +44,15 @@ struct MediaControlsDrawerBlockView: View {
     private func emptyState(symbol: String, title: String, hint: String) -> some View {
         VStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.system(size: 22, weight: .light))
+                .font(NotchTokens.Text.system( 22, weight: .light))
                 .foregroundStyle(.white.opacity(0.4))
                 .frame(width: 52, height: 52)
                 .background(Circle().fill(.white.opacity(0.07)))
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(NotchTokens.Text.system( 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.8))
             Text(hint)
-                .font(.system(size: 10.5))
+                .font(NotchTokens.Text.system( 10.5))
                 .foregroundStyle(.white.opacity(0.45))
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
@@ -77,21 +77,21 @@ struct MediaControlsDrawerBlockView: View {
                             RoundedRectangle(cornerRadius: 9, style: .continuous)
                                 .fill(.black.opacity(0.42))
                             Image(systemName: "play.fill")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(NotchTokens.Text.system( 16, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.9))
                         }
                     }
                 VStack(alignment: .leading, spacing: 4) {
                     if let title = display.title, !title.isEmpty {
                         Text(title)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(NotchTokens.Text.system( 13, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.92))
                             .lineLimit(1)
                     }
                     HStack(spacing: 6) {
                         if isPaused {
                             Text(L("state.paused"))
-                                .font(.system(size: 9.5, weight: .semibold))
+                                .font(NotchTokens.Text.system( 9.5, weight: .semibold))
                                 .foregroundStyle(MediaControlsTheme.accent)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 1.5)
@@ -100,7 +100,7 @@ struct MediaControlsDrawerBlockView: View {
                                 )
                         }
                         Text(subtitleLine)
-                            .font(.system(size: 11))
+                            .font(NotchTokens.Text.system( 11))
                             .foregroundStyle(.white.opacity(0.55))
                             .lineLimit(1)
                     }
@@ -126,7 +126,7 @@ struct MediaControlsDrawerBlockView: View {
                     Spacer()
                     Text(Self.timeText(display.duration))
                 }
-                .font(.system(size: 9.5, design: .monospaced).monospacedDigit())
+                .font(NotchTokens.Text.system( 9.5, design: .monospaced).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.42))
             }
         }
@@ -148,7 +148,7 @@ struct MediaControlsDrawerBlockView: View {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(.white.opacity(0.07))
                     Image(systemName: "music.note")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(NotchTokens.Text.system( 18, weight: .medium))
                         .foregroundStyle(.white.opacity(0.4))
                 }
             }
@@ -191,7 +191,7 @@ struct MediaControlsDrawerBlockView: View {
             action()
         } label: {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
+                .font(NotchTokens.Text.system( 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(emphasized ? 0.95 : 0.8))
                 .frame(width: 28, height: 28)
                 .background(
