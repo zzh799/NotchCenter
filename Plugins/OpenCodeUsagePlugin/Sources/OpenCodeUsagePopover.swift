@@ -2,7 +2,7 @@ import AppKit
 import NotchCenterKit
 import SwiftUI
 
-// MARK: - 长按浮窗（生命周期与表现统一走 Kit 的 BlockPopover）
+// MARK: - 长按浮窗
 //
 // 内容：Zen 余额 + 三个用量窗口的详细重置信息（绝对时刻 + 倒计时）
 // + 峰谷时钟（24 小时表盘、红峰绿谷弧段、阶段倒计时，每秒走动）。
@@ -246,7 +246,7 @@ struct PeakClockView: View {
     }
 }
 
-// MARK: 浮窗入口（无状态薄门面：单例互斥、窗口配置与弹出动画都在 Kit）
+// MARK: 浮窗入口
 
 @MainActor
 enum OpenCodeUsagePopover {

@@ -1,6 +1,6 @@
 # Agent Note: 剪贴板历史插件
 
-status: proposed
+status: implemented
 date: 2026-09-05
 deciders: 用户（grilling 两轮共识 Q1–Q10）
 
@@ -28,3 +28,4 @@ NotchCenter 尚无剪贴板能力（仅编辑器粘贴时刻的一次性读写�
 ## Changelog
 
 - v1.0.0: grilling 共识定稿（2026-09-05）。
+- 2026-09-09: 实现已落地 main；治理加固存量清理（D7）git mv 至 implemented。

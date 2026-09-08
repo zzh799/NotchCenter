@@ -298,9 +298,7 @@ final class ClipboardHistoryStore: ObservableObject {
 
 // MARK: - 窗口可见性探针（SystemMonitorStore.WindowVisibilityProbe 同款语义）
 
-/// 抽屉收起 = 宿主对 drawerPanel orderOut，块视图树仍在隐藏窗口里活着
-/// （onDisappear 不触发），必须靠窗口 occlusion 感知可见性以切换轮询档位。
-/// isPreview 副本不插探针。
+/// 可见性感知机制同 SystemMonitorStore.WindowVisibilityProbe（见其 MARK 节）；isPreview 副本不插探针。
 struct ClipboardVisibilityProbe: NSViewRepresentable {
     let onAttach: (_ windowID: ObjectIdentifier, _ isVisible: Bool) -> Void
     let onDetach: (_ windowID: ObjectIdentifier) -> Void

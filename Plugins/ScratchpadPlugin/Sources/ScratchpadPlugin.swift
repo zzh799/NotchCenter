@@ -5,7 +5,7 @@ import SwiftUI
 /// ScratchpadPlugin（官方文件暂存插件，由 NotchNotes 的 FileShelfStore/FileShelfView 移植而来）。
 /// 提供一个紧凑块（点击弹出清空确认浮窗）与一个抽屉块（文件暂存区，只保存路径引用）。
 /// 抽屉块支持同一块类型放置多个实例：每个实例的条目持久化在 Kit 的
-/// placementStore（<pluginData>/placements/<placementID>/），互不干扰；
+/// placementStore（见 BlockContext.placementStore），互不干扰；
 /// 旧版存在插件级的共享数据在首个新实例创建时自动迁入。紧凑块是全局
 /// 聚合视图：角标 = 全部实例条目之和，点击 = 确认后清空所有实例。
 @objc(ScratchpadPlugin) @MainActor public final class ScratchpadPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
@@ -47,7 +47,7 @@ import SwiftUI
         )
     ]
 
-    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+    // MARK: 快捷动作
 
     private var quickActionCache: [QuickAction]?
 
@@ -100,7 +100,6 @@ private struct ScratchpadCompactView: View {
     @State private var itemCount = -1
 
     var body: some View {
-        // 跟随宿主分配的槽位尺寸（紧凑区为刘海高度带内的小槽位）。
         let slot = context.layoutInfo.frame.size
         return ZStack(alignment: .topTrailing) {
             Image(systemName: "tray")

@@ -7,9 +7,8 @@ import SwiftUI
 /// 每周 / 每月）与 Zen 余额；点击打开 dashboard，设置界面配置
 /// cookie / workspaceID（cookie 只展示尾 4 位掩码，绝不回显明文）。
 ///
-/// 抽屉支持同一块类型放置多个实例：数据全局共享一份（单例 store），
-/// 显示样式（余量环 / 余量表 / 峰谷时钟）与峰谷倒计时开关按实例单独
-/// 设置——持久化在 Kit 的 placementStore，经 instanceSettingsView 编辑。
+/// 抽屉支持同一块类型放置多个实例（数据共享/外观按实例，详见
+/// OpenCodeUsageBlockView / OpenCodeUsageAppearance 文件头注释）。
 @objc(OpenCodeUsagePlugin) @MainActor public final class OpenCodeUsagePlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
     /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe）：视图按样式（环/条/表盘）
     /// 自适应绘制、内容区统一内边距 10，整体随实例样式填充分布；声明内容区为
@@ -84,7 +83,7 @@ import SwiftUI
             .removeValue(forKey: OpenCodeUsageAppearanceLogic.storeKey)
     }
 
-    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+    // MARK: 快捷动作
 
     private var quickActionCache: [QuickAction]?
 

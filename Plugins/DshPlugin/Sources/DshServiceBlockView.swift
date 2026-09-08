@@ -1,11 +1,10 @@
 import NotchCenterKit
 import SwiftUI
 
-// MARK: - 抽屉块视图（服务名 + 开关 + 点击启停 + 长按浮窗）
+// MARK: - 抽屉块视图
 //
-// 外观与交互统一在 Kit 的 `ServiceBlockView`（原 Calibre/Dsh 各持一份 1:1
-// 复制，2026-09-08 上提）；本文件只保留监视器绑定、状态 → 文案/指示灯的
-// 映射（L10n 在插件内）与浮窗入口。
+// 外观与交互统一在 Kit 的 ServiceBlockView（见其文件头注释）；本文件只保留
+// 监视器绑定、状态 → 文案/指示灯映射（L10n 在插件内）与浮窗入口。
 
 /// DshPlugin 的抽屉块：1×1 / 2×1 两种跨度（决策 11）。
 struct DshServiceBlockView: View {

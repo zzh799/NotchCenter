@@ -85,7 +85,7 @@ import SwiftUI
         ]
     }
 
-    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+    // MARK: 快捷动作
 
     private var quickActionCache: [QuickAction]?
 
@@ -244,7 +244,6 @@ private struct NotesCompactView: View {
     let context: BlockContext
 
     var body: some View {
-        // 跟随宿主分配的槽位尺寸（紧凑区为刘海高度带内的小槽位）。
         let slot = context.layoutInfo.frame.size
         return Image(systemName: "note.text")
             .font(NotchTokens.Text.system(13, weight: .medium))

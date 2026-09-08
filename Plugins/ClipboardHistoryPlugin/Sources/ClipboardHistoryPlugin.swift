@@ -114,7 +114,7 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
         ClipboardHistoryStore.shared.clearUnpinned()
     }
 
-    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+    // MARK: 快捷动作
 
     private var quickActionCache: [QuickAction]?
     private weak var hostController: (any HostController)?

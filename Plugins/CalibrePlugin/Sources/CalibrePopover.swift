@@ -1,7 +1,7 @@
 import NotchCenterKit
 import SwiftUI
 
-// MARK: - 长按浮窗（生命周期与表现统一走 Kit 的 BlockPopover）
+// MARK: - 长按浮窗
 
 /// 浮窗内容：自启开关 + PID + 端口 + 状态文字（含冲突警告）+ 重启按钮（决策 9）。
 /// 背景卡片、描边、弹出动画由 BlockPopover 统一提供，这里只排布内容。
@@ -111,7 +111,7 @@ struct CalibrePopoverContentView: View {
     }
 }
 
-// MARK: 浮窗入口（无状态薄门面：单例互斥、窗口配置与弹出动画都在 Kit）
+// MARK: 浮窗入口
 
 @MainActor
 enum CalibrePopover {

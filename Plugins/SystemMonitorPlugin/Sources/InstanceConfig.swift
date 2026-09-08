@@ -4,7 +4,7 @@ import NotchCenterKit
 // MARK: - 放置实例配置（每实例单独设置的基本能力的插件侧应用）
 //
 // 单指标块与 All-in-one 块各自的配置持久化在该实例的 placementStore
-// （<pluginData>/placements/<placementID>/）；采样数据仍来自共享的
+// （见 BlockContext.placementStore）；采样数据仍来自共享的
 // SystemMonitorStore（单份采集，所有实例同源）。字段解码逐项容错：
 // 旧文件缺字段、未来新增字段都不至于整体失效（缺失处回退默认值）。
 

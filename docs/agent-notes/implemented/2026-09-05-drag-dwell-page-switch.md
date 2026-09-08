@@ -1,6 +1,6 @@
 # Agent Note:拖拽驻留分页胶囊自动切页（设置目录 + 抽屉内重排两条路径）
 
-status: proposed
+status: implemented
 date: 2026-09-05
 deciders: zeaven
 
@@ -42,3 +42,4 @@ Out of scope：快速区路径（紧凑块不进网格，胶囊切页对它无�
 
 - v1:2026-09-05 初稿（仅目录路径，抽屉路径 out of scope）。
 - v2:2026-09-05 真机验收后扩范围：补抽屉内重排路径（引擎跨页搬移 + 手势跨页续走），备选方案补 E/F。
+- 2026-09-09: 实现已落地 main；治理加固存量清理（D7）git mv 至 implemented。

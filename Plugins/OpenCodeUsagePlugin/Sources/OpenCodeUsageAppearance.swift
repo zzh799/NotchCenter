@@ -4,7 +4,7 @@ import NotchCenterKit
 // MARK: - 放置实例外观（每块单独设置的基本能力的插件侧应用）
 //
 // 同一块类型可以在抽屉里放多个实例，每个实例经 Kit 的 placementStore
-// （<pluginData>/placements/<placementID>/）持有互不干扰的外观配置；
+// （见 BlockContext.placementStore）持有互不干扰的外观配置；
 // 用量数据仍来自共享的 OpenCodeUsageStore（单份抓取，所有实例同源）。
 
 /// 组件显示样式。

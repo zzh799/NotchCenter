@@ -69,7 +69,7 @@ public final class MediaControlsPlugin: NSObject, NotchCenterPlugin, NotchCenter
         MediaPlayerController.shared.suspend()
     }
 
-    // MARK: 快捷动作（Quick Action，可被快捷按钮盒收纳）
+    // MARK: 快捷动作
 
     private var quickActionCache: [QuickAction]?
 

@@ -15,9 +15,8 @@ func L(_ key: String) -> String {
     L10n.string(key, bundle: .module)
 }
 
-/// 带格式化参数的宿主本地化字符串（strings 值用 printf 风格占位符 %@、%d 等）。
-/// 格式化必须在调用方模块内完成：不要把 CVarArg 变参跨动态库边界转发
-/// （见 Kit L10n 注释里的段错误说明）。
+/// 带格式化参数的宿主本地化字符串；格式化须在本模块完成（CVarArg 不跨动态库边界，
+/// 原因见 Kit L10n 文件头注释）。
 func LF(_ key: String, _ args: CVarArg...) -> String {
     String(format: L10n.string(key, bundle: .module), arguments: args)
 }
