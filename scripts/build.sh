@@ -676,7 +676,7 @@ main() {
   case "$cmd" in
     dev)     cmd_dev "$@" ;;
     run)     cmd_run "$@" ;;
-    test)    cmd_test ;;
+    test)    cmd_test "$@" ;;
     verify-sizes) cmd_verify_sizes ;;
     package) cmd_package "$@" ;;
     clean)   cmd_clean ;;

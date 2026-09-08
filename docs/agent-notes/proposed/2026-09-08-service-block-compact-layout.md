@@ -10,7 +10,7 @@ Calibre 与 DSH Web 两张服务控制卡在 1×1 窄跨度（Calibre minSize 75
 
 ## Decision(决策)
 
-块宽度 < 110pt 时隐藏指示灯 / 状态 / 端口 / 开关，渲染居中「图标 + 名称」（SF Symbol 15pt + 10pt 名称）：开启态整块染系统强调色（`Color.accentColor`，半透明 0.55，圆角 10 对齐卡片壳）+ 纯白图标，关闭态不画背景（沿用 `BlockCard` 默认底）+ 淡白亮灰图标（`white.opacity(0.6)`），名称随开 / 关在 `0.92 / 0.58` 之间切换；不做外发光高光——状态由整块底色承担，图标只负责识别；≥ 110pt 保持原完整排布。配套交互改动：块点击从「打开网页」改为「启停服务」（`monitor.toggleRunning()`，busy 期间自行忽略），打开网页入口移入长按浮窗底部动作行，与「重启」并排等宽（浮窗高度不变），并给块加 `.help()` 纠正旧的「点一下跳浏览器」肌肉记忆。阈值与外观常量落在各插件的 `ServiceBlockCompactMetrics`，`isCompact(width:)` 为可单测纯函数。实现落点：`Plugins/{Calibre,Dsh}Plugin/Sources/*ServiceBlockView.swift` 与 `*Popover.swift`，单测见两个插件测试的 `testCompactLayoutThreshold`。
+块宽度 < 110pt 时隐藏指示灯 / 状态 / 端口 / 开关，渲染居中「图标 + 名称」（SF Symbol 15pt + 10pt 名称）：开启态整块上适当白色（`Color.white.opacity(0.9)`，圆角 10 对齐卡片壳）+ 系统强调色图标 + 深色名称（`black.opacity(0.85)`，白底上保证对比），关闭态不画背景（沿用 `BlockCard` 默认底）+ 淡白亮灰图标（`white.opacity(0.6)`）+ 淡白名称（`white.opacity(0.58)`）；不做外发光高光——状态由整块底色承担，图标只负责识别；≥ 110pt 保持原完整排布。配套交互改动：块点击从「打开网页」改为「启停服务」（`monitor.toggleRunning()`，busy 期间自行忽略），打开网页入口移入长按浮窗底部动作行，与「重启」并排等宽（浮窗高度不变），并给块加 `.help()` 纠正旧的「点一下跳浏览器」肌肉记忆。阈值与外观常量落在各插件的 `ServiceBlockCompactMetrics`，`isCompact(width:)` 为可单测纯函数。实现落点：`Plugins/{Calibre,Dsh}Plugin/Sources/*ServiceBlockView.swift` 与 `*Popover.swift`，单测见两个插件测试的 `testCompactLayoutThreshold`。
 
 ## Alternatives considered(备选方案)
 
@@ -25,10 +25,11 @@ Calibre 与 DSH Web 两张服务控制卡在 1×1 窄跨度（Calibre minSize 75
 
 ## Consequences(影响)
 
-两个插件各持一份同名 `ServiceBlockCompactMetrics`（改一处须同步另一处，文件头已标注）；紧凑态下没有开关控件，启停靠点击整卡；打包期 `BlockProbe` 几何不变（两种排布都是居中单行带，仍落在 minSize 盒内）；开启态底色是半透明填充，卡片发丝描边与按压增亮仍然盖在上层可见，不引入渐变或重阴影；`Color.accentColor` 跟随用户在系统设置里选的强调色，不同机器观感不同（预期行为，非 bug）。
+两个插件各持一份同名 `ServiceBlockCompactMetrics`（改一处须同步另一处，文件头已标注）；紧凑态下没有开关控件，启停靠点击整卡；打包期 `BlockProbe` 几何不变（两种排布都是居中单行带，仍落在 minSize 盒内）；开启态底色是半透明白色填充，不引入渐变或重阴影，图标与名称色随开 / 关在「强调色 + 深色（压白底）/ 淡白（压默认底）」间切换；`Color.accentColor` 跟随用户在系统设置里选的强调色，不同机器观感不同（预期行为，非 bug）。
 
 ## Changelog
 
 - v1.0.0: 窄块紧凑排布定稿（2026-09-08）。
 - v1.1.0: 开启态改为「系统强调色半透明底 + 白图标」，去掉外发光高光（2026-09-08）。
+- v1.2.0: 开启态改为「白色底（0.9）+ 强调色图标 + 深色名称」，替换强调色底 + 白图标方案（2026-09-08）。
 

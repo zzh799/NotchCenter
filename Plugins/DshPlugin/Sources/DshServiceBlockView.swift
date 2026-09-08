@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - 抽屉块视图（服务名 + 开关 + 点击开网页 + 长按浮窗）
 
 /// 窄块紧凑排布（宽度不足时隐藏指示灯 / 状态 / 端口 / 开关）：
-/// 退化为「图标 + 名称」——开启态整块染系统强调色（半透明）+ 白色图标，
+/// 退化为「图标 + 名称」——开启态白色底（适当浓度）+ 强调色图标 + 深色名称，
 /// 关闭态保持卡片默认底 + 淡白（亮灰）图标。
 /// （两个服务卡同源，改动需同步 CalibreServiceBlockView。）
 enum ServiceBlockCompactMetrics {
@@ -14,8 +14,8 @@ enum ServiceBlockCompactMetrics {
     static let iconSize: CGFloat = 15
     /// 开启态背景圆角（对齐 Kit `BlockCard` 的卡片壳圆角 10）。
     static let cornerRadius: CGFloat = 10
-    /// 开启态背景浓度：半透明，保留卡片发丝描边与悬停微亮。
-    static let onBackgroundOpacity: CGFloat = 0.55
+    /// 开启态背景白色浓度：接近实心的白，略透出卡片壳以融入深色抽屉。
+    static let onBackgroundOpacity: CGFloat = 0.9
 
     /// 是否走紧凑排布（纯值，便于单测）。
     static func isCompact(width: CGFloat) -> Bool {
@@ -60,7 +60,7 @@ struct DshServiceBlockView: View {
         // 点击语义从「开网页」改成「启停」，补一条悬停提示纠正旧肌肉记忆。
         .help(L("dsh.block.help"))
         .animation(.easeOut(duration: 0.16), value: monitor.message)
-        // 强调色底与图标色的开/关切换走同一条短 easeOut，避免状态翻转时硬切。
+        // 白色底与强调色图标的开/关切换走同一条短 easeOut，避免状态翻转时硬切。
         .animation(.easeOut(duration: 0.16), value: monitor.isServiceOn)
         // 共享监视器按 10s 低频轮询；展开瞬间补一次即时探测，状态新鲜度
         // 与旧“每次新建监视器立即探测”的行为持平。
@@ -74,24 +74,25 @@ struct DshServiceBlockView: View {
         return VStack(spacing: 4) {
             Image(systemName: "server.rack")
                 .font(.system(size: ServiceBlockCompactMetrics.iconSize, weight: .medium))
-                // 开启：白色图标压在强调色底上；关闭：淡白（亮灰）图标留在默认卡片底上。
-                .foregroundStyle(isOn ? Color.white : Color.white.opacity(0.6))
+                // 开启：强调色图标压在白色底上；关闭：淡白（亮灰）图标留在默认卡片底上。
+                .foregroundStyle(isOn ? Color.accentColor : Color.white.opacity(0.6))
             Text("DSH Web")
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.white.opacity(isOn ? 0.92 : 0.58))
+                // 开启态名称落在白色底上转深色保证对比，关闭态维持淡白层级。
+                .foregroundStyle(isOn ? Color.black.opacity(0.85) : Color.white.opacity(0.58))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // 开启态整块上系统强调色，关闭态不画背景（沿用 BlockCard 的默认底）。
+        // 开启态整块上适当浓度的白色，关闭态不画背景（沿用 BlockCard 的默认底）。
         .background {
             if isOn {
                 RoundedRectangle(
                     cornerRadius: ServiceBlockCompactMetrics.cornerRadius,
                     style: .continuous
                 )
-                .fill(Color.accentColor.opacity(ServiceBlockCompactMetrics.onBackgroundOpacity))
+                .fill(Color.white.opacity(ServiceBlockCompactMetrics.onBackgroundOpacity))
             }
         }
     }

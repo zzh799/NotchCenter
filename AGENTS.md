@@ -26,9 +26,9 @@
 
 - `docs/TERMINOLOGY.md` — 术语纪律(banned→preferred,机器校验)
 - `docs/agent-notes/{proposed,implemented,rejected,archive}/` — 设计决策与归档;`docs/postmortem/` 事故复盘;`docs/templates/` 文档模板
-- `scripts/run-doc-checks.sh` — 一键文档门禁(链接/换行/格式等)
+- `scripts/run-doc-checks.sh` — 一键文档门禁(链接/格式等)
 - `doc-budgets.manifest.json` — 字数预算 + 代码块语言白名单;超限冻结,改需 PR
 
 ## 字数预算
 
-本文件上限 1900 字符(`wc -m`);超限:搬走非本层内容 → 压缩本层 → PR 提额。
+本文件上限 1900 字符(`wc -m`);超限:搬走非本层内容 → 压缩 → PR 提额。
