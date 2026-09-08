@@ -8,6 +8,14 @@ import XCTest
 /// （密集跨度块如 File Shelf 尤其明显）。量化必须换档即越过
 /// 边界 ± band 的稳定带。
 final class ResizeHysteresisTests: XCTestCase {
+    /// 步长取实时指标（`NotchGridMetrics`），而指标在测试进程里来自宿主 App 的
+    /// 真实偏好：钉到出厂格，断言的档位序列才与用例写死的下标对得上（见
+    /// `GridMetricsTestSupport`）。
+    override func setUp() {
+        super.setUp()
+        pinGridMetricsToFixtureDefaults()
+    }
+
     func testDeadBandHoldsCurrentOnBothSidesOfBoundary() {
         // 半格边界（2.5）两侧的死区（±band）内保持当前档位
         // （2.32/2.68 恰在理论边界上，会因浮点表示误差翻转，取安全余量）。

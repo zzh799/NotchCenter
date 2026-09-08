@@ -15,6 +15,14 @@ final class DrawerInteractionStateTests: XCTestCase {
         contentPadding: 16, topBarHeight: 36
     )
 
+    /// 像素夹具的前提：钉住网格指标，隔离宿主 App 的真实偏好（见
+    /// `GridMetricsTestSupport`）。本文件的手势数学自带显式 `metrics`，钉的是
+    /// 真引擎侧（放置 / 缩放预览）读到的那份实时指标。
+    nonisolated override func setUp() {
+        super.setUp()
+        pinGridMetricsToFixtureDefaults()
+    }
+
     /// 跨页搬移事件（四元组不具等价性，收进结构体）。
     private struct CrossPageMove: Equatable {
         var placementID: String

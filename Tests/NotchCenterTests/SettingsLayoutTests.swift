@@ -55,16 +55,28 @@ final class GridMetricsStoreTests: XCTestCase {
 
     /// `NotchGridMetrics` 是既有几何计算的统一访问点：改 store 后
     /// 派生公式（内容宽度）必须同步，抽屉尺寸才会跟着设置走。
+    ///
+    /// 共享单例落的是**真实用户偏好**（测试以宿主 App 为 TEST_HOST），所以这里
+    /// 只能"改完原样还原"：早先用 `resetToDefaults()` 收尾，等于每次跑测试都把
+    /// 用户在「设置 → 布局」里调过的格子**删掉**（它移除持久化的键）。
     func testGridMetricsForwardsToSharedStore() {
+        let snapshot = GridMetricsSnapshot()
+        addTeardownBlock { snapshot.apply(to: .shared) }
         let shared = GridMetricsStore.shared
         shared.set(.cellWidth, to: 200)
         shared.set(.spacing, to: 10)
         XCTAssertEqual(NotchGridMetrics.cellWidth, 200)
         XCTAssertEqual(NotchGridMetrics.spacing, 10)
         XCTAssertEqual(NotchGridMetrics.contentWidth(columns: 2), 2 * 200 + 10)
-        shared.resetToDefaults()
-        XCTAssertEqual(NotchGridMetrics.cellWidth, 150)
-        XCTAssertTrue(shared.isDefault)
+
+        // 还原 = 回到用户原本那一份（未必是出厂默认，故比快照不比常量）。
+        snapshot.apply(to: .shared)
+        XCTAssertEqual(NotchGridMetrics.cellWidth, snapshot.cellWidth)
+        XCTAssertEqual(NotchGridMetrics.spacing, snapshot.spacing)
+        XCTAssertEqual(
+            NotchGridMetrics.contentWidth(columns: 2),
+            2 * snapshot.cellWidth + snapshot.spacing
+        )
     }
 }
 
@@ -73,6 +85,13 @@ final class GridMetricsStoreTests: XCTestCase {
 @MainActor
 final class BlockPlacementTests: XCTestCase {
     private var registry: [String: NotchBlock] = [:]
+
+    /// 像素夹具的前提：钉住网格指标，隔离宿主 App 的真实偏好（见
+    /// `GridMetricsTestSupport`）。
+    nonisolated override func setUp() {
+        super.setUp()
+        pinGridMetricsToFixtureDefaults()
+    }
 
     private func makeEngine(userMaxColumns: Int = 4) throws -> (LayoutEngine, URL) {
         let directory = FileManager.default.temporaryDirectory

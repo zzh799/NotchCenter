@@ -30,6 +30,13 @@ final class LayoutPerformanceTests: XCTestCase {
     // 沙箱目录按用例自建自清（XCTest 的 setUp/tearDown 是非隔离上下文，
     // 无法触碰 @MainActor 属性，与 LayoutEngineTests 同一模式）。
 
+    /// 像素夹具的前提：钉住网格指标，隔离宿主 App 的真实偏好（见
+    /// `GridMetricsTestSupport`）。
+    nonisolated override func setUp() {
+        super.setUp()
+        pinGridMetricsToFixtureDefaults()
+    }
+
     /// 建临时沙箱 + 引擎；返回目录供用例结束时清理。
     private func makeSandbox(
         userMaxColumns: Int = 8

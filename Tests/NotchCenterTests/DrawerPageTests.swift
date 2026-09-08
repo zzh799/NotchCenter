@@ -9,6 +9,13 @@ import XCTest
 final class DrawerPageTests: XCTestCase {
     private var registry: [String: NotchBlock] = [:]
 
+    /// 像素夹具的前提：钉住网格指标（出厂格 = 夹具换算基准），否则开发者机器上
+    /// 调过的格子会把档位换算成别的跨，几何断言翻倍（见 `GridMetricsTestSupport`）。
+    nonisolated override func setUp() {
+        super.setUp()
+        pinGridMetricsToFixtureDefaults()
+    }
+
     private func makeEngine(
         userMaxColumns: Int = 4,
         minRows: Int = 1,

@@ -26,9 +26,13 @@ enum FixtureSize: Hashable {
     }
 }
 
-/// 默认格内容尺寸（像素换算基准；与 `GridMetricsStore` 出厂默认一致）。
-let fixtureCellWidth: CGFloat = 150
-let fixtureCellHeight: CGFloat = 120
+/// 默认格内容尺寸（像素换算基准）：直接取 `GridMetricsStore` 出厂默认，避免
+/// 测试里再养一份同级常量。像素夹具按它声明物理像素，故用到夹具的套件必须
+/// 经 `pinGridMetricsToFixtureDefaults()` 把实时指标钉在同一个基准上——否则
+/// 用户改过的格子（进程以宿主 App 为 TEST_HOST，读到的是真实偏好）会把
+/// "small = 1×1" 换算成别的跨。
+let fixtureCellWidth: CGFloat = GridMetricsStore.defaultCellWidth
+let fixtureCellHeight: CGFloat = GridMetricsStore.defaultCellHeight
 
 /// 档集合 → 包络盒（min/max）+ 推荐档（defaultSize 或盒下角），换算成像素三档。
 func fixtureBox(
@@ -58,6 +62,13 @@ func fixtureBox(
 @MainActor
 final class LayoutEngineTests: XCTestCase {
     private var registry: [String: NotchBlock] = [:]
+
+    /// 像素夹具的前提：钉住网格指标，隔离宿主 App 的真实偏好（见
+    /// `GridMetricsTestSupport`）。`setUp` 是非隔离上下文，只碰非隔离单例。
+    nonisolated override func setUp() {
+        super.setUp()
+        pinGridMetricsToFixtureDefaults()
+    }
 
     private func makeEngine(
         userMaxColumns: Int = 4,
