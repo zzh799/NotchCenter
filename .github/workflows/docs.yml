@@ -1,4 +1,4 @@
-# managed:doc-driven-dev v3 — PR 文档门禁
+# managed:doc-driven-dev v3 - PR 文档门禁
 name: docs-gate
 on:
   pull_request:
@@ -9,5 +9,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # note 覆盖门禁需要区间两端 commit(base/head 或 before/after)
       - run: bash scripts/run-doc-checks.sh
         shell: bash
+      - name: Verify agent-note coverage (range)
+        shell: bash
+        env:
+          # PR:base...head;push:before...after。覆盖门禁自激活 commit 起算(存量不回溯,
+          # 见 scripts/verify-agent-note-coverage.sh),区间内违规 commit 逐个拦截。
+          RANGE: ${{ github.event_name == 'pull_request' && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}...{1}', github.event.before, github.event.after) }}
+        run: |
+          if [[ "$RANGE" == "0000000000000000000000000000000000000000...*" || "$RANGE" == *"...0000000000000000000000000000000000000000" ]]; then
+            # 新分支首推(before 为 null-sha):只查本次 tip commit,避免对 WIP 历史整体放炮
+            RANGE="HEAD"
+          fi
+          bash scripts/verify-agent-note-coverage.sh --range "$RANGE"

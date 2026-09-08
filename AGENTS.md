@@ -1,5 +1,5 @@
 <!-- managed:doc-driven-dev v3 -->
-# AGENTS.md — NotchCenter 常驻指令集
+# AGENTS.md - NotchCenter 常驻指令集
 
 长文与示例一律放 `docs/`,本文件只放常驻指令与索引。
 
@@ -7,9 +7,15 @@
 
 **NotchCenter** 是 macOS 刘海交互插件宿主:刘海区展开抽屉、网格布局插件"块";核心仅承担基础设施,业务功能皆以官方插件提供。架构基线见 [架构设计文档](docs/NotchCenter 架构设计文档.md),UI 遵循 [DESIGN.md](docs/DESIGN.md)。macOS 15+ / Swift 6 严格并发 / AppKit + SwiftUI / Tuist;accessory 策略,无 Dock 图标。
 
+## 硬规则(机器门禁强制,违反的 commit 会被拦截)
+
+- 触及 `Sources/` 或 `Plugins/` 的 commit,消息类型非 `fix:`/`docs:`/`chore:`/`test:` 的,须在消息里引用决策记录 `(note: <日期>-<slug>)`,且 `docs/agent-notes/proposed|implemented/` 下存在同名文件;无类型前缀视为须带 note;小重构/纯格式/微调标 `chore:`。
+- 非平凡架构/接口/行为变更:动手前先按[模板](docs/templates/agent-note.md)在 `docs/agent-notes/proposed/` 写决策记录;实现落地即 `git mv` 至 `implemented/`;滞留 `proposed/` 超 7 天门禁红(移入 `archive/` 或 `rejected/` 亦可解)。
+- 同一"为什么"信息全局只写一处:领域红线/历史事故 → `docs/agents/` 子文档;代码注释只写从代码看不出的局部原因,不得跨文件复制。
+
 ## 改前必读
 
-`docs/agents/` 按领域拆分红线、机制、历史事故与回归测试,**改到某领域前先读对应子文档**——分域索引与领域速查见 [开发者工作流与门禁](docs/开发者工作流与门禁.md);宿主通用约定(代码地图 / 命令 / 通用红线)见 [宿主开发约定](docs/agents/宿主开发约定.md)。
+`docs/agents/` 按领域拆分红线、机制、历史事故与回归测试,**改到某领域前先读对应子文档**--分域索引与领域速查见 [开发者工作流与门禁](docs/开发者工作流与门禁.md);宿主通用约定(代码地图 / 命令 / 通用红线)见 [宿主开发约定](docs/agents/宿主开发约定.md)。
 
 ## 常用命令
 
@@ -24,10 +30,10 @@
 
 ## 仓库布局
 
-- `docs/TERMINOLOGY.md` — 术语纪律(banned→preferred,机器校验)
-- `docs/agent-notes/{proposed,implemented,rejected,archive}/` — 设计决策与归档;`docs/postmortem/` 事故复盘;`docs/templates/` 文档模板
-- `scripts/run-doc-checks.sh` — 一键文档门禁(链接/格式等)
-- `doc-budgets.manifest.json` — 字数预算 + 代码块语言白名单;超限冻结,改需 PR
+- `docs/TERMINOLOGY.md` - 术语纪律(banned→preferred,机器校验)
+- `docs/agent-notes/{proposed,implemented,rejected,archive}/` - 设计决策与归档;`docs/postmortem/` 事故复盘;`docs/templates/` 文档模板
+- `scripts/run-doc-checks.sh` - 一键文档门禁(链接/格式等)
+- `doc-budgets.manifest.json` - 字数预算 + 代码块语言白名单;超限冻结,改需 PR
 
 ## 字数预算
 

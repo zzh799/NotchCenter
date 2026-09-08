@@ -14,6 +14,8 @@ CHECKS=(
   "verify-md-links.sh"
   "verify-md-wrap.sh"
   "verify-agent-note-format.sh"
+  "verify-note-lifecycle.sh"
+  "verify-comment-duplication.sh"
   "doc-budget-check.sh"
   "verify-code-blocks.sh"
   "verify-terminology.sh"
