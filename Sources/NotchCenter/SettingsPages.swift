@@ -1044,11 +1044,42 @@ struct DebugSettingsPage: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                #if DEBUG
+                sizeLabSection
+                #endif
             }
             .padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+
+    /// 块尺寸对照实验室入口（仅 DEBUG 构建）：同一组件在全部跨度档下的
+    /// 批量并排对比，手动打开不再随 run 直开。
+    #if DEBUG
+    private var sizeLabSection: some View {
+        SettingsSection(title: L("settings.debug.sizeLab")) {
+            VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    controller.showSizeLab()
+                } label: {
+                    Text(L("settings.debug.sizeLab.open"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(.white.opacity(0.1))
+                        )
+                }
+                .buttonStyle(.plain)
+                Text(L("settings.debug.sizeLab.hint"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+    #endif
 
     private func sizeSlider(
         title: String,

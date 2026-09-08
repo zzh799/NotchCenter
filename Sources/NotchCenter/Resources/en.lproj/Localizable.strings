@@ -32,6 +32,9 @@
 "settings.debug.width" = "Width";
 "settings.debug.height" = "Height";
 "settings.debug.hint" = "Applies live and persists; height also drives the drawer's height-cap band.";
+"settings.debug.sizeLab" = "Block Size Lab";
+"settings.debug.sizeLab.open" = "Open Size Lab";
+"settings.debug.sizeLab.hint" = "Side-by-side comparison of a block across all span sizes; debug builds only.";
 
 /* Settings → Components */
 "settings.components.groups" = "Plugins";

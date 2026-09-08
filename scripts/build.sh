@@ -9,9 +9,9 @@
 #                                  打包态布局一致，宿主直接发现加载）；默认增量——构建输入
 #                                  内容未变化时跳过构建直接复用上次产物，--full/-f 强制全量
 #   build.sh run [debug|release]   等价于 dev 后立即启动 NotchCenter.app 内部二进制（同样
-#                                  支持 --full/-f 强制全量构建）；启动自带
-#                                  NOTCHCENTER_SIZE_LAB=1（Size Lab 实验室直开，
-#                                  外部显式设 NOTCHCENTER_SIZE_LAB=0 可关闭）
+#                                  支持 --full/-f 强制全量构建）；Size Lab 不再随 run
+#                                  打开，入口在 设置 → 调试 页（自动化诊断可用
+#                                  NOTCHCENTER_SIZE_LAB=1 显式直开）
 #   build.sh test [<filter>]       tuist generate + xcodebuild test 跑全量测试；
 #                                  <filter> 定向复验（套件名或 套件/用例，映射 -only-testing）
 #   build.sh verify-sizes          官方插件「最小尺寸遮挡校验」定向门禁（几何判定 +
@@ -375,10 +375,9 @@ cmd_run() {
   parse_dev_args "$@"
   run_dev_build
   local xcconfig; xcconfig="$(config_to_xcconfig "$BUILD_CONFIG")"
-  # run 默认携带块尺寸对照实验室开关（NOTCHCENTER_SIZE_LAB=1 启动直开 SizeLabWindow，
-  # 仅 Debug 构建生效）；外部显式设置（如 NOTCHCENTER_SIZE_LAB=0）时尊重外部值。
-  NOTCHCENTER_SIZE_LAB="${NOTCHCENTER_SIZE_LAB:-1}" \
-    exec "$ROOT_DIR/.build/xcode/Build/Products/$xcconfig/NotchCenter.app/Contents/MacOS/NotchCenter"
+  # Size Lab 不随 run 直开（入口在 设置 → 调试 页）；外部显式设
+  # NOTCHCENTER_SIZE_LAB=1 时仍尊重环境值（自动化诊断直开链路）。
+  exec "$ROOT_DIR/.build/xcode/Build/Products/$xcconfig/NotchCenter.app/Contents/MacOS/NotchCenter"
 }
 
 cmd_test() {

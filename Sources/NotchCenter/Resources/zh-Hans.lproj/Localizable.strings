@@ -32,6 +32,9 @@
 "settings.debug.width" = "宽度";
 "settings.debug.height" = "高度";
 "settings.debug.hint" = "改动即时生效并持久化；高度同时决定抽屉限高的让位带宽。";
+"settings.debug.sizeLab" = "块尺寸对照实验室";
+"settings.debug.sizeLab.open" = "打开 Size Lab";
+"settings.debug.sizeLab.hint" = "同一组件在全部跨度档下的批量并排对比；仅调试构建可用。";
 
 /* 设置 → 组件 */
 "settings.components.groups" = "插件";
