@@ -11,7 +11,7 @@
 
 - 触及 `Sources/` 或 `Plugins/` 的 commit,消息类型非 `fix:`/`docs:`/`chore:`/`test:` 的,须在消息里引用决策记录 `(note: <日期>-<slug>)`,且 `docs/agent-notes/proposed|implemented/` 下存在同名文件;无类型前缀视为须带 note;小重构/纯格式/微调标 `chore:`。
 - 非平凡架构/接口/行为变更:动手前先按[模板](docs/templates/agent-note.md)在 `docs/agent-notes/proposed/` 写决策记录;实现落地即 `git mv` 至 `implemented/`;滞留 `proposed/` 超 7 天门禁红(移入 `archive/` 或 `rejected/` 亦可解)。
-- 同一"为什么"信息全局只写一处:领域红线/历史事故 → `docs/agents/` 子文档;代码注释只写从代码看不出的局部原因,不得跨文件复制。
+- 同一"为什么"信息全局只写一处:领域红线/历史事故 → `docs/agents/` 子文档;代码注释只写从代码看不出的局部原因,不得跨文件复制;注释块 >6 行考虑外置 `docs/`(评审指引,非机器门禁)。
 
 ## 改前必读
 
