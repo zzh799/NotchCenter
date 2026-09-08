@@ -15,7 +15,7 @@ enum ServiceBlockCompactMetrics {
     /// 开启态背景圆角（对齐 Kit `BlockCard` 的卡片壳圆角 10）。
     static let cornerRadius: CGFloat = 10
     /// 开启态背景白色浓度：接近实心的白，略透出卡片壳以融入深色抽屉。
-    static let onBackgroundOpacity: CGFloat = 0.9
+    static let onBackgroundOpacity: CGFloat = 0.6
 
     /// 是否走紧凑排布（纯值，便于单测）。
     static func isCompact(width: CGFloat) -> Bool {
