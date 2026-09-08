@@ -226,3 +226,7 @@
 - **文件暂存区只持有路径引用**，绝不复制、移动、删除用户原文件（见 `FileShelfStore`）。
 - 视觉改动保持「贴近刘海、近黑半透明、白色层级、连续圆角、spring 动效」的整体观感。
 - 主线程隔离：store/controller 多为 `@MainActor`；跨线程注意 `Sendable`。
+
+## 14. 代码 Token（唯一事实源）
+
+本文 §2 配色 / §3 圆角 / §4 排版 / §5 间距 / §7 动效的数值已代码化为 `NotchCenterKit` 的 [`NotchTokens`](../Sources/NotchCenterKit/DesignTokens.swift)：`Foreground`（白 alpha 阶梯）、`Surface`、`Hairline`、`Semantic`、`Radius`、`Text`（预设 + `system(...)` 工厂）、`Space`、`Motion`。宿主 UI 一律引用 token；插件 UI 推荐引用，token 未覆盖的插件自有视觉可收敛为插件内命名常量/调色板（细则见 [`插件开发约定.md`](agents/插件开发约定.md)）。两侧均不写内联字面量；spec 角色之外的字号走 `Text.system(...)`。任一侧改动必须同步另一侧。存量整改进度见 [`UI规范整改追踪.md`](UI规范整改追踪.md)，扫描命令 `scripts/scan-ui-tokens.sh`（警告级）。

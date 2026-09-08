@@ -8,10 +8,26 @@
     "Vendor/**",
     ".zcode/**"
   ],
-  "code_block_langs": ["swift", "bash", "text", "xml", "json"],
+  "code_block_langs": [
+    "swift",
+    "bash",
+    "text",
+    "xml",
+    "json"
+  ],
   "budgets": {
-    "AGENTS.md": { "target": 1700, "max": 1900 },
-    "docs/TERMINOLOGY.md": { "target": 900, "max": 1600 }
+    "AGENTS.md": {
+      "target": 1700,
+      "max": 1900
+    },
+    "docs/TERMINOLOGY.md": {
+      "target": 900,
+      "max": 1600
+    },
+    "docs/UI规范整改追踪.md": {
+      "target": 2400,
+      "max": 2700
+    }
   },
   "rules": [
     "超上限冻结:需 PR 说明并人工复核",
