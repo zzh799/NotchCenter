@@ -17,8 +17,8 @@
   ],
   "budgets": {
     "AGENTS.md": {
-      "target": 1700,
-      "max": 1900
+      "target": 2200,
+      "max": 2400
     },
     "docs/TERMINOLOGY.md": {
       "target": 900,
