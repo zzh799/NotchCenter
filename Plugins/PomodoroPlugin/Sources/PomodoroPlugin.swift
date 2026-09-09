@@ -15,13 +15,14 @@ import SwiftUI
 public final class PomodoroPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
     /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe；区带镜像
     /// PomodoroBlockViews.runningContent 的布局常量——运行中为最满形态：
-    /// 内边距 14、行距 9、头部 ≈34、进度条 4、控制钮 28）。
+    /// 内边距 10（Space.cardPadding）、行距 8（Space.blockGap）、
+    /// 头部 32、进度条 4、控制钮 28）。
     /// 意图：三行固定区带须完整落在 minSize 盒内且互不重叠；盒高小于总需求
-    /// （14+34+9+4+9+28+14=112）时控制钮行越界 → 会向邻居溢出。
+    /// （10+32+8+4+8+28+10=100）时控制钮行越界 → 会向邻居溢出。
     private static func pomodoroLayoutProbes(for size: CGSize) -> [BlockProbe] {
-        let inset: CGFloat = 14
-        let spacing: CGFloat = 9
-        let headerHeight: CGFloat = 34
+        let inset: CGFloat = 10
+        let spacing: CGFloat = 8
+        let headerHeight: CGFloat = 32
         let barHeight: CGFloat = 4
         let controlsHeight: CGFloat = 28
         let contentWidth = max(size.width - inset * 2, 0)

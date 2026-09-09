@@ -1,7 +1,6 @@
 /* PomodoroPlugin 简体中文文案（键集合必须与 en 基准一致，LocalizationTests 校验） */
 
 /* 块与菜单 */
-"block.compact.name" = "番茄钟";
 "block.drawer.name" = "番茄钟计时";
 "menu.start" = "开始番茄钟";
 "menu.stop" = "停止番茄钟";
@@ -16,9 +15,7 @@
 "help.skip" = "跳过";
 "help.stop" = "停止";
 
-/* 紧凑块交互提示与无障碍 */
-"compact.help.start" = "开始专注";
-"compact.help.stop" = "停止番茄钟";
+/* 抽屉块无障碍 */
 "a11y.pomodoro" = "番茄钟";
 
 /* 抽屉块 */

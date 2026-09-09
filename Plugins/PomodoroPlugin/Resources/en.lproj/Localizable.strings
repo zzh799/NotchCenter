@@ -1,7 +1,6 @@
 /* PomodoroPlugin 英文文案（开发基准语言，键缺失时兜底） */
 
 /* 块与菜单 */
-"block.compact.name" = "Pomodoro";
 "block.drawer.name" = "Pomodoro Timer";
 "menu.start" = "Start Pomodoro";
 "menu.stop" = "Stop Pomodoro";
@@ -16,9 +15,7 @@
 "help.skip" = "Skip";
 "help.stop" = "Stop";
 
-/* 紧凑块交互提示与无障碍 */
-"compact.help.start" = "Start focus session";
-"compact.help.stop" = "Stop pomodoro";
+/* 抽屉块无障碍 */
 "a11y.pomodoro" = "Pomodoro timer";
 
 /* 抽屉块 */

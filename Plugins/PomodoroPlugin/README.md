@@ -2,10 +2,10 @@
 
 专注 / 休息循环计时器，参考 [JokerQianwei/Focus](https://github.com/JokerQianwei/Focus) 的设计：基于间隔效应，在专注期间按**随机间隔**响起提示音，提醒你进行一次短暂的微休息。
 
-## 提供的块
+## 提供的块与快捷按钮
 
-- **紧凑块 `pomodoro.toggle`**：点击开始 / 停止番茄钟，运行时图标点亮阶段色。
-- **抽屉块 `pomodoro.timer`**（中等 / 大）：开始专注、暂停 / 继续、跳过与停止，显示当前阶段、倒计时、进度条与今日完成数。
+- **抽屉块 `pomodoro.timer`**：开始专注、暂停 / 继续、跳过与停止，显示当前阶段、倒计时、进度条与今日完成数。
+- **快捷按钮**（可放入快速区或快捷按钮盒）：`pomodoro.toggle` 开始 / 停止、`pomodoro.start` 开始专注、`pomodoro.pause` 暂停 / 继续、`pomodoro.reset` 停止计时。
 
 ## 活动摘要（紧凑带迷你进度）
 
