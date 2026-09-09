@@ -400,6 +400,48 @@ final class SystemMonitorTests: XCTestCase {
         XCTAssertEqual(MetricCellForm.forSpan(widthColumns: nil, heightRows: nil), .mini)
     }
 
+    // MARK: 像素密度降级（方向看格数，曲线看像素）
+
+    func testOverviewSparklineKeepsOnDefaultPixels() {
+        // 默认格 2×2（312×252）与 4×2（636×252）像素充足，保持 sparkline。
+        XCTAssertTrue(OverviewArrangement.showsSparkline(
+            arrangement: .sparklineGrid, contentSize: CGSize(width: 312, height: 252), enabledCount: 4))
+        XCTAssertTrue(OverviewArrangement.showsSparkline(
+            arrangement: .sparklineRow, contentSize: CGSize(width: 636, height: 252), enabledCount: 4))
+    }
+
+    func testOverviewSparklineDowngradesOnSmallPixels() {
+        // 最小格 2×2（约 162×132）每 cell 高不足，降级为同布局 MiniBar。
+        XCTAssertFalse(OverviewArrangement.showsSparkline(
+            arrangement: .sparklineGrid, contentSize: CGSize(width: 162, height: 132), enabledCount: 4))
+        // 横排 cell 独占整块高度，最小格 4×2（约 336×132）仍放得下，保持曲线；
+        // 只有合成的极矮尺寸才降级（覆盖降级分支）。
+        XCTAssertTrue(OverviewArrangement.showsSparkline(
+            arrangement: .sparklineRow, contentSize: CGSize(width: 336, height: 132), enabledCount: 4))
+        XCTAssertFalse(OverviewArrangement.showsSparkline(
+            arrangement: .sparklineRow, contentSize: CGSize(width: 336, height: 80), enabledCount: 4))
+        // 非曲线形态恒走老路，不受像素影响。
+        XCTAssertFalse(OverviewArrangement.showsSparkline(
+            arrangement: .stackedMiniCells, contentSize: CGSize(width: 312, height: 252), enabledCount: 4))
+        XCTAssertFalse(OverviewArrangement.showsSparkline(
+            arrangement: .miniCellRow, contentSize: CGSize(width: 312, height: 252), enabledCount: 4))
+    }
+
+    func testOverviewSparklineRecoversWhenFewerMetricsEnabled() {
+        // 同样小像素下只开 1 项，每 cell 分到整块高度，曲线应恢复。
+        XCTAssertTrue(OverviewArrangement.showsSparkline(
+            arrangement: .sparklineGrid, contentSize: CGSize(width: 162, height: 132), enabledCount: 1))
+        // 零尺寸（目录预览等无 frame 路径）回退推荐外观，保持 sparkline。
+        XCTAssertTrue(OverviewArrangement.showsSparkline(
+            arrangement: .sparklineGrid, contentSize: .zero, enabledCount: 4))
+    }
+
+    func testSingleWideSparklineDowngradesOnSmallPixels() {
+        XCTAssertTrue(MetricCellForm.showsWideSparkline(contentSize: CGSize(width: 312, height: 120)))
+        XCTAssertFalse(MetricCellForm.showsWideSparkline(contentSize: CGSize(width: 162, height: 72)))
+        XCTAssertTrue(MetricCellForm.showsWideSparkline(contentSize: .zero))
+    }
+
     // MARK: store 节奏与生命周期
 
     func testIdleIntervalWithoutVisibleWindow() {

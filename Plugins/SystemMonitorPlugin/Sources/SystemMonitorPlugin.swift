@@ -68,13 +68,14 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
                     instance: instanceModel(for: context),
                     placementID: context.placementID,
                     isPreview: context.layoutInfo.isPreview,
-                    // 宿主按跨度变化重走 makeView（BlockViewCacheKey 含跨度），
-                    // 2×1 档在创建期即展开 sparkline；无 span 上下文（目录预览
-                    // 等）按推荐 1×1 的 mini 形态兜底。
+                    // 宿主按跨度与像素变化重走 makeView（BlockViewCacheKey 含两者），
+                    // 2×1 档在创建期即展开 sparkline（像素不够时视图内再降级为 mini）；
+                    // 无 span 上下文（目录预览等）按推荐 1×1 的 mini 形态兜底。
                     showsSparkline: MetricCellForm.forSpan(
                         widthColumns: context.layoutInfo.widthColumns,
                         heightRows: context.layoutInfo.heightRows
-                    ) == .sparkline
+                    ) == .sparkline,
+                    contentSize: context.layoutInfo.frame.size
                 ))
             }
         )
@@ -103,7 +104,8 @@ public final class SystemMonitorPlugin: NSObject, NotchCenterPlugin, NotchCenter
                 placementID: context.placementID,
                 isPreview: context.layoutInfo.isPreview,
                 widthColumns: context.layoutInfo.widthColumns,
-                heightRows: context.layoutInfo.heightRows
+                heightRows: context.layoutInfo.heightRows,
+                contentSize: context.layoutInfo.frame.size
             ))
         }
     )

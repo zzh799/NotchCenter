@@ -5,8 +5,9 @@ import SwiftUI
 //
 // 布局策略（共识 Q5/Q6/Q11）：
 // - 单指标块 1×1：指标名 + 当前值 + 迷你负载条；2×1：左值右 sparkline。
-// - All-in-one 按跨度切形态：1×1 横向小条竖排（名称+聚合值）；1×2 竖排 / 2×1 横排
-//   迷你 cell（名称+值+迷你条）；2×2/4×4 两列网格、4×2/4×3 横向一排（sparkline 格）。
+// - All-in-one 按跨度定方向：1×1 横向小条竖排（名称+聚合值）；1×2 竖排 / 2×1 横排
+//   迷你 cell（名称+值+迷你条）；2×2/4×4 两列网格、4×2/4×3 横向一排；网格与横排内
+//   画 sparkline 还是 MiniBar 看块实际像素（像素不够自动降级，方向不变）。
 // - 阈值变色（共识 Q7-C）：CPU/磁盘/网络按实例阈值映射 白/黄/红，内存直接映射
 //   内核压力等级（normal 绿）。方向色（读/写、下/上）只用于箭头与曲线。
 //
@@ -420,6 +421,8 @@ struct MetricBlockView: View {
     let isPreview: Bool
     /// 2×1 档：true 时值列右侧展开 sparkline（1×1 为迷你负载条）。
     let showsSparkline: Bool
+    /// 宿主下发的块实际像素（layoutInfo.frame.size）；像素不够时宽幅曲线自动降级为 mini（MiniBar 保留）。
+    var contentSize: CGSize = .zero
 
     @ObservedObject private var store = SystemMonitorStore.shared
 
@@ -431,9 +434,14 @@ struct MetricBlockView: View {
         InstanceConfigLogic.effectiveNetExclusions(instance.single)
     }
 
+    /// 格数要曲线且像素放得下时才真画宽幅曲线。
+    private var effectiveShowsSparkline: Bool {
+        showsSparkline && MetricCellForm.showsWideSparkline(contentSize: contentSize)
+    }
+
     var body: some View {
         BlockCard { _ in
-            if showsSparkline {
+            if effectiveShowsSparkline {
                 HStack(alignment: .center, spacing: 12) {
                     MetricCell(
                         kind: kind,
@@ -495,11 +503,22 @@ struct OverviewBlockView: View {
     ///（OverviewArrangement 按推荐 2×2 的网格形态兜底）。
     let widthColumns: Int?
     let heightRows: Int?
+    /// 宿主下发的块实际像素（layoutInfo.frame.size）；曲线形态像素不够时自动降级为同布局的 MiniBar cell。
+    var contentSize: CGSize = .zero
 
     @ObservedObject private var store = SystemMonitorStore.shared
 
     private var arrangement: OverviewArrangement {
         OverviewArrangement.forSpan(widthColumns: widthColumns, heightRows: heightRows)
+    }
+
+    /// 有曲线形态在当前像素下是否真画 sparkline；false 时同布局改走 MiniBar cell（方向不变）。
+    private var sparklineAllowed: Bool {
+        OverviewArrangement.showsSparkline(
+            arrangement: arrangement,
+            contentSize: contentSize,
+            enabledCount: enabledKinds.count
+        )
     }
 
     private var enabledKinds: [MetricKind] {
@@ -538,13 +557,13 @@ struct OverviewBlockView: View {
                     case .sparklineGrid:
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             ForEach(enabledKinds, id: \.self) { kind in
-                                cell(kind, showsSparkline: true)
+                                cell(kind, showsSparkline: sparklineAllowed)
                             }
                         }
                     case .sparklineRow:
                         HStack(alignment: .top, spacing: 10) {
                             ForEach(enabledKinds, id: \.self) { kind in
-                                cell(kind, showsSparkline: true)
+                                cell(kind, showsSparkline: sparklineAllowed)
                             }
                         }
                     }
