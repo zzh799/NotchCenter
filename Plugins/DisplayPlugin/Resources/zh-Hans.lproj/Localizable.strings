@@ -4,3 +4,7 @@
 "drawer.empty.title" = "未检测到可调节的外接显示器";
 "display.fallback.name" = "外接显示器 %d";
 "a11y.slider.label" = "%@ 的亮度";
+
+"block.single.name" = "单屏亮度";
+"single.display.section" = "显示器";
+"single.followFirst" = "跟随第一台显示器";

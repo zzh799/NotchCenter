@@ -336,4 +336,83 @@ final class DisplayPluginTests: XCTestCase {
             BrightnessSliderArrangement.forSpan(widthColumns: nil, heightRows: nil),
             .rows)
     }
+
+    // MARK: 单屏条形态映射（跨度 + 推导单元 → 启动器 / 小 fill / 大药丸）
+
+    func testSinglePresentationLauncherFor1x1() {
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: 1, rows: 1, cellWidth: 150, cellHeight: 120),
+            .launcher)
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: 1, rows: 1, cellWidth: 75, cellHeight: 60),
+            .launcher,
+            "1×1 在任何单元下都恒为启动器")
+    }
+
+    func testSinglePresentationSmallCellUsesFill() {
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: 1, rows: 2, cellWidth: 75, cellHeight: 60),
+            .compactFill(vertical: true))
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: 2, rows: 1, cellWidth: 75, cellHeight: 60),
+            .compactFill(vertical: false))
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: 2, rows: 2, cellWidth: 75, cellHeight: 60),
+            .compactFill(vertical: false),
+            "等边走横向（列 >= 行）")
+    }
+
+    func testSinglePresentationLargeCellUsesDetailed() {
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: 1, rows: 2, cellWidth: 150, cellHeight: 120),
+            .detailed(vertical: true))
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: 2, rows: 1, cellWidth: 150, cellHeight: 120),
+            .detailed(vertical: false))
+        // 任一轴超 100 即大；等于阈值不算。
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: 2, rows: 1, cellWidth: 101, cellHeight: 60),
+            .detailed(vertical: false))
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: 1, rows: 2, cellWidth: 75, cellHeight: 101),
+            .detailed(vertical: true))
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: 2, rows: 1, cellWidth: 100, cellHeight: 60),
+            .compactFill(vertical: false))
+    }
+
+    func testSinglePresentationSpanlessFallback() {
+        // 无 span 上下文：按推荐尺寸（150×240 竖条）的形态兜底。
+        XCTAssertEqual(
+            SingleBrightnessPresentation.resolve(columns: nil, rows: nil, cellWidth: nil, cellHeight: nil),
+            .detailed(vertical: true))
+    }
+
+    func testSingleCellSizeDerivation() {
+        // 2×1 在默认格 + 间距下的 frame（2×150 + 12）：推导单元 156×120。
+        let cell = SingleBrightnessPresentation.cellSize(
+            frame: CGSize(width: 312, height: 120), columns: 2, rows: 1)
+        XCTAssertEqual(cell.width, 156)
+        XCTAssertEqual(cell.height, 120)
+    }
+
+    // MARK: 单屏条实例配置（放置实例 → 绑定显示器）
+
+    @MainActor
+    func testSingleDisplayConfigDefaultsToFollowFirst() {
+        XCTAssertNil(SingleDisplayInstanceConfigLogic.load(from: nil).displayID)
+    }
+
+    @MainActor
+    func testSingleDisplayConfigRoundTripsThroughStore() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SingleDisplayTests-\(UUID().uuidString)", isDirectory: true)
+        let store = StateStore(rootDirectory: root)
+        let placement = store.placementScope(placementID: "p1")
+        SingleDisplayInstanceConfigLogic.save(SingleDisplayInstanceConfig(displayID: 42), to: placement)
+        XCTAssertEqual(
+            SingleDisplayInstanceConfigLogic.load(from: placement).displayID, 42)
+        SingleDisplayInstanceConfigLogic.save(SingleDisplayInstanceConfig(displayID: nil), to: placement)
+        XCTAssertNil(SingleDisplayInstanceConfigLogic.load(from: placement).displayID)
+    }
 }

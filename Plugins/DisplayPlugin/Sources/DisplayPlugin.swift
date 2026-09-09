@@ -6,8 +6,9 @@ import SwiftUI
 /// IOKit IOI2C 公开 API；决策记录见 Agent Note 2026-09-05-display-plugin-ddc，
 /// 能力边界见插件 README。
 ///
-/// 版式随块跨度自适应：1×1（small）每台屏「屏名 + 滑杆」两行紧凑堆叠，
-/// 其余尺寸维持历史「每屏一行横向滑杆」（见 DisplaySlidersBlockView）。
+/// 两块共存：`brightness.sliders` 是多屏列表（版式见 DisplaySlidersBlockView）；
+/// `brightness.single` 是单屏条（一实例一屏，形态见 SingleBrightnessBlockView，
+/// 决策见 Agent Note 2026-09-09-display-single-brightness-bar）。
 @objc(DisplayPlugin) @MainActor
 public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
     public static var blocks: [NotchBlock] {
@@ -41,6 +42,37 @@ public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugin
                 },
                 makeView: { context in
                     AnyView(DisplaySlidersBlockView(context: context))
+                }
+            ),
+            NotchBlock(
+                id: "brightness.single",
+                displayName: L("block.single.name"),
+                kind: .drawer,
+                minSize: BlockPixelSize(width: 75, height: 60),
+                maxSize: BlockPixelSize(width: 300, height: 240),
+                recommendedSize: BlockPixelSize(width: 150, height: 240),
+                symbolName: "sun.max",
+                instanceSettingsView: { context in
+                    AnyView(SingleDisplaySettingsView(instance: SingleDisplayInstanceRegistry.model(
+                        placementID: context.placementID,
+                        stateStore: context.stateStore)))
+                },
+                probes: { info in
+                    // 单探针即整块内容不断言子结构：小 UI 满铺、大 UI 标题与滑杆
+                    // 都落在此盒内；探针只能依赖 frame（校验时无跨度上下文）。
+                    let size = info.frame.size
+                    let inset: CGFloat = 6
+                    return [
+                        BlockProbe(
+                            id: "single.content",
+                            rect: CGRect(
+                                x: inset, y: inset,
+                                width: max(size.width - inset * 2, 0),
+                                height: max(size.height - inset * 2, 0))),
+                    ]
+                },
+                makeView: { context in
+                    AnyView(SingleBrightnessBlockView(context: context))
                 }
             ),
         ]
