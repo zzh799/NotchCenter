@@ -3,36 +3,36 @@ import SwiftUI
 
 // MARK: - 抽屉块视图（专注计时控制卡）
 //
-// 规范落点（决策见 docs/agent-notes 2026-09-09-pomodoro-ui-redesign）：卡片壳
-// 走 Kit `BlockCard`，圆形控制钮走 `IconCircleButton`，开始按钮走基于
-// `RoundedHoverButtonBody` 的主按钮样式；颜色/间距一律 `NotchTokens`，
-// 不散写内联透明度。阶段色只出现在状态圆点与进度条（豁免调色板见 PomodoroTheme）。
+// 规范落点（决策见 docs/agent-notes 2026-09-09-pomodoro-ui-redesign 与
+// 2026-09-09-pomodoro-system-accent-symmetric）：卡片壳走 Kit `BlockCard`，
+// 圆形控制钮走 `IconCircleButton`，开始按钮走基于 `RoundedHoverButtonBody`
+// 的主按钮样式；颜色/间距一律 `NotchTokens`，强调色跟随系统强调色；
+// 空闲与运行中两态都是左右对称的垂直居中栈（无 `Spacer` 贴边）。
 
-/// 版式常量：内边距/间距对齐 `Space`，打包期探针
-/// （`PomodoroPlugin.pomodoroLayoutProbes`）镜像本组数值。
+/// 版式常量：横向内边距对齐 `Space.cardPadding`，纵向内边距取 8
+/// （对标 `DisplaySlidersBlockView` 紧凑 insets `8/10/8/10`：2×1 最小高
+/// 120 纵向紧张）；打包期探针（`PomodoroPlugin.pomodoroLayoutProbes`）
+/// 镜像本组数值。
 private enum PomodoroBlockMetrics {
-    /// 块内容四周留白（`Space.cardPadding`）。
-    static let insets: CGFloat = NotchTokens.Space.cardPadding
-    /// 纵向三区带（头部 / 进度条 / 控制行）之间的间距（`Space.blockGap`）。
+    /// 块内容留白：纵向 8 / 横向 10。
+    static let insets = EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10)
+    /// 纵向区带之间的间距（`Space.blockGap`）。
     static let sectionSpacing: CGFloat = NotchTokens.Space.blockGap
-    /// 头部内「状态行 ↔ 完成数行」的间距。
-    static let headerInnerSpacing: CGFloat = 3
-    /// 头部内「圆点 ↔ 阶段名」的间距。
-    static let titleSpacing: CGFloat = 5
+    /// 状态单行内元素间距。
+    static let statusSpacing: CGFloat = 4
     /// 进度条高度。
     static let progressHeight: CGFloat = 4
     /// 状态圆点直径。
     static let dotDiameter: CGFloat = 6
-    /// 圆形控制钮直径（120 高卡内的触击目标）。
-    static let controlDiameter: CGFloat = 28
+    /// 圆形控制钮直径。
+    static let controlDiameter: CGFloat = 24
     /// 控制钮之间的间距。
     static let controlSpacing: CGFloat = 12
     /// 空闲态图标徽章直径。
-    static let idleBadgeDiameter: CGFloat = 44
+    static let idleBadgeDiameter: CGFloat = 40
 }
 
-/// 开始专注主按钮：白色层级圆角按钮（Kit 基体，带悬停/按压/手型光标），
-/// 阶段红不铺底——专注工具的常态保持沉稳。
+/// 开始专注主按钮：白色层级圆角按钮（Kit 基体，带悬停/按压/手型光标）。
 struct PomodoroPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         RoundedHoverButtonBody(
@@ -73,29 +73,28 @@ struct PomodoroDrawerBlockView: View {
 
     // MARK: 空闲
 
-    /// 横向引导行（徽章 + 开始按钮 + 时长副文案）：2×1 宽卡里比重直堆叠
-    /// 更省纵向空间，节奏与运行中头部横向排布一致。
+    /// 垂直居中对称栈：徽章 → 开始按钮 → 时长副文案。
     private var idleContent: some View {
-        HStack(spacing: 10) {
+        VStack(spacing: PomodoroBlockMetrics.sectionSpacing) {
             Image(systemName: PomodoroTheme.symbol(for: .idle))
-                .font(NotchTokens.Text.system(20, weight: .light))
+                .font(NotchTokens.Text.system(18, weight: .light))
                 .foregroundStyle(NotchTokens.Foreground.muted)
-                .frame(width: PomodoroBlockMetrics.idleBadgeDiameter, height: PomodoroBlockMetrics.idleBadgeDiameter)
+                .frame(
+                    width: PomodoroBlockMetrics.idleBadgeDiameter,
+                    height: PomodoroBlockMetrics.idleBadgeDiameter)
                 .background(Circle().fill(NotchTokens.Surface.fillHighlighted))
-            VStack(alignment: .leading, spacing: 4) {
-                Button {
-                    store.start()
-                } label: {
-                    Label(L("drawer.startFocus"), systemImage: "play.fill")
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                }
-                .buttonStyle(PomodoroPrimaryButtonStyle())
-                .disabled(isPreview)
-                Text(LF("drawer.focusFor", store.config.focusMinutes))
-                    .font(NotchTokens.Text.system(11))
-                    .foregroundStyle(NotchTokens.Foreground.muted)
+            Button {
+                store.start()
+            } label: {
+                Label(L("drawer.startFocus"), systemImage: "play.fill")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 7)
             }
+            .buttonStyle(PomodoroPrimaryButtonStyle())
+            .disabled(isPreview)
+            Text(LF("drawer.focusFor", store.config.focusMinutes))
+                .font(NotchTokens.Text.system(11))
+                .foregroundStyle(NotchTokens.Foreground.muted)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(PomodoroBlockMetrics.insets)
@@ -103,32 +102,31 @@ struct PomodoroDrawerBlockView: View {
 
     // MARK: 运行中
 
+    /// 垂直居中对称栈：状态单行 → 倒计时 → 进度条 → 居中控制行。
     private var runningContent: some View {
         let display = store.display
         let accent = PomodoroTheme.accent(for: display.phase)
         return VStack(spacing: PomodoroBlockMetrics.sectionSpacing) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: PomodoroBlockMetrics.headerInnerSpacing) {
-                    HStack(spacing: PomodoroBlockMetrics.titleSpacing) {
-                        Circle()
-                            .fill(accent)
-                            .frame(
-                                width: PomodoroBlockMetrics.dotDiameter,
-                                height: PomodoroBlockMetrics.dotDiameter)
-                        Text(PomodoroTheme.phaseTitle(for: display))
-                            .font(NotchTokens.Text.system(12, weight: .semibold))
-                            .foregroundStyle(NotchTokens.Foreground.secondary)
-                    }
-                    Text(LF("drawer.completed", display.completedToday))
-                        .font(NotchTokens.Text.system(10))
-                        .foregroundStyle(NotchTokens.Foreground.muted)
-                }
-                Spacer()
-                Text(pomodoroCountdownText(display.remainingSeconds))
-                    .font(NotchTokens.Text.system(28, weight: .semibold, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(NotchTokens.Foreground.body)
+            HStack(spacing: PomodoroBlockMetrics.statusSpacing) {
+                Circle()
+                    .fill(accent)
+                    .frame(
+                        width: PomodoroBlockMetrics.dotDiameter,
+                        height: PomodoroBlockMetrics.dotDiameter)
+                Text(PomodoroTheme.phaseTitle(for: display))
+                    .font(NotchTokens.Text.system(12, weight: .semibold))
+                    .foregroundStyle(NotchTokens.Foreground.secondary)
+                // 中点分隔是纯标点（非词汇），两侧文案各自本地化，中英通用。
+                Text("·")
+                    .foregroundStyle(NotchTokens.Foreground.muted)
+                Text(LF("drawer.completed", display.completedToday))
+                    .font(NotchTokens.Text.system(11))
+                    .foregroundStyle(NotchTokens.Foreground.muted)
             }
+            Text(pomodoroCountdownText(display.remainingSeconds))
+                .font(NotchTokens.Text.system(28, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(NotchTokens.Foreground.body)
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule().fill(NotchTokens.Surface.track)
@@ -163,7 +161,6 @@ struct PomodoroDrawerBlockView: View {
                     store.stop()
                 }
                 .disabled(isPreview)
-                Spacer()
             }
         }
         .padding(PomodoroBlockMetrics.insets)

@@ -4,7 +4,6 @@
     "Plugins/CaffeinatePlugin/Sources/CaffeinatePlugin.swift": { "color-rgb": 1, "font-raw": 0, "spring-raw": 0 },
     "Plugins/MediaControlsPlugin/Sources/MediaControlsBlockViews.swift": { "color-rgb": 1, "font-raw": 0, "spring-raw": 0 },
     "Plugins/OpenCodeUsagePlugin/Sources/PeakClockLogic.swift": { "color-rgb": 2, "font-raw": 0, "spring-raw": 0 },
-    "Plugins/PomodoroPlugin/Sources/PomodoroTheme.swift": { "color-rgb": 3, "font-raw": 0, "spring-raw": 0 },
     "Plugins/SystemMonitorPlugin/Sources/BlockViews.swift": { "color-rgb": 3, "font-raw": 0, "spring-raw": 0 }
   }
 }
