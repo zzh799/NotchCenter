@@ -12,6 +12,8 @@ dist.noindex/
 .vscode/settings.json
 nohup.out
 
+.zvec-grep
+
 # Tuist 生成物（源真相是 Project.swift / mise.toml）
 *.xcodeproj
 *.xcworkspace
