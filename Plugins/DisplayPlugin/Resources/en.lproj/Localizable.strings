@@ -2,6 +2,7 @@
 
 "block.drawer.name" = "Display Brightness";
 "drawer.empty.title" = "No Adjustable External Display";
+"drawer.empty.short" = "No External Display";
 "display.fallback.name" = "Display %d";
 "a11y.slider.label" = "Brightness of %@";
 

@@ -229,7 +229,7 @@ struct SingleBrightnessBlockView: View {
                             isPreview: context.layoutInfo.isPreview)
                     }
                 } else {
-                    SingleEmptyContent()
+                    SingleEmptyContent(size: size)
                 }
             }
             .frame(width: size.width, height: size.height)
@@ -243,21 +243,13 @@ struct SingleBrightnessBlockView: View {
     }
 }
 
-// MARK: - 空态
+// MARK: - 空态（三档分级见 BrightnessEmptyState，调用方只传尺寸）
 
 private struct SingleEmptyContent: View {
+    let size: CGSize
+
     var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "sun.max")
-                .font(NotchTokens.Text.system(22, weight: .light))
-                .foregroundStyle(NotchTokens.Foreground.disabled)
-                .frame(width: 52, height: 52)
-                .background(Circle().fill(.white.opacity(0.07)))
-            Text(L("drawer.empty.title"))
-                .font(NotchTokens.Text.system(12, weight: .semibold))
-                .foregroundStyle(NotchTokens.Foreground.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        BrightnessEmptyView(size: size)
     }
 }
 

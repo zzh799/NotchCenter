@@ -510,6 +510,39 @@ final class DisplayPluginTests: XCTestCase {
         XCTAssertEqual(cell.height, 120)
     }
 
+    // MARK: 无屏空态分级（可用 frame 高度 → 三档，只降信息密度）
+
+    func testEmptyPresentationIconOnlyForShortestBlock() {
+        // 最小单元 75x60：旧固定空态在此高度下必切文本，只剩图标。
+        XCTAssertEqual(
+            BrightnessEmptyPresentation.resolve(frame: CGSize(width: 75, height: 60)),
+            .iconOnly)
+    }
+
+    func testEmptyPresentationCompactForDefaultCellHeight() {
+        // 默认单元高 120（1×1 默认 / sliders 推荐 300x120）：小图标 + 短文案。
+        XCTAssertEqual(
+            BrightnessEmptyPresentation.resolve(frame: CGSize(width: 150, height: 120)),
+            .compact)
+        XCTAssertEqual(
+            BrightnessEmptyPresentation.resolve(frame: CGSize(width: 300, height: 120)),
+            .compact)
+    }
+
+    func testEmptyPresentationCompactForNarrowTallBlock() {
+        // 单列窄块纵使够高也放不下完整长文案，走紧凑态。
+        XCTAssertEqual(
+            BrightnessEmptyPresentation.resolve(frame: CGSize(width: 75, height: 200)),
+            .compact)
+    }
+
+    func testEmptyPresentationFullForTallBlock() {
+        // single 推荐 150x240：完整空态。
+        XCTAssertEqual(
+            BrightnessEmptyPresentation.resolve(frame: CGSize(width: 150, height: 240)),
+            .full)
+    }
+
     // MARK: 横向 scrub 换算（x/width → 百分比，AppKit 条与竖向手势各用各的）
 
     func testHorizontalScrubPercentMapsXToPercent() {

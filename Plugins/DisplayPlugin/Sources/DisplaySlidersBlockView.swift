@@ -66,17 +66,8 @@ struct DisplaySlidersBlockView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "sun.max")
-                .font(NotchTokens.Text.system( 22, weight: .light))
-                .foregroundStyle(NotchTokens.Foreground.disabled)
-                .frame(width: 52, height: 52)
-                .background(Circle().fill(.white.opacity(0.07)))
-            Text(L("drawer.empty.title"))
-                .font(NotchTokens.Text.system( 12, weight: .semibold))
-                .foregroundStyle(NotchTokens.Foreground.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // 空态三档分级见 BrightnessEmptyState（single 块共用同一视图）。
+        BrightnessEmptyView(size: context.layoutInfo.frame.size)
     }
 
     // MARK: 版式布局
