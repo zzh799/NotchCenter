@@ -33,7 +33,8 @@ import SwiftUI
             displayName: L("dsh.block.name"),
             kind: .drawer,
             minSize: BlockPixelSize(width: 75, height: 60),
-            maxSize: BlockPixelSize(width: 300, height: 120),
+
+            maxSize: BlockPixelSize(width: 150, height: 120),
             recommendedSize: BlockPixelSize(width: 75, height: 60),
             symbolName: "server.rack",
             probes: { info in
