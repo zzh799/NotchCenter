@@ -1,3 +1,4 @@
+import AppKit
 import NotchCenterKit
 import SwiftUI
 
@@ -63,6 +64,111 @@ func scrubSingleBrightness(_ model: BrightnessDisplayModel, to percent: Double, 
         return
     }
     BrightnessController.shared.requestWrite(model, percent: clamped)
+}
+
+// MARK: - 横向 scrub 交互层（AppKit）
+//
+// 横向自绘滑杆（小 fill 横条、大药丸横条）的鼠标拖拽不能走 SwiftUI
+// DragGesture：非编辑态页带整面挂着 simultaneous 切页手势（`pageSlide`
+// “整面可拖动切页（含块上方）”），控制器靠 `DrawerScrollProbe` 让路，
+// 而探针只认识 ScrollView 的横向溢出，自绘手势恒被“放行”，于是调光
+// 与切页双响应。NSView 在 AppKit 层吃掉 mouseDown 后，这次按压到不了
+// SwiftUI 手势系统，切页手势收不到位移；scrollWheel 不处理，触控板横
+// 扫仍走切页。竖向拖过不了切页方向门槛，保留 SwiftUI 手势不动。
+
+/// 横向 scrub 位置换算（纯逻辑，视图与测试共用）：x/width → 0...100，
+/// 越界钳制；零宽接不到命中，回 0 防 NaN。
+enum HorizontalScrubMath {
+    static func percent(atX x: CGFloat, width: CGFloat) -> Double {
+        guard width > 0 else { return 0 }
+        return min(max(x / width, 0), 1) * 100
+    }
+}
+
+/// 横向 scrub 的 AppKit 交互条：透明 NSView，盖在自绘视觉上只负责收鼠标。
+/// 视觉继续由 SwiftUI 渲染，写入语义调用方经回调复用 `scrubSingleBrightness`
+///（拖动落盘、松手补终值），与竖向手势同源。
+struct HorizontalScrubStrip: NSViewRepresentable {
+    /// false 时命中穿透（预览副本 / 未 ready 占位），行为与没挂 strip 一致。
+    var isEnabled: Bool
+    var onBegin: (@MainActor (Double) -> Void)
+    var onScrub: (@MainActor (Double) -> Void)
+    var onEnd: (@MainActor () -> Void)
+
+    func makeNSView(context _: Context) -> ScrubView {
+        ScrubView()
+    }
+
+    func updateNSView(_ view: ScrubView, context _: Context) {
+        // 闭包每帧刷新引用（捕获的 model 是同一 ObservableObject），只写
+        // 属性不重建 NSView，不干扰进行中的跟踪循环。
+        view.isEnabled = isEnabled
+        view.onBegin = onBegin
+        view.onScrub = onScrub
+        view.onEnd = onEnd
+    }
+
+    final class ScrubView: NSView {
+        var isEnabled = false
+        var onBegin: ((@MainActor (Double) -> Void))?
+        var onScrub: ((@MainActor (Double) -> Void))?
+        var onEnd: ((@MainActor () -> Void))?
+
+        override func acceptsFirstMouse(for _: NSEvent?) -> Bool {
+            // 面板是非激活 borderless：首击即调，与现有 SwiftUI 手势体感一致。
+            true
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            // 禁用态穿透：预览副本与未 ready 占位不吞事件，切页等行为不变。
+            guard isEnabled else { return nil }
+            return super.hitTest(point)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            guard isEnabled else { return }
+            fire(percent(for: event), to: onBegin)
+            // 跟踪循环接管整段拖拽：拖出边界仍归本次 scrub（钳制在换算里），
+            // 与 SwiftUI 手势“松手在哪都算结束”同语义；循环里只取左键拖拽
+            // 与抬起，其余事件不碰。
+            guard let window else {
+                fire(to: onEnd)
+                return
+            }
+            while true {
+                guard let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp])
+                else { continue }
+                if next.type == .leftMouseDragged {
+                    fire(percent(for: next), to: onScrub)
+                } else {
+                    fire(to: onEnd)
+                    return
+                }
+            }
+        }
+
+        private func percent(for event: NSEvent) -> Double {
+            // 只用 x（本条恒横向）；AppKit 默认坐标系下 x 不受翻转影响。
+            let x = convert(event.locationInWindow, from: nil).x
+            return HorizontalScrubMath.percent(atX: x, width: bounds.width)
+        }
+
+        private func fire(_ percent: Double, to handler: ((@MainActor (Double) -> Void))?) {
+            guard let handler else { return }
+            // 鼠标事件恒在主线程，assumeIsolated 只是告诉编译器（同
+            // DrawerSwipeSpringDriver 的 Timer 回调处理）。
+            MainActor.assumeIsolated {
+                handler(percent)
+            }
+        }
+
+        private func fire(to handler: ((@MainActor () -> Void))?) {
+            guard let handler else { return }
+            MainActor.assumeIsolated {
+                handler()
+            }
+        }
+    }
 }
 
 struct SingleBrightnessBlockView: View {
@@ -287,32 +393,68 @@ private struct SingleFillContent: View {
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
-                Color.white.opacity(0.15)
-                if model.state == .ready {
-                    Color.white.opacity(0.9)
-                        .frame(
-                            width: vertical ? nil : geo.size.width * model.percent / 100,
-                            height: vertical ? geo.size.height * model.percent / 100 : nil)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: vertical ? .bottom : .leading)
+            Group {
+                if vertical {
+                    fillVisuals(size: geo.size)
+                        .clipShape(RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous))
+                        .contentShape(Rectangle())
+                        .gesture(fillGesture(size: geo.size))
+                } else {
+                    fillVisuals(size: geo.size)
+                        .clipShape(RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous))
+                        .contentShape(Rectangle())
+                        .overlay {
+                            scrubStrip()
+                        }
                 }
-                Image(systemName: "sun.max")
-                    .font(NotchTokens.Text.system(18, weight: .medium))
-                    // 填充区亮、非填充区暗：图标恒压一层阴影保证两区可读。
-                    .foregroundStyle(NotchTokens.Foreground.selected)
-                    .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
-                    .opacity(model.state == .ready ? 1 : 0.35)
             }
-            .clipShape(RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous))
-            .contentShape(Rectangle())
-            .gesture(fillGesture(size: geo.size))
             .accessibilityLabel(Text(LF("a11y.slider.label", model.display.name)))
             .accessibilityValue(Text("\(Int(model.percent.rounded()))%"))
         }
     }
 
+    /// fill 视觉层（交互分支各挂各的：竖向 SwiftUI 手势，横向 AppKit 条）。
+    private func fillVisuals(size: CGSize) -> some View {
+        ZStack {
+            Color.white.opacity(0.15)
+            if model.state == .ready {
+                Color.white.opacity(0.9)
+                    .frame(
+                        width: vertical ? nil : size.width * model.percent / 100,
+                        height: vertical ? size.height * model.percent / 100 : nil)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: vertical ? .bottom : .leading)
+            }
+            Image(systemName: "sun.max")
+                .font(NotchTokens.Text.system(18, weight: .medium))
+                // 填充区亮、非填充区暗：图标恒压一层阴影保证两区可读。
+                .foregroundStyle(NotchTokens.Foreground.selected)
+                .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
+                .opacity(model.state == .ready ? 1 : 0.35)
+        }
+    }
+
+    /// 横向 AppKit scrub 条：写入语义与 fillGesture 同源（拖动落盘、松手补终值）。
+    private func scrubStrip() -> some View {
+        HorizontalScrubStrip(
+            isEnabled: !isPreview && model.state == .ready,
+            onBegin: { percent in
+                model.isDragging = true
+                scrubSingleBrightness(model, to: percent, isPreview: isPreview)
+            },
+            onScrub: { percent in
+                model.isDragging = true
+                scrubSingleBrightness(model, to: percent, isPreview: isPreview)
+            },
+            onEnd: {
+                guard !isPreview else { return }
+                model.isDragging = false
+                BrightnessController.shared.requestWrite(model, percent: model.percent)
+            }
+        )
+    }
+
     private func fillGesture(size: CGSize) -> some Gesture {
-        // minimumDistance 0：点按即跳到该点，拖拽连续跟随；松手补终值写入。
+        // 仅竖向使用（横向走 scrubStrip）：minimumDistance 0，点按即跳，拖拽跟随；松手补终值写入。
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard !isPreview, model.state == .ready else { return }
@@ -326,14 +468,10 @@ private struct SingleFillContent: View {
             }
     }
 
+    /// 竖向位置换算（仅竖向手势使用；横向走 HorizontalScrubMath）。
     private func percent(at location: CGPoint, in size: CGSize) -> Double {
-        if vertical {
-            guard size.height > 0 else { return model.percent }
-            return (1 - location.y / size.height) * 100
-        } else {
-            guard size.width > 0 else { return model.percent }
-            return location.x / size.width * 100
-        }
+        guard size.height > 0 else { return model.percent }
+        return (1 - location.y / size.height) * 100
     }
 }
 
@@ -392,7 +530,7 @@ private enum SinglePillMetrics {
     static let iconSize: CGFloat = 13
 }
 
-/// 大 UI 的药丸滑杆（横/竖同源）：拖 thumb、点轨道跳转、沿轨拖拽都走同一写入。
+/// 大 UI 的药丸滑杆（视觉横/竖同源；交互仅竖向走手势，横向走 scrubStrip）。
 private struct BrightnessPillSlider: View {
     @ObservedObject var model: BrightnessDisplayModel
     let vertical: Bool
@@ -400,35 +538,71 @@ private struct BrightnessPillSlider: View {
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
-                Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.22))
-                if model.state == .ready {
-                    fill(in: geo.size)
+            Group {
+                if vertical {
+                    pillVisuals(size: geo.size)
+                        .contentShape(Capsule(style: .continuous))
+                        .gesture(pillGesture(size: geo.size))
                 } else {
-                    // 回读占位：静态空槽，不渲染 0 值（同滑杆块的假动画规避）。
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.14))
-                }
-                if model.state == .ready {
-                    thumb(in: geo.size)
-                    Image(systemName: "sun.max")
-                        .font(NotchTokens.Text.system(SinglePillMetrics.iconSize, weight: .medium))
-                        // 图标压在药丸端头：填充盖过时用深色，否则用浅色。
-                        .foregroundStyle(iconOnFill(in: geo.size)
-                            ? Color.black.opacity(0.7) : NotchTokens.Foreground.muted)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: vertical ? .bottom : .leading)
-                        .padding(vertical ? .bottom : .leading, 8)
-                        .allowsHitTesting(false)
+                    pillVisuals(size: geo.size)
+                        .contentShape(Capsule(style: .continuous))
+                        .overlay {
+                            scrubStrip()
+                                .clipShape(Capsule(style: .continuous))
+                        }
                 }
             }
-            .contentShape(Capsule(style: .continuous))
-            .gesture(pillGesture(size: geo.size))
             .accessibilityLabel(Text(LF("a11y.slider.label", model.display.name)))
             .accessibilityValue(Text("\(Int(model.percent.rounded()))%"))
         }
         // 滑杆值变化不继承祖先动画（AppKit 桥接插值规避见 BrightnessSliderControl）。
         .transaction { $0.animation = nil }
+    }
+
+    /// 药丸视觉层（交互分支各挂各的：竖向 SwiftUI 手势，横向 AppKit 条）。
+    private func pillVisuals(size: CGSize) -> some View {
+        ZStack {
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.22))
+            if model.state == .ready {
+                fill(in: size)
+            } else {
+                // 回读占位：静态空槽，不渲染 0 值（同滑杆块的假动画规避）。
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.14))
+            }
+            if model.state == .ready {
+                thumb(in: size)
+                Image(systemName: "sun.max")
+                    .font(NotchTokens.Text.system(SinglePillMetrics.iconSize, weight: .medium))
+                    // 图标压在药丸端头：填充盖过时用深色，否则用浅色。
+                    .foregroundStyle(iconOnFill(in: size)
+                        ? Color.black.opacity(0.7) : NotchTokens.Foreground.muted)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: vertical ? .bottom : .leading)
+                    .padding(vertical ? .bottom : .leading, 8)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// 横向 AppKit scrub 条：写入语义与 pillGesture 同源（拖动落盘、松手补终值）。
+    private func scrubStrip() -> some View {
+        HorizontalScrubStrip(
+            isEnabled: !isPreview && model.state == .ready,
+            onBegin: { percent in
+                model.isDragging = true
+                scrubSingleBrightness(model, to: percent, isPreview: isPreview)
+            },
+            onScrub: { percent in
+                model.isDragging = true
+                scrubSingleBrightness(model, to: percent, isPreview: isPreview)
+            },
+            onEnd: {
+                guard !isPreview else { return }
+                model.isDragging = false
+                BrightnessController.shared.requestWrite(model, percent: model.percent)
+            }
+        )
     }
 
     private func fill(in size: CGSize) -> some View {
@@ -483,6 +657,7 @@ private struct BrightnessPillSlider: View {
     }
 
     private func pillGesture(size: CGSize) -> some Gesture {
+        // 仅竖向使用（横向走 scrubStrip）：拖 thumb、点轨道跳转、沿轨拖拽同一写入。
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard !isPreview, model.state == .ready else { return }
@@ -496,14 +671,10 @@ private struct BrightnessPillSlider: View {
             }
     }
 
+    /// 竖向位置换算（仅竖向手势使用；横向走 HorizontalScrubMath）。
     private func percent(at location: CGPoint, in size: CGSize) -> Double {
-        if vertical {
-            guard size.height > 0 else { return model.percent }
-            return (1 - location.y / size.height) * 100
-        } else {
-            guard size.width > 0 else { return model.percent }
-            return location.x / size.width * 100
-        }
+        guard size.height > 0 else { return model.percent }
+        return (1 - location.y / size.height) * 100
     }
 }
 

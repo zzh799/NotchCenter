@@ -510,6 +510,26 @@ final class DisplayPluginTests: XCTestCase {
         XCTAssertEqual(cell.height, 120)
     }
 
+    // MARK: 横向 scrub 换算（x/width → 百分比，AppKit 条与竖向手势各用各的）
+
+    func testHorizontalScrubPercentMapsXToPercent() {
+        XCTAssertEqual(HorizontalScrubMath.percent(atX: 0, width: 200), 0, accuracy: 1e-9)
+        XCTAssertEqual(HorizontalScrubMath.percent(atX: 100, width: 200), 50, accuracy: 1e-9)
+        XCTAssertEqual(HorizontalScrubMath.percent(atX: 200, width: 200), 100, accuracy: 1e-9)
+    }
+
+    func testHorizontalScrubPercentClampsOutsideBounds() {
+        // 跟踪循环里拖出边界仍归本次 scrub：越界钳制，与旧 SwiftUI 手势
+        //（location 越界 → scrubSingleBrightness 内钳制）同语义。
+        XCTAssertEqual(HorizontalScrubMath.percent(atX: -10, width: 200), 0, accuracy: 1e-9)
+        XCTAssertEqual(HorizontalScrubMath.percent(atX: 250, width: 200), 100, accuracy: 1e-9)
+    }
+
+    func testHorizontalScrubPercentZeroWidthIsSafe() {
+        // 零宽接不到命中；回 0 防 NaN，不崩。
+        XCTAssertEqual(HorizontalScrubMath.percent(atX: 10, width: 0), 0, accuracy: 1e-9)
+    }
+
     // MARK: 单屏条实例配置（放置实例 → 绑定显示器）
 
     @MainActor
