@@ -88,6 +88,51 @@ final class DisplayPluginTests: XCTestCase {
         XCTAssertEqual(BrightnessController.percent(value: 10, upperBound: 0), 0)
     }
 
+    // MARK: DDC 写入区间映射（UI 百分比 ↔ 自定义区间）
+
+    func testRangedPercentToDDCMapping() {
+        XCTAssertEqual(BrightnessController.ddcValue(percent: 0, lowerBound: 20, upperBound: 80), 20)
+        XCTAssertEqual(BrightnessController.ddcValue(percent: 100, lowerBound: 20, upperBound: 80), 80)
+        XCTAssertEqual(BrightnessController.ddcValue(percent: 50, lowerBound: 20, upperBound: 80), 50)
+        XCTAssertEqual(BrightnessController.ddcValue(percent: 150, lowerBound: 20, upperBound: 80), 80)
+        XCTAssertEqual(BrightnessController.ddcValue(percent: -5, lowerBound: 20, upperBound: 80), 20)
+    }
+
+    func testRangedDDCToPercentMapping() {
+        XCTAssertEqual(
+            BrightnessController.percent(value: 20, lowerBound: 20, upperBound: 80), 0, accuracy: 0.001)
+        XCTAssertEqual(
+            BrightnessController.percent(value: 80, lowerBound: 20, upperBound: 80), 100, accuracy: 0.001)
+        XCTAssertEqual(
+            BrightnessController.percent(value: 50, lowerBound: 20, upperBound: 80), 50, accuracy: 0.001)
+        XCTAssertEqual(
+            BrightnessController.percent(value: 10, lowerBound: 20, upperBound: 80), 0, accuracy: 0.001)
+        XCTAssertEqual(
+            BrightnessController.percent(value: 90, lowerBound: 20, upperBound: 80), 100, accuracy: 0.001)
+    }
+
+    func testRangeSanitizeClampsAndRejectsDegenerate() {
+        var bounds = DDCLuminanceRangeLogic.sanitize(min: 20, max: 80, maxLuminance: 100)
+        XCTAssertEqual(bounds.lower, 20)
+        XCTAssertEqual(bounds.upper, 80)
+        bounds = DDCLuminanceRangeLogic.sanitize(min: 80, max: 20, maxLuminance: 100)
+        XCTAssertEqual(bounds.lower, 20)
+        XCTAssertEqual(bounds.upper, 80)
+        bounds = DDCLuminanceRangeLogic.sanitize(min: -10, max: 200, maxLuminance: 100)
+        XCTAssertEqual(bounds.lower, 0)
+        XCTAssertEqual(bounds.upper, 100)
+        bounds = DDCLuminanceRangeLogic.sanitize(min: 50, max: 50, maxLuminance: 100)
+        XCTAssertEqual(bounds.lower, 0)
+        XCTAssertEqual(bounds.upper, 100)
+        bounds = DDCLuminanceRangeLogic.effectiveRange(custom: nil, maxLuminance: 100)
+        XCTAssertEqual(bounds.lower, 0)
+        XCTAssertEqual(bounds.upper, 100)
+        bounds = DDCLuminanceRangeLogic.effectiveRange(
+            custom: DDCLuminanceRange(min: 20, max: 80), maxLuminance: 100)
+        XCTAssertEqual(bounds.lower, 20)
+        XCTAssertEqual(bounds.upper, 80)
+    }
+
     // MARK: 外接屏候选过滤
 
     func testExternalCandidatesFilter() {
@@ -219,6 +264,11 @@ final class DisplayPluginTests: XCTestCase {
         for _ in 0..<100 where backend.writes.count < 2 {
             try await Task.sleep(nanoseconds: 20_000_000)
         }
+        // 后端落笔（writes 计数）先于控制器 Task 的失败计数与行隐藏：
+        // 轮询等行落定再断言，否则是写入计数与 UI 状态的竞态（flaky）。
+        for _ in 0..<100 where !controller.rows.isEmpty {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
         XCTAssertTrue(controller.rows.isEmpty, "连续两次失败判定不可调节，行隐藏")
     }
 
@@ -310,6 +360,70 @@ final class DisplayPluginTests: XCTestCase {
         controller.requestWrite(model, percent: 30)
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(backend.writes.count, writesBefore, "对已移除屏的尾随写入被丢弃")
+    }
+
+    // MARK: 自定义区间：保持硬件连续 + 写入映射 + 持久化
+
+    @MainActor
+    func testSetRangeKeepsHardwareValue() async throws {
+        let backend = FakeBackend(displays: [testDisplay])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForProbe(controller)
+        let model = try XCTUnwrap(controller.rows.first)
+        XCTAssertEqual(model.percent, 42, accuracy: 0.001, "假后端回读 42/100")
+
+        controller.setRange(for: testDisplay.id, min: 20, max: 80)
+        XCTAssertEqual(
+            model.percent, 36.666, accuracy: 0.01,
+            "同硬件值 42 按新区间 20...80 重算百分比，滑杆不跳变")
+        XCTAssertTrue(controller.customRanges[testDisplay.id] == DDCLuminanceRange(min: 20, max: 80))
+    }
+
+    @MainActor
+    func testWriteUsesCustomRange() async throws {
+        let backend = FakeBackend(displays: [testDisplay])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForProbe(controller)
+        let model = try XCTUnwrap(controller.rows.first)
+        controller.setRange(for: testDisplay.id, min: 20, max: 80)
+
+        controller.requestWrite(model, percent: 0)
+        controller.requestWrite(model, percent: 100)
+        for _ in 0..<100 where backend.writes.count < 2 {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(backend.writes.first?.value, 20, "0% 下发区间下界")
+        XCTAssertEqual(backend.writes.last?.value, 80, "100% 下发区间上界")
+    }
+
+    @MainActor
+    func testClearRangeRestoresFullRange() async throws {
+        let backend = FakeBackend(displays: [testDisplay])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForProbe(controller)
+        let model = try XCTUnwrap(controller.rows.first)
+        controller.setRange(for: testDisplay.id, min: 20, max: 80)
+        controller.clearRange(for: testDisplay.id)
+        XCTAssertNil(controller.customRanges[testDisplay.id])
+        XCTAssertEqual(model.percent, 42, accuracy: 0.001, "回全量程后百分比回到硬件值")
+    }
+
+    @MainActor
+    func testRangePersistsThroughStore() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DDCRangeTests-\(UUID().uuidString)", isDirectory: true)
+        let store = StateStore(rootDirectory: root)
+        DDCLuminanceRangeLogic.saveAll(["7": DDCLuminanceRange(min: 20, max: 80)], to: store)
+        let loaded = DDCLuminanceRangeLogic.loadAll(from: store)
+        XCTAssertEqual(loaded["7"], DDCLuminanceRange(min: 20, max: 80))
+
+        let backend = FakeBackend(displays: [testDisplay])
+        let controller = BrightnessController(backend: backend)
+        controller.configure(store: store)
+        XCTAssertEqual(controller.customRanges[testDisplay.id], DDCLuminanceRange(min: 20, max: 80))
     }
 
     // MARK: 版式形态映射（跨度 → 1×1 紧凑 / 行式）

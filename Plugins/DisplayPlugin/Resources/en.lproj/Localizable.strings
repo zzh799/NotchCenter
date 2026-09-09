@@ -8,3 +8,8 @@
 "block.single.name" = "Single Display Brightness";
 "single.display.section" = "Display";
 "single.followFirst" = "Follow first display";
+
+"range.section" = "DDC Range";
+"range.min" = "Min";
+"range.max" = "Max";
+"range.reset" = "Reset to full range";

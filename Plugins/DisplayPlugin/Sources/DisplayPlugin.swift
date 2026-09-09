@@ -9,6 +9,7 @@ import SwiftUI
 /// 两块共存：`brightness.sliders` 是多屏列表（版式见 DisplaySlidersBlockView）；
 /// `brightness.single` 是单屏条（一实例一屏，形态见 SingleBrightnessBlockView，
 /// 决策见 Agent Note 2026-09-09-display-single-brightness-bar）。
+/// DDC 写入区间按屏全局存（见 DDCLuminanceRange），两块的设置界面编辑同一份值。
 @objc(DisplayPlugin) @MainActor
 public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
     public static var blocks: [NotchBlock] {
@@ -21,6 +22,9 @@ public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugin
                 maxSize: BlockPixelSize(width: 600, height: 240),
                 recommendedSize: BlockPixelSize(width: 300, height: 120),
                 symbolName: "sun.max",
+                instanceSettingsView: { context in
+                    AnyView(DisplaySlidersSettingsView(pluginStore: context.stateStore))
+                },
                 // 滑杆只经命中测试消费鼠标拖拽，不消费滚轮横向增量：
                 // 块上横向轻扫照常切页，与拖滑杆调亮度互不干扰。
                 probes: { info in
@@ -53,9 +57,11 @@ public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugin
                 recommendedSize: BlockPixelSize(width: 150, height: 240),
                 symbolName: "sun.max",
                 instanceSettingsView: { context in
-                    AnyView(SingleDisplaySettingsView(instance: SingleDisplayInstanceRegistry.model(
-                        placementID: context.placementID,
-                        stateStore: context.stateStore)))
+                    AnyView(SingleDisplaySettingsView(
+                        instance: SingleDisplayInstanceRegistry.model(
+                            placementID: context.placementID,
+                            stateStore: context.stateStore),
+                        pluginStore: context.stateStore))
                 },
                 probes: { info in
                     // 单探针即整块内容不断言子结构：小 UI 满铺、大 UI 标题与滑杆
@@ -83,6 +89,8 @@ public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugin
     }
 
     public func attachServices(stateStore: StateStore, hostController: any HostController) {
+        // 区间先载入再恢复通道：设置界面读的是同一份内存值。
+        BrightnessController.shared.configure(store: stateStore)
         // 重新启用时恢复写入通道（禁用时 suspend 收掉）。
         BrightnessController.shared.resume()
         observeScreenChanges()

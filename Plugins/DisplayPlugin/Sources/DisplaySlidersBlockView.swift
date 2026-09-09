@@ -277,3 +277,32 @@ private struct CompactBrightnessRowView: View {
         .opacity(model.state == .ready ? 1 : 0.4)
     }
 }
+
+// MARK: - 实例设置（编辑模式齿轮：按屏逐行设 DDC 写入区间）
+//
+// 与 single 块编辑的是同一份按屏全局值（见 DDCRangeEditor）：任一边改完两边生效。
+
+struct DisplaySlidersSettingsView: View {
+    @ObservedObject private var controller = BrightnessController.shared
+    let pluginStore: StateStore?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(controller.rows) { model in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.display.name)
+                        .font(NotchTokens.Text.system(11, weight: .semibold))
+                        .foregroundStyle(NotchTokens.Foreground.body)
+                        .lineLimit(1)
+                    DDCRangeEditor(model: model)
+                }
+            }
+        }
+        .task {
+            if let pluginStore {
+                controller.configure(store: pluginStore)
+            }
+            await controller.startIfNeeded()
+        }
+    }
+}

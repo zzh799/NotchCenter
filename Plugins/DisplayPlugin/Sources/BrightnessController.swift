@@ -1,6 +1,7 @@
 import Combine
 import CoreGraphics
 import Foundation
+import NotchCenterKit
 
 // MARK: - 亮度控制器（插件级共享单例）
 //
@@ -23,7 +24,7 @@ final class BrightnessDisplayModel: ObservableObject, Identifiable {
     }
 
     let display: ExternalDisplay
-    /// 亮度百分比 0...100（相对显示器自身量程）。
+    /// 亮度百分比 0...100（相对有效 DDC 区间，无自定义即全量程，见有效区间）。
     @Published var percent: Double = 0
     /// 显示器亮度量程上限（回读获得，回读失败前按 100）。
     @Published var maxLuminance: Int = 100
@@ -46,6 +47,10 @@ final class BrightnessController: ObservableObject {
     /// 枚举顺序即展示顺序。
     @Published private(set) var orderedIDs: [CGDirectDisplayID] = []
     @Published private(set) var models: [CGDirectDisplayID: BrightnessDisplayModel] = [:]
+    /// 按屏自定义 DDC 写入区间（无条目即全量程；两块共用，见 DDCLuminanceRange）。
+    @Published private(set) var customRanges: [CGDirectDisplayID: DDCLuminanceRange] = [:]
+
+    private var rangeStore: StateStore?
 
     private let backend: DisplayDDCBackend?
     private lazy var channel: DDCWriteChannel? = backend.map(DDCWriteChannel.init)
@@ -64,6 +69,72 @@ final class BrightnessController: ObservableObject {
     /// `DisplaySlidersBlockView`），仅隐藏判定不可调节的屏。
     var rows: [BrightnessDisplayModel] {
         orderedIDs.compactMap { models[$0] }.filter { $0.state != .failed }
+    }
+
+    // MARK: DDC 写入区间（按屏全局，两块共用）
+
+    /// 注入插件级存储并载入已存区间（DisplayPlugin.attachServices 调用；
+    /// 设置视图首现时亦可重复调用，幂等）。
+    func configure(store: StateStore) {
+        rangeStore = store
+        let loaded = DDCLuminanceRangeLogic.loadAll(from: store)
+        var next: [CGDirectDisplayID: DDCLuminanceRange] = [:]
+        for (key, range) in loaded {
+            guard let id = UInt32(key) else { continue }
+            next[CGDirectDisplayID(id)] = range
+        }
+        customRanges = next
+    }
+
+    /// 该屏的有效写入区间（无自定义即 0...maxLuminance）。
+    func effectiveBounds(for displayID: CGDirectDisplayID, maxLuminance: Int) -> (lower: Int, upper: Int) {
+        DDCLuminanceRangeLogic.effectiveRange(
+            custom: customRanges[displayID], maxLuminance: maxLuminance)
+    }
+
+    /// 设置该屏自定义区间：钳到当前已知量程，滑杆按同一硬件值重算百分比不跳变。
+    func setRange(for displayID: CGDirectDisplayID, min: Int, max: Int) {
+        guard let model = models[displayID] else {
+            persistRange(DDCLuminanceRange(min: min, max: max), for: displayID)
+            return
+        }
+        let oldBounds = effectiveBounds(for: displayID, maxLuminance: model.maxLuminance)
+        let oldRaw = Self.ddcValue(
+            percent: model.percent, lowerBound: oldBounds.lower, upperBound: oldBounds.upper)
+        persistRange(DDCLuminanceRange(min: min, max: max), for: displayID)
+        let newBounds = effectiveBounds(for: displayID, maxLuminance: model.maxLuminance)
+        model.percent = Self.percent(
+            value: oldRaw, lowerBound: newBounds.lower, upperBound: newBounds.upper)
+        cachedValues[displayID] = (model.percent, model.maxLuminance)
+    }
+
+    /// 清除该屏自定义区间，回全量程（同样按硬件值重算百分比）。
+    func clearRange(for displayID: CGDirectDisplayID) {
+        guard let model = models[displayID] else {
+            customRanges.removeValue(forKey: displayID)
+            persistAllRanges()
+            return
+        }
+        let oldBounds = effectiveBounds(for: displayID, maxLuminance: model.maxLuminance)
+        let oldRaw = Self.ddcValue(
+            percent: model.percent, lowerBound: oldBounds.lower, upperBound: oldBounds.upper)
+        customRanges.removeValue(forKey: displayID)
+        persistAllRanges()
+        model.percent = Self.percent(value: oldRaw, upperBound: model.maxLuminance)
+        cachedValues[displayID] = (model.percent, model.maxLuminance)
+    }
+
+    private func persistRange(_ range: DDCLuminanceRange, for displayID: CGDirectDisplayID) {
+        customRanges[displayID] = range
+        persistAllRanges()
+    }
+
+    private func persistAllRanges() {
+        var raw: [String: DDCLuminanceRange] = [:]
+        for (id, range) in customRanges {
+            raw[DDCLuminanceRangeLogic.key(for: id)] = range
+        }
+        DDCLuminanceRangeLogic.saveAll(raw, to: rangeStore)
     }
 
     // MARK: 枚举与初值
@@ -115,6 +186,7 @@ final class BrightnessController: ObservableObject {
 
     /// 初值回读：300ms 超时，失败回退内存缓存或 50%（部分屏不支持回读，
     /// 回读失败不代表不可调节——那是写入连续失败的判定）。
+    /// 成功时按有效区间反算百分比（无自定义即全量程）。
     private func probe(_ model: BrightnessDisplayModel, backend: DisplayDDCBackend) {
         let display = model.display
         Task {
@@ -123,7 +195,9 @@ final class BrightnessController: ObservableObject {
                     try await backend.readLuminance(display)
                 }
                 model.maxLuminance = max(reading.max, 1)
-                model.percent = Self.percent(value: reading.value, upperBound: model.maxLuminance)
+                let bounds = effectiveBounds(for: display.id, maxLuminance: model.maxLuminance)
+                model.percent = Self.percent(
+                    value: reading.value, lowerBound: bounds.lower, upperBound: bounds.upper)
                 model.state = .ready
                 cachedValues[display.id] = (model.percent, model.maxLuminance)
             } catch {
@@ -144,7 +218,8 @@ final class BrightnessController: ObservableObject {
         guard models[model.display.id] != nil else { return }
         let clamped = min(max(percent, 0), 100)
         model.percent = clamped
-        let value = Self.ddcValue(percent: clamped, upperBound: model.maxLuminance)
+        let bounds = effectiveBounds(for: model.display.id, maxLuminance: model.maxLuminance)
+        let value = Self.ddcValue(percent: clamped, lowerBound: bounds.lower, upperBound: bounds.upper)
         cachedValues[model.display.id] = (clamped, model.maxLuminance)
         let display = model.display
         Task {
@@ -178,14 +253,31 @@ final class BrightnessController: ObservableObject {
 
     // MARK: 值映射（纯逻辑，回归 DisplayPluginTests）
 
-    /// 百分比 → DDC 原始值（四舍五入、夹紧量程；量程非法按 0）。
+    /// 百分比 → DDC 原始值（区间版：0% 落 lower，100% 落 upper，四舍五入）。
     /// 参数名用 upperBound，避免遮蔽全局 max() 函数。
-    nonisolated static func ddcValue(percent: Double, upperBound: Int) -> Int {
-        guard upperBound > 0 else { return 0 }
-        return min(max(Int((percent / 100 * Double(upperBound)).rounded()), 0), upperBound)
+    nonisolated static func ddcValue(percent: Double, lowerBound: Int, upperBound: Int) -> Int {
+        guard upperBound > lowerBound, upperBound > 0 else { return max(lowerBound, 0) }
+        let lower = max(lowerBound, 0)
+        let span = upperBound - lower
+        return min(max(Int((percent / 100 * Double(span)).rounded()) + lower, lower), upperBound)
     }
 
-    /// DDC 原始值 → 百分比。
+    /// 百分比 → DDC 原始值（四舍五入、夹紧量程；量程非法按 0）。
+    /// 全量程便捷版，等价于 lowerBound=0 的区间版。
+    nonisolated static func ddcValue(percent: Double, upperBound: Int) -> Int {
+        ddcValue(percent: percent, lowerBound: 0, upperBound: upperBound)
+    }
+
+    /// DDC 原始值 → 百分比（区间版：lower 落 0%，upper 落 100%，区间外夹紧）。
+    nonisolated static func percent(value: Int, lowerBound: Int, upperBound: Int) -> Double {
+        guard upperBound > lowerBound, upperBound > 0 else { return 0 }
+        let lower = max(lowerBound, 0)
+        let span = upperBound - lower
+        guard span > 0 else { return 0 }
+        return min(max(Double(value - lower) / Double(span) * 100, 0), 100)
+    }
+
+    /// DDC 原始值 → 百分比（全量程便捷版）。
     nonisolated static func percent(value: Int, upperBound: Int) -> Double {
         guard upperBound > 0 else { return 0 }
         return min(max(Double(value) / Double(upperBound) * 100, 0), 100)

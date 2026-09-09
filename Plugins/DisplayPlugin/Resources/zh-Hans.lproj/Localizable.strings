@@ -8,3 +8,8 @@
 "block.single.name" = "单屏亮度";
 "single.display.section" = "显示器";
 "single.followFirst" = "跟随第一台显示器";
+
+"range.section" = "DDC 范围";
+"range.min" = "最小值";
+"range.max" = "最大值";
+"range.reset" = "恢复完整区间";

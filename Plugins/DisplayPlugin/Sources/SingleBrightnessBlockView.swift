@@ -550,34 +550,58 @@ private struct SingleBrightnessPopoverContent: View {
     }
 }
 
-// MARK: - 实例设置（编辑模式齿轮：选屏 / 跟随第一台）
+// MARK: - 实例设置（编辑模式齿轮：选屏 / 跟随第一台 + DDC 写入区间）
+//
+// 选屏是按实例存（placementStore），区间是按屏全局存（插件级存储，两块共用）：
+// 此处改的是绑定屏的那一份全局值，sliders 块无需另设即生效。
 
 struct SingleDisplaySettingsView: View {
     @ObservedObject var instance: SingleDisplayInstanceModel
     @ObservedObject private var controller = BrightnessController.shared
+    let pluginStore: StateStore?
+
+    /// 本实例当前绑定的屏（与块视图同规则：存量命中即用，否则跟随第一台）。
+    private var boundModel: BrightnessDisplayModel? {
+        let rows = controller.rows
+        guard !rows.isEmpty else { return nil }
+        if let boundID = instance.config.displayID,
+           let bound = controller.models[boundID], bound.state != .failed
+        {
+            return bound
+        }
+        return rows.first
+    }
 
     var body: some View {
-        HStack {
-            Text(L("single.display.section"))
-                .font(NotchTokens.Text.system(11))
-                .foregroundStyle(NotchTokens.Foreground.secondary)
-            Spacer()
-            Picker(
-                L("single.display.section"),
-                selection: Binding(
-                    get: { instance.config.displayID },
-                    set: { instance.update(SingleDisplayInstanceConfig(displayID: $0)) })
-            ) {
-                Text(L("single.followFirst")).tag(nil as UInt32?)
-                ForEach(controller.rows) { model in
-                    Text(model.display.name).tag(model.display.id as UInt32?)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(L("single.display.section"))
+                    .font(NotchTokens.Text.system(11))
+                    .foregroundStyle(NotchTokens.Foreground.secondary)
+                Spacer()
+                Picker(
+                    L("single.display.section"),
+                    selection: Binding(
+                        get: { instance.config.displayID },
+                        set: { instance.update(SingleDisplayInstanceConfig(displayID: $0)) })
+                ) {
+                    Text(L("single.followFirst")).tag(nil as UInt32?)
+                    ForEach(controller.rows) { model in
+                        Text(model.display.name).tag(model.display.id as UInt32?)
+                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .controlSize(.small)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .controlSize(.small)
+            if let boundModel {
+                DDCRangeEditor(model: boundModel)
+            }
         }
         .task {
+            if let pluginStore {
+                controller.configure(store: pluginStore)
+            }
             await controller.startIfNeeded()
         }
     }
