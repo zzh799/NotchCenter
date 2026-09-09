@@ -131,7 +131,7 @@ struct ColumnRangeSlider: View {
             let maxX = math.fraction(for: maxValue) * width
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(.white.opacity(0.10))
+                    .fill(NotchTokens.Surface.track)
                     .frame(width: width, height: 4)
                 Capsule()
                     .fill(Color.accentColor)
@@ -219,7 +219,7 @@ struct ColumnRangeSlider: View {
     private func measurementLabel(_ text: String, tag: String) -> some View {
         Text(text)
             .font(NotchTokens.Text.system(10).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.45))
+            .foregroundStyle(NotchTokens.Foreground.disabled)
             .fixedSize()
             .background(
                 GeometryReader { geo in

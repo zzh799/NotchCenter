@@ -12,19 +12,19 @@ struct DshPopoverContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("DSH Web")
                 .font(NotchTokens.Text.system(13, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.92))
+                .foregroundStyle(NotchTokens.Foreground.body)
 
             row(L("dsh.label.status"), text: statusText, warning: isWarning)
             row("PID", text: monitor.status.pid.map(String.init) ?? "—", warning: false)
             row("Port", text: monitor.status.port.map(String.init) ?? "—", warning: false)
 
             Divider()
-                .overlay(Color.white.opacity(0.045))
+                .overlay(NotchTokens.Hairline.divider)
 
             HStack {
                 Text(L("dsh.launchAtLogin"))
                     .font(NotchTokens.Text.system(11))
-                    .foregroundStyle(Color.white.opacity(0.76))
+                    .foregroundStyle(NotchTokens.Foreground.secondary)
                 Spacer()
                 Toggle("", isOn: Binding(
                     get: { monitor.autostartOn },
@@ -51,7 +51,7 @@ struct DshPopoverContentView: View {
             if let message = monitor.message {
                 Text(message)
                     .font(NotchTokens.Text.system(9))
-                    .foregroundStyle(Color.white.opacity(0.58))
+                    .foregroundStyle(NotchTokens.Foreground.muted)
                     .lineLimit(2)
             }
         }
@@ -68,12 +68,12 @@ struct DshPopoverContentView: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(NotchTokens.Text.system(11, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.92))
+                .foregroundStyle(NotchTokens.Foreground.body)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color.white.opacity(0.055))
+                    RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                        .fill(NotchTokens.Surface.fillHighlighted)
                 )
         }
         .buttonStyle(.plain)
@@ -102,11 +102,11 @@ struct DshPopoverContentView: View {
         HStack {
             Text(title)
                 .font(NotchTokens.Text.system(11))
-                .foregroundStyle(Color.white.opacity(0.58))
+                .foregroundStyle(NotchTokens.Foreground.muted)
             Spacer()
             Text(text)
                 .font(NotchTokens.Text.system(11, weight: .regular, design: .monospaced))
-                .foregroundStyle(warning ? Color.orange : Color.white.opacity(0.92))
+                .foregroundStyle(warning ? Color.orange : NotchTokens.Foreground.body)
         }
     }
 }

@@ -152,7 +152,7 @@ struct PeakClockDial: View {
         let arcs = arcSegments
         return ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.12), lineWidth: diameter * 0.065)
+                .stroke(NotchTokens.Hairline.thumbnail, lineWidth: diameter * 0.065)
             ForEach(Array(arcs.enumerated()), id: \.offset) { _, item in
                 arc(item.0, color: item.1)
             }

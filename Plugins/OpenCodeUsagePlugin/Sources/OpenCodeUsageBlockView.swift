@@ -285,7 +285,7 @@ struct UsageRingsView: View {
     private func ring(window: UsageWindow?, diameter: CGFloat, lineWidth: CGFloat) -> some View {
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.10), lineWidth: lineWidth)
+                .stroke(NotchTokens.Hairline.drawerEdge, lineWidth: lineWidth)
             if let window {
                 Circle()
                     .trim(from: 0, to: max(0.02, window.percent / 100))

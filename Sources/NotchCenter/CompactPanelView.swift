@@ -46,8 +46,6 @@ struct CompactPanelView: View {
 
     @State private var isHovering = false
 
-    private let cornerRadius: CGFloat = 11
-
     var body: some View {
         GeometryReader { proxy in
             let isEditing = ui.isEditing
@@ -64,15 +62,16 @@ struct CompactPanelView: View {
                 // 整条黑色填充带：横跨左右面板并覆盖刘海区域，
                 // 与刘海融为一体（灵动岛观感，文档 §5.2）。
                 if showsBand {
-                    TopAttachedRoundedShape(radius: cornerRadius)
+                    TopAttachedRoundedShape(radius: NotchTokens.Radius.panelCompact)
                         .fill(
                             // Surface.drawer 自带 0.98 不透明度：常态再乘 0.98 ≈ 原 0.96，悬停回满档
                             // （≈ 展开抽屉底色，展开瞬间无跳变）。
                             NotchTokens.Surface.drawer.opacity(isHovering ? 1 : 0.98)
                         )
                         .overlay {
-                            TopAttachedRoundedShape(radius: cornerRadius)
-                                .stroke(.white.opacity(isHovering ? 0.15 : 0.09), lineWidth: 1)
+                            // 外描边统一发丝线档（悬停 0.15 与原常态 0.09 就近收敛 drawerEdge）。
+                            TopAttachedRoundedShape(radius: NotchTokens.Radius.panelCompact)
+                                .stroke(NotchTokens.Hairline.drawerEdge, lineWidth: 1)
                         }
                         .shadow(
                             color: .black.opacity(isHovering ? 0.32 : 0.18),
@@ -84,8 +83,9 @@ struct CompactPanelView: View {
 
                 // click 模式下的悬停指示条（位于刘海中央）。
                 if ui.showsClickModeHint, isHovering, !isEditing {
+                    // 点击模式悬停指示条（DESIGN §9.1 白 0.72，就近收敛 Foreground.secondary）。
                     Capsule()
-                        .fill(.white.opacity(0.72))
+                        .fill(NotchTokens.Foreground.secondary)
                         .frame(width: 48, height: 2)
                         .shadow(color: .white.opacity(0.32), radius: 4)
                         .position(x: strip.notchCenterX, y: 7)
@@ -134,7 +134,7 @@ struct CompactPanelView: View {
                 if let preview = ui.dropPreview, preview.isCompact,
                    case let .compact(index) = preview.zone {
                     Capsule(style: .continuous)
-                        .fill(.white.opacity(0.85))
+                        .fill(NotchTokens.Foreground.hover)
                         .frame(width: 2.5, height: 20)
                         .shadow(color: .white.opacity(0.4), radius: 4)
                         .position(
@@ -287,8 +287,8 @@ private struct CompactBlockContainer: View {
             .background {
                 ZStack {
                     // 悬停高亮底衬：28×28 槽位圆角矩形。
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(.white.opacity(isHovering ? 0.08 : 0))
+                    RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                        .fill(NotchTokens.Surface.track.opacity(isHovering ? 1 : 0))
                     GlobalFrameReader { globalFrame = $0 }
                 }
             }
@@ -407,26 +407,26 @@ private struct SummaryChipView: View {
         ZStack {
             // 底衬：半透明胶囊，与紧凑带图标的高亮底衬同族（低饱和白）。
             Capsule(style: .continuous)
-                .fill(Color.white.opacity(0.08))
+                .fill(NotchTokens.Surface.track)
             Capsule(style: .continuous)
-                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                .stroke(NotchTokens.Hairline.drawerEdge, lineWidth: 1)
 
             HStack(spacing: SummaryChipMetrics.symbolTextGap) {
                 if let symbolName = summary.symbolName {
                     Image(systemName: symbolName)
                         .font(NotchTokens.Text.system(13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(NotchTokens.Foreground.hover)
                         .frame(width: SummaryChipMetrics.symbolWidth)
                 }
                 Text(summary.title)
                     .font(NotchTokens.Text.system(12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(NotchTokens.Foreground.body)
                     .lineLimit(1)
                     .layoutPriority(1)
                 if let subtitle = summary.subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(NotchTokens.Text.system(11, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(NotchTokens.Foreground.muted)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .layoutPriority(0)
@@ -472,9 +472,9 @@ private struct SummaryProgressBar: View {
             let clamped = min(max(progress, 0), 1)
             ZStack(alignment: .leading) {
                 Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.12))
+                    .fill(NotchTokens.Surface.track)
                 Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.85))
+                    .fill(NotchTokens.Foreground.hover)
                     // 进度 0 时宽度也为 0（轨道仍在，看不出"已完成"的错觉）；
                     // 微小进度至少 1.5pt 可见。
                     .frame(width: trackWidth == 0 ? 0 : max(trackWidth * clamped, clamped > 0 ? 1.5 : 0))

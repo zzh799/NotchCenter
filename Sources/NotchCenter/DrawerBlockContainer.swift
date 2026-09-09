@@ -36,8 +36,6 @@ struct DrawerBlockContainer: View {
     /// 指针是否悬停在本块上：编辑角标的显示条件（角标恒落在块矩形内）。
     @State private var isHovering = false
 
-    private let cornerRadius: CGFloat = 12
-
     var body: some View {
         let columns = previewColumns ?? element.placement.widthColumns
         let rows = previewRows ?? element.placement.heightRows
@@ -59,8 +57,8 @@ struct DrawerBlockContainer: View {
         // 提案的原始尺寸渲染，补偿偏移会退化成纯位移（上移/下移半行的来源）。
         return element.view
             .frame(width: width, height: height)
-            .background(isEditing ? Color.white.opacity(0.03) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background(isEditing ? NotchTokens.Surface.fill : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous))
             // 锚定矩形捕获：挂在 clip 之后、offset 之前——量的是块的逻辑
             // 位置（不含拖拽/缩放补偿位移），齿轮点击时上报给设置浮窗。
             .background {
@@ -74,7 +72,7 @@ struct DrawerBlockContainer: View {
             // （否则缩小到 1 行时位置会上偏半行）。
             .overlay {
                 if isEditing {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
                         .fill(Color.black.opacity(0.35))
                         .contentShape(Rectangle())
                 }
@@ -82,9 +80,9 @@ struct DrawerBlockContainer: View {
             .overlay {
                 if isEditing {
                     // 编辑模式高亮组件边缘（绘制在压暗层之上，保持清晰）。
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
                         .stroke(
-                            .white.opacity(isDragging || isResizing ? 0.75 : 0.4),
+                            (isDragging || isResizing ? NotchTokens.Foreground.secondary : NotchTokens.Foreground.disabled),
                             lineWidth: isDragging || isResizing ? 1.5 : 1
                         )
                 }

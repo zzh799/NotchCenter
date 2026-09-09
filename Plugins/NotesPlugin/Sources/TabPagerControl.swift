@@ -34,7 +34,7 @@ struct TabPagerControl: View {
                             }
 
                             Circle()
-                                .fill(isSelected ? Color.white.opacity(0.92) : Color.white.opacity(0.34))
+                                .fill(isSelected ? NotchTokens.Foreground.body : NotchTokens.Foreground.unavailable)
                                 .frame(width: isSelected ? 7 : 6, height: isSelected ? 7 : 6)
                                 .shadow(color: .white.opacity(isSelected ? 0.42 : 0), radius: 3)
                         }
@@ -75,11 +75,11 @@ struct TabPagerControl: View {
             } label: {
                 Image(systemName: "plus")
                     .font(NotchTokens.Text.system(12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(NotchTokens.Foreground.hover)
                     .frame(width: 24, height: 24)
                     .background(
                         Circle()
-                            .fill(.white.opacity(0.08))
+                            .fill(NotchTokens.Surface.track)
                     )
                     .contentShape(Rectangle())
             }

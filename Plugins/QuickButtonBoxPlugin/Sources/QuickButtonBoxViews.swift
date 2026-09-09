@@ -58,13 +58,13 @@ struct QuickButtonBoxView: View {
         VStack(spacing: 6) {
             Image(systemName: "square.grid.3x3")
                 .font(NotchTokens.Text.system( 18, weight: .medium))
-                .foregroundStyle(.white.opacity(0.28))
+                .foregroundStyle(NotchTokens.Foreground.unavailable)
             Text(L("block.empty"))
                 .font(NotchTokens.Text.system( 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
             Text(L("block.empty.hint"))
                 .font(NotchTokens.Text.system( 10.5))
-                .foregroundStyle(.white.opacity(0.32))
+                .foregroundStyle(NotchTokens.Foreground.unavailable)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -116,7 +116,7 @@ private struct BoxActionButtonCell: View {
                 isActive: action.kind == .toggle && action.isActive,
                 symbolSize: 17,
                 sideLength: QuickButtonBoxLayout.iconSize,
-                cornerRadius: 9
+                cornerRadius: NotchTokens.Radius.card
             )
         }
         .buttonStyle(.plain)
@@ -136,11 +136,11 @@ private struct BoxActionMissingCell: View {
     var body: some View {
         Image(systemName: "questionmark")
             .font(NotchTokens.Text.system( 15, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.22))
+            .foregroundStyle(NotchTokens.Foreground.unavailable)
             .frame(width: QuickButtonBoxLayout.iconSize, height: QuickButtonBoxLayout.iconSize)
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color.white.opacity(0.015))
+                RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
+                    .fill(NotchTokens.Surface.fill)
             )
             .help(L("action.unavailable"))
             .accessibilityLabel(L("action.unavailable"))
@@ -180,17 +180,17 @@ struct QuickButtonBoxManageView: View {
             HStack {
                 Text(L("panel.title"))
                     .font(NotchTokens.Text.system( 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(NotchTokens.Foreground.body)
                 Spacer()
                 Text(LF("panel.capacity", model.actionIDs.count, capacity))
                     .font(NotchTokens.Text.system( 10, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
             }
 
             if model.actionIDs.isEmpty {
                 Text(L("block.empty.hint"))
                     .font(NotchTokens.Text.system( 10.5))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
                     .padding(.vertical, 6)
             } else {
                 rows
@@ -224,11 +224,11 @@ struct QuickButtonBoxManageView: View {
         return HStack(spacing: 6) {
             Image(systemName: symbol)
                 .font(NotchTokens.Text.system( 11, weight: .medium))
-                .foregroundStyle(.white.opacity(action == nil ? 0.25 : 0.8))
+                .foregroundStyle(action == nil ? NotchTokens.Foreground.unavailable : NotchTokens.Foreground.secondary)
                 .frame(width: 16)
             Text(action?.displayName ?? L("action.unavailable"))
                 .font(NotchTokens.Text.system( 11))
-                .foregroundStyle(.white.opacity(action == nil ? 0.3 : 0.85))
+                .foregroundStyle(action == nil ? NotchTokens.Foreground.unavailable : NotchTokens.Foreground.body)
                 .lineLimit(1)
             Spacer(minLength: 0)
 
@@ -245,8 +245,8 @@ struct QuickButtonBoxManageView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.white.opacity(0.03))
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                .fill(NotchTokens.Surface.fill)
         )
     }
 

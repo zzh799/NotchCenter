@@ -69,12 +69,12 @@ struct DisplaySlidersBlockView: View {
         VStack(spacing: 10) {
             Image(systemName: "sun.max")
                 .font(NotchTokens.Text.system( 22, weight: .light))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
                 .frame(width: 52, height: 52)
                 .background(Circle().fill(.white.opacity(0.07)))
             Text(L("drawer.empty.title"))
                 .font(NotchTokens.Text.system( 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -240,10 +240,10 @@ private struct BrightnessRowView: View {
         HStack(spacing: 10) {
             Image(systemName: "sun.max")
                 .font(NotchTokens.Text.system( 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
             Text(model.display.name)
                 .font(NotchTokens.Text.system( 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
                 .lineLimit(1)
                 .help(model.display.name)
             BrightnessSliderControl(model: model, isPreview: isPreview)
@@ -264,10 +264,10 @@ private struct CompactBrightnessRowView: View {
             HStack(spacing: 5) {
                 Image(systemName: "sun.max")
                     .font(NotchTokens.Text.system( 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
                 Text(model.display.name)
                     .font(NotchTokens.Text.system( 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(NotchTokens.Foreground.secondary)
                     .lineLimit(1)
                     .help(model.display.name)
             }

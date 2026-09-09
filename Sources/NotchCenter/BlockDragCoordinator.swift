@@ -583,7 +583,7 @@ private struct DragPreviewChip: View {
             Image(systemName: state.isValid ? "plus.circle.fill" : "xmark.circle.fill")
                 .font(NotchTokens.Text.system(11, weight: .semibold))
         }
-        .foregroundStyle(.white.opacity(state.isValid ? 0.92 : 0.7))
+        .foregroundStyle(state.isValid ? NotchTokens.Foreground.body : NotchTokens.Foreground.secondary)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(

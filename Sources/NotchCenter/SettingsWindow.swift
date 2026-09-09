@@ -177,7 +177,7 @@ struct SettingsRootView: View {
                 .frame(width: 176)
 
             Divider()
-                .overlay(.white.opacity(0.07))
+                .overlay(NotchTokens.Hairline.divider)
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -203,7 +203,7 @@ struct SettingsRootView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text("NotchCenter")
                 .font(NotchTokens.Text.system(12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
                 .padding(.horizontal, 14)
                 .padding(.top, 16)
                 .padding(.bottom, 8)
@@ -223,7 +223,7 @@ struct SettingsRootView: View {
                     Text(L("settings.quit"))
                         .font(NotchTokens.Text.system(12))
                 }
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
             }
@@ -247,12 +247,12 @@ struct SettingsRootView: View {
                     .font(NotchTokens.Text.system(12.5, weight: isSelected ? .semibold : .regular))
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(.white.opacity(isSelected ? 0.92 : 0.6))
+            .foregroundStyle(isSelected ? NotchTokens.Foreground.body : NotchTokens.Foreground.muted)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(.white.opacity(isSelected ? 0.12 : 0))
+                RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                    .fill(isSelected ? NotchTokens.Surface.track : Color.clear)
             )
             .contentShape(Rectangle())
         }

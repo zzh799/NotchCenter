@@ -118,7 +118,7 @@ struct FileShelfChip: View {
         )
         .overlay {
             RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous)
-                .stroke(.white.opacity(isSelected ? 0.20 : 0), lineWidth: 1)
+                .stroke(isSelected ? NotchTokens.Hairline.chipSelected : Color.clear, lineWidth: 1)
         }
         .contentShape(RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous))
         .animation(NotchTokens.Motion.hover, value: isHovering)
@@ -229,7 +229,7 @@ struct FileShelfChip: View {
 struct ShelfRemoveButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.58 : 0.82))
+            .foregroundStyle(configuration.isPressed ? NotchTokens.Foreground.muted : .white.opacity(0.82))
             .background(
                 Circle()
                     .fill(.black.opacity(configuration.isPressed ? 0.72 : 0.58))

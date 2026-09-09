@@ -89,7 +89,7 @@ struct EditGlyphButton: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(NotchTokens.Text.system(fontSize))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(NotchTokens.Foreground.hover)
                 .frame(width: side, height: side)
                 .contentShape(Rectangle())
         }

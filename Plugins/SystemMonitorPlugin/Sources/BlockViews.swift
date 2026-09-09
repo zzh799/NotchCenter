@@ -229,10 +229,10 @@ struct MetricCell: View {
         HStack(spacing: 4) {
             Image(systemName: kind.symbolName)
                 .font(NotchTokens.Text.caption)
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(NotchTokens.Foreground.muted)
             Text(L(kind.displayNameKey))
                 .font(NotchTokens.Text.system(9, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(NotchTokens.Foreground.muted)
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
@@ -265,7 +265,7 @@ struct MetricCell: View {
         if let sample = latest, kind == .disk, !sample.diskAvailable {
             Text(L("state.unavailable"))
                 .font(NotchTokens.Text.system(11, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.45))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
         } else if let sample = latest {
             VStack(alignment: .leading, spacing: 2) {
                 rateRow(sample: sample, inbound: true)
@@ -291,7 +291,7 @@ struct MetricCell: View {
     private var waiting: some View {
         Text(L("state.sampling"))
             .font(NotchTokens.Text.system(11, weight: .medium))
-            .foregroundStyle(Color.white.opacity(0.4))
+            .foregroundStyle(NotchTokens.Foreground.disabled)
     }
 
     @ViewBuilder
@@ -574,7 +574,7 @@ struct OverviewBlockView: View {
             Text(L("state.sampling"))
                 .font(NotchTokens.Text.system(10, weight: .medium))
         }
-        .foregroundStyle(Color.white.opacity(0.4))
+        .foregroundStyle(NotchTokens.Foreground.disabled)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -592,7 +592,7 @@ struct CompactMetricStrip: View {
         HStack(spacing: 6) {
             Text(L(kind.displayNameKey))
                 .font(NotchTokens.Text.system(9, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(NotchTokens.Foreground.muted)
                 .lineLimit(1)
             Spacer(minLength: 0)
             valueText
@@ -606,7 +606,7 @@ struct CompactMetricStrip: View {
         if let sample = latest, kind == .disk, !sample.diskAvailable {
             Text(L("state.unavailable"))
                 .font(NotchTokens.Text.system(10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.45))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
         } else if let sample = latest {
             Text(valueString(sample))
                 .font(NotchTokens.Text.system(12, weight: .semibold, design: .rounded))
@@ -616,7 +616,7 @@ struct CompactMetricStrip: View {
         } else {
             Text(L("state.sampling"))
                 .font(NotchTokens.Text.system(10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.4))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
         }
     }
 

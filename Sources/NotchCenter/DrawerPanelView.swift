@@ -71,8 +71,6 @@ struct DrawerPanelView: View {
     /// 胶囊排序进行中（聚合至 `isDrawerInteractionActive`）。
     @State private var isCapsuleDragging = false
 
-    private let cornerRadius: CGFloat = 18
-
     init(
         ui: PanelUIState,
         layout: NotchLayout,
@@ -123,14 +121,14 @@ struct DrawerPanelView: View {
             alignment: .top
         )
         .background(
-            TopAttachedRoundedShape(radius: cornerRadius)
+            TopAttachedRoundedShape(radius: NotchTokens.Radius.panelExpanded)
                 .fill(NotchTokens.Surface.drawer)
         )
-        .clipShape(TopAttachedRoundedShape(radius: cornerRadius))
+        .clipShape(TopAttachedRoundedShape(radius: NotchTokens.Radius.panelExpanded))
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
         .overlay(alignment: .top) {
-            TopAttachedRoundedShape(radius: cornerRadius)
-                .stroke(.white.opacity(0.09), lineWidth: 1)
+            TopAttachedRoundedShape(radius: NotchTokens.Radius.panelExpanded)
+                .stroke(NotchTokens.Hairline.drawerEdge, lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .allowsHitTesting(ui.isDrawerExpanded)
@@ -199,7 +197,7 @@ struct DrawerPanelView: View {
                 systemImage: "gearshape",
                 help: L("panel.help.settings"),
                 action: actions.onShowSettings,
-                tint: .white.opacity(0.65)
+                tint: NotchTokens.Foreground.muted
             )
 
             // 一键重排仅在编辑模式可用，常驻设置按钮右侧。
@@ -208,7 +206,7 @@ struct DrawerPanelView: View {
                     systemImage: "arrow.down.forward.and.arrow.up.backward",
                     help: L("panel.help.tidy"),
                     action: actions.onReorderBlocks,
-                    tint: .white.opacity(0.9)
+                    tint: NotchTokens.Foreground.body
                 )
                 .transition(.opacity)
             }
@@ -242,7 +240,7 @@ struct DrawerPanelView: View {
                 systemImage: ui.isPinned ? "pin.fill" : "pin",
                 help: ui.isPinned ? L("panel.help.unpin") : L("panel.help.pin"),
                 action: actions.onTogglePin,
-                tint: .white.opacity(0.65),
+                tint: NotchTokens.Foreground.muted,
                 // 固定态常驻高亮（比悬停高亮亮一档，见 TopBarButton）。
                 isActive: ui.isPinned
             )
@@ -432,12 +430,12 @@ struct DrawerPanelView: View {
     private var dropPlaceholder: some View {
         if let cell = dropPlaceholderCell {
             let frame = geometry.frame(cell)
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.white.opacity(0.055))
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
+                .fill(NotchTokens.Surface.fillHighlighted)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
                         .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(NotchTokens.Foreground.disabled)
                 )
                 .frame(width: frame.width, height: frame.height)
                 .position(x: frame.midX, y: frame.midY)
@@ -643,7 +641,7 @@ private struct TopBarButton: View {
                 .foregroundStyle(tint)
                 .frame(width: 24, height: 24)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
                         .fill(.white.opacity(fillOpacity))
                 )
         }

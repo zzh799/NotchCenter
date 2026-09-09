@@ -20,7 +20,7 @@ struct GeneralSettingsPage: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(L("settings.triggerMode"))
                             .font(NotchTokens.Text.system(12))
-                            .foregroundStyle(.white.opacity(0.72))
+                            .foregroundStyle(NotchTokens.Foreground.secondary)
                         Picker("", selection: $settingsStore.triggerMode) {
                             ForEach(SettingsStore.TriggerMode.allCases) { mode in
                                 Label(mode.title, systemImage: mode.systemImage).tag(mode)
@@ -36,7 +36,7 @@ struct GeneralSettingsPage: View {
                         Toggle(isOn: launchAtLoginBinding) {
                             Text(L("settings.launchAtLogin"))
                                 .font(NotchTokens.Text.system(12))
-                                .foregroundStyle(.white.opacity(0.72))
+                                .foregroundStyle(NotchTokens.Foreground.secondary)
                         }
                         if let hint = launchAtLoginHint {
                             Text(hint)
@@ -342,7 +342,7 @@ struct ComponentsSettingsPage: View {
             pluginSidebar
                 .frame(width: 168)
 
-            Divider().overlay(.white.opacity(0.06))
+            Divider().overlay(NotchTokens.Hairline.divider)
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
@@ -361,7 +361,7 @@ struct ComponentsSettingsPage: View {
                     if groups.isEmpty {
                         Text(L("settings.components.empty"))
                             .font(NotchTokens.Text.system(12))
-                            .foregroundStyle(.white.opacity(0.35))
+                            .foregroundStyle(NotchTokens.Foreground.placeholder)
                             .padding(.top, 40)
                     }
                 }
@@ -436,7 +436,7 @@ struct ComponentsSettingsPage: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(L("settings.components.groups"))
                 .font(NotchTokens.Text.system(10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.35))
+                .foregroundStyle(NotchTokens.Foreground.unavailable)
                 .padding(.horizontal, 14)
                 .padding(.top, 16)
                 .padding(.bottom, 6)
@@ -462,18 +462,18 @@ struct ComponentsSettingsPage: View {
             HStack(spacing: 6) {
                 Text(group.displayName)
                     .font(NotchTokens.Text.system(11.5, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(.white.opacity(isSelected ? 0.92 : 0.62))
+                    .foregroundStyle(isSelected ? NotchTokens.Foreground.body : NotchTokens.Foreground.muted)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Text("\(group.count)")
                     .font(NotchTokens.Text.system(10, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(NotchTokens.Foreground.unavailable)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(.white.opacity(isSelected ? 0.1 : 0))
+                RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                    .fill(isSelected ? NotchTokens.Surface.track : Color.clear)
             )
             .contentShape(Rectangle())
         }
@@ -489,12 +489,12 @@ struct ComponentsSettingsPage: View {
             Text(L("settings.components.hint"))
                 .font(NotchTokens.Text.system(11.5))
         }
-        .foregroundStyle(.white.opacity(0.55))
+        .foregroundStyle(NotchTokens.Foreground.muted)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(.white.opacity(0.04))
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous)
+                .fill(NotchTokens.Surface.fillHover)
         )
     }
 
@@ -502,7 +502,7 @@ struct ComponentsSettingsPage: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(group.displayName)
                 .font(NotchTokens.Text.system(13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.86))
+                .foregroundStyle(NotchTokens.Foreground.hover)
 
             // 快捷按钮与抽屉组件合并到同一网格混排（紧凑块在前），
             // 类型区分靠卡片名称行的「快捷按钮 / N×N」标注。
@@ -613,11 +613,11 @@ private struct ComponentCard: View {
             VStack(alignment: .center, spacing: 2) {
                 Text(item.displayName)
                     .font(NotchTokens.Text.system(11.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(isHovering ? 0.95 : 0.86))
+                    .foregroundStyle(isHovering ? NotchTokens.Foreground.selected : NotchTokens.Foreground.hover)
                     .lineLimit(1)
                 Text(item.isCompact ? L("settings.components.compact") : spanText)
                     .font(NotchTokens.Text.system(9.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.38))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
             }
         }
         .contentShape(Rectangle())
@@ -646,7 +646,7 @@ private struct ComponentCard: View {
             if item.quickActionID != nil {
                 Image(systemName: "square.grid.3x3")
                     .font(NotchTokens.Text.system(9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(NotchTokens.Foreground.muted)
                     .padding(5)
                     .background(
                         Circle()
@@ -654,7 +654,7 @@ private struct ComponentCard: View {
                     )
                     .overlay(
                         Circle()
-                            .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+                            .strokeBorder(NotchTokens.Hairline.drawerEdge, lineWidth: 1)
                     )
                     .padding(6)
                     .help(L("settings.components.quickActions.boxable"))
@@ -708,32 +708,32 @@ private struct QuickActionCard: View {
                 isActive: action.kind == .toggle && action.isActive,
                 symbolSize: 12,
                 sideLength: 26,
-                cornerRadius: 7
+                cornerRadius: NotchTokens.Radius.button
             )
             VStack(alignment: .leading, spacing: 1) {
                 Text(action.displayName)
                     .font(NotchTokens.Text.system(11.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(isHovering ? 0.95 : 0.85))
+                    .foregroundStyle(isHovering ? NotchTokens.Foreground.selected : NotchTokens.Foreground.hover)
                     .lineLimit(1)
                 Text(sourceName)
                     .font(NotchTokens.Text.system(9.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.38))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
             Image(systemName: "line.3.horizontal")
                 .font(NotchTokens.Text.system(10, weight: .semibold))
-                .foregroundStyle(.white.opacity(isHovering ? 0.5 : 0.3))
+                .foregroundStyle(isHovering ? NotchTokens.Foreground.disabled : NotchTokens.Foreground.unavailable)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(.white.opacity(isHovering ? 0.07 : 0.035))
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
+                .fill(isHovering ? NotchTokens.Surface.fillHighlighted : NotchTokens.Surface.fillHover)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.white.opacity(isHovering ? 0.14 : 0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
+                .strokeBorder(NotchTokens.Hairline.drawerEdge, lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
@@ -813,7 +813,7 @@ struct LayoutSettingsPage: View {
                 HStack(spacing: 12) {
                     Text(L("settings.columns"))
                         .font(NotchTokens.Text.system(12))
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(NotchTokens.Foreground.secondary)
                         .frame(width: 76, alignment: .leading)
                     ColumnRangeSlider(
                         minValue: min(layoutEngine.userMinColumns, layoutEngine.userMaxColumns),
@@ -846,7 +846,7 @@ struct LayoutSettingsPage: View {
                 HStack(spacing: 10) {
                     Text(L("settings.layout.minRows"))
                         .font(NotchTokens.Text.system(12))
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(NotchTokens.Foreground.secondary)
                     Spacer(minLength: 0)
                     Picker("", selection: minRowsBinding) {
                         ForEach(Array(LayoutModel.minRowsRange), id: \.self) { rows in
@@ -905,7 +905,7 @@ private struct MetricsSlider: View {
         HStack(spacing: 12) {
             Text(title)
                 .font(NotchTokens.Text.system(12))
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
                 .frame(width: 76, alignment: .leading)
             sliderControl(range)
             numberField
@@ -959,11 +959,11 @@ private struct GridMetricsPreview: View {
             ForEach(0..<(columns * rows), id: \.self) { index in
                 let column = index % columns
                 let row = index / columns
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(.white.opacity(0.05))
+                RoundedRectangle(cornerRadius: NotchTokens.Radius.thumbnail, style: .continuous)
+                    .fill(NotchTokens.Surface.fillHover)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .stroke(.white.opacity(0.1), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: NotchTokens.Radius.thumbnail, style: .continuous)
+                            .stroke(NotchTokens.Hairline.drawerEdge, lineWidth: 1)
                     )
                     .frame(
                         width: store.cellWidth,
@@ -990,7 +990,7 @@ private struct GridMetricsPreview: View {
                 )
             )
             .font(NotchTokens.Text.system(10).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.4))
+            .foregroundStyle(NotchTokens.Foreground.disabled)
             .offset(y: 16)
         }
         .padding(.bottom, 18)
@@ -1008,7 +1008,7 @@ struct SettingsSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(NotchTokens.Text.system(11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1064,12 +1064,12 @@ struct DebugSettingsPage: View {
                 } label: {
                     Text(L("settings.debug.sizeLab.open"))
                         .font(NotchTokens.Text.system(12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(NotchTokens.Foreground.hover)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(.white.opacity(0.1))
+                            RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                                .fill(NotchTokens.Surface.fillHighlighted)
                         )
                 }
                 .buttonStyle(.plain)
@@ -1089,7 +1089,7 @@ struct DebugSettingsPage: View {
         HStack(spacing: 12) {
             Text(title)
                 .font(NotchTokens.Text.system(12))
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
                 .frame(width: 76, alignment: .leading)
             Slider(
                 value: Binding(

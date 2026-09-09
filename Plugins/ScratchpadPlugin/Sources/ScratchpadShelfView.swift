@@ -126,10 +126,10 @@ struct FileShelfView: View {
            selectionRect.width >= 3,
            selectionRect.height >= 3 {
             Rectangle()
-                .fill(Color.white.opacity(0.055))
+                .fill(NotchTokens.Surface.fillHighlighted)
                 .overlay {
                     Rectangle()
-                        .stroke(Color.white.opacity(0.34), lineWidth: 1)
+                        .stroke(NotchTokens.Hairline.marquee, lineWidth: 1)
                 }
                 .frame(width: selectionRect.width, height: selectionRect.height)
                 .offset(x: selectionRect.minX, y: selectionRect.minY)
@@ -159,18 +159,18 @@ struct FileShelfView: View {
             Text(L("drop.releaseToAdd"))
                 .font(NotchTokens.Text.dropHint)
         }
-        .foregroundStyle(Color.white.opacity(0.58))
+        .foregroundStyle(NotchTokens.Foreground.muted)
     }
 
     private var emptyPlaceholder: some View {
         VStack(spacing: 8) {
             Image(systemName: "tray")
                 .font(NotchTokens.Text.system(28))
-                .foregroundStyle(.white.opacity(0.35))
+                .foregroundStyle(NotchTokens.Foreground.unavailable)
 
             Text(L("shelf.empty.title"))
                 .font(NotchTokens.Text.system(11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(NotchTokens.Foreground.muted)
         }
         // .padding(16)
         // .background(

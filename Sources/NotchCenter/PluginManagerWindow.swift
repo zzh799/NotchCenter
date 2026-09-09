@@ -73,7 +73,7 @@ struct PluginManagerView: View {
             HStack {
                 Text(L("manager.header.plugins"))
                     .font(NotchTokens.Text.system(12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(NotchTokens.Foreground.secondary)
                 Spacer()
                 Button(action: installBundle) {
                     Image(systemName: "plus")
@@ -104,10 +104,10 @@ struct PluginManagerView: View {
                 HStack(spacing: 6) {
                     Text(entry.metadata.displayName)
                         .font(NotchTokens.Text.system(12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.88))
+                        .foregroundStyle(NotchTokens.Foreground.hover)
                         .lineLimit(1)
 
-                    badge(entry.metadata.isBuiltIn ? L("manager.badge.builtIn") : L("manager.badge.user"), tint: .white.opacity(0.35))
+                    badge(entry.metadata.isBuiltIn ? L("manager.badge.builtIn") : L("manager.badge.user"), tint: NotchTokens.Foreground.unavailable)
 
                     if !entry.metadata.isAPICompatible {
                         badge(L("manager.badge.incompatible"), tint: .red.opacity(0.9))
@@ -116,7 +116,7 @@ struct PluginManagerView: View {
 
                 Text(entry.metadata.pluginID)
                     .font(NotchTokens.Text.system(10, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.38))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
                     .lineLimit(1)
             }
 
@@ -133,8 +133,8 @@ struct PluginManagerView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isSelected ? .white.opacity(0.08) : .clear)
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous)
+                .fill(isSelected ? NotchTokens.Surface.track : Color.clear)
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -163,10 +163,10 @@ struct PluginManagerView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(entry.metadata.displayName)
                             .font(NotchTokens.Text.system(16, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.92))
+                            .foregroundStyle(NotchTokens.Foreground.body)
                         Text(entry.metadata.pluginID)
                             .font(NotchTokens.Text.system(11, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.45))
+                            .foregroundStyle(NotchTokens.Foreground.disabled)
                     }
                     Spacer()
                     if !entry.metadata.isBuiltIn {
@@ -179,15 +179,15 @@ struct PluginManagerView: View {
 
                 Text(LF("manager.version.api", entry.metadata.pluginVersion, entry.metadata.apiVersion))
                     .font(NotchTokens.Text.system(11))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
 
                 if let description = entry.metadata.pluginDescription, !description.isEmpty {
                     Text(description)
                         .font(NotchTokens.Text.system(11))
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(NotchTokens.Foreground.muted)
                 }
 
-                Divider().overlay(.white.opacity(0.1))
+                Divider().overlay(NotchTokens.Hairline.divider)
 
                 if entry.loadError != nil {
                     Text(LF("manager.loadFailed", entry.loadError ?? ""))
@@ -205,10 +205,10 @@ struct PluginManagerView: View {
             VStack(spacing: 8) {
                 Image(systemName: "shippingbox")
                     .font(NotchTokens.Text.system(26))
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(NotchTokens.Foreground.placeholder)
                 Text(L("manager.selectHint"))
                     .font(NotchTokens.Text.system(12))
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(NotchTokens.Foreground.placeholder)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -279,7 +279,7 @@ struct PluginReadmeSection: View {
                 } else {
                     Text(L("manager.noReadme"))
                         .font(NotchTokens.Text.system(11))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(NotchTokens.Foreground.disabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }

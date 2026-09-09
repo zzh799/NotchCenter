@@ -14,7 +14,7 @@ struct OpenCodeUsageInstanceSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             appearanceSection
-            Divider().overlay(Color.white.opacity(0.08))
+            Divider().overlay(NotchTokens.Hairline.divider)
             OpenCodeUsageSettingsView()
         }
     }
@@ -25,7 +25,7 @@ struct OpenCodeUsageInstanceSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L("settings.section.appearance"))
                 .font(NotchTokens.Text.toolbarSmall)
-                .foregroundStyle(Color.white.opacity(0.76))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
 
             Picker(L("settings.displayStyle"), selection: styleBinding) {
                 ForEach(OpenCodeUsageDisplayStyle.allCases, id: \.self) { style in

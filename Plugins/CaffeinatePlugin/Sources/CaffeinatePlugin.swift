@@ -116,12 +116,12 @@ private struct KeepAwakeCompactView: View {
             ZStack {
                 Image(systemName: store.isKeepingAwake ? "cup.and.saucer.fill" : "cup.and.saucer")
                     .font(NotchTokens.Text.system( 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(store.isKeepingAwake ? 0.95 : 0.72))
+                    .foregroundStyle(store.isKeepingAwake ? NotchTokens.Foreground.selected : NotchTokens.Foreground.secondary)
             }
             .frame(width: slot.width, height: slot.height)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous)
                     .fill(
                         store.isKeepingAwake
                             ? CaffeinatePalette.activeFill
@@ -162,7 +162,7 @@ private struct KeepAwakeSettingsView: View {
 
             Text(L("caffeinate.settings.description"))
                 .font(NotchTokens.Text.system( 11))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(NotchTokens.Foreground.muted)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let message = store.keepAwakeErrorMessage {

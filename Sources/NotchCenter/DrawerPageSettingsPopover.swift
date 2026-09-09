@@ -49,19 +49,19 @@ struct DrawerPageSettingsPopover: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(L("panel.page.settings.name"))
                     .font(NotchTokens.Text.system(11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.42))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
                 TextField("", text: $draftTitle)
                     .textFieldStyle(.plain)
                     .font(NotchTokens.Text.system(12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.95))
+                    .foregroundStyle(NotchTokens.Foreground.selected)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
                             .fill(.black.opacity(0.35))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                                    .strokeBorder(NotchTokens.Hairline.thumbnail, lineWidth: 1)
                             )
                     )
                     // 改变即设置：每次键入直接写盘（清空 = 回落序号），无保存按钮。
@@ -73,7 +73,7 @@ struct DrawerPageSettingsPopover: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(L("panel.page.settings.icon"))
                     .font(NotchTokens.Text.system(11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.42))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
                 LazyVGrid(
                     columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 8),
                     spacing: 6
@@ -114,15 +114,15 @@ struct DrawerPageSettingsPopover: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(NotchTokens.Text.system(13))
-                .foregroundStyle(.white.opacity(isSelected ? 0.95 : 0.62))
+                .foregroundStyle(isSelected ? NotchTokens.Foreground.selected : NotchTokens.Foreground.muted)
                 .frame(maxWidth: .infinity)
                 .frame(height: 24)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
                         .fill(.white.opacity(isSelected ? 0.14 : 0))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .strokeBorder(.white.opacity(isSelected ? 0.20 : 0), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                                .strokeBorder(NotchTokens.Hairline.chipSelected.opacity(isSelected ? 1 : 0), lineWidth: 1)
                         )
                 )
                 .contentShape(Rectangle())

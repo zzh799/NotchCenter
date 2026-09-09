@@ -104,7 +104,7 @@ private struct ScratchpadCompactView: View {
         return ZStack(alignment: .topTrailing) {
             Image(systemName: "tray")
                 .font(NotchTokens.Text.system(13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
                 .frame(width: slot.width, height: slot.height)
                 .contentShape(Rectangle())
 
@@ -196,7 +196,7 @@ private struct ClearConfirmationPopoverContentView: View {
         VStack(spacing: 12) {
             Image(systemName: "tray.and.trash")
                 .font(NotchTokens.Text.system(20, weight: .medium))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(NotchTokens.Foreground.hover)
 
             Text(L("clear.confirm.title"))
                 .font(NotchTokens.Text.system(13, weight: .semibold))
@@ -211,7 +211,7 @@ private struct ClearConfirmationPopoverContentView: View {
                 }
             }
             .font(NotchTokens.Text.system(11))
-            .foregroundStyle(.white.opacity(0.6))
+            .foregroundStyle(NotchTokens.Foreground.muted)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
 
@@ -219,7 +219,7 @@ private struct ClearConfirmationPopoverContentView: View {
                 Button(action: { BlockPopover.shared.dismiss() }) {
                     Text(L("common.cancel"))
                         .font(NotchTokens.Text.system(11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(NotchTokens.Foreground.secondary)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)
                         .background(

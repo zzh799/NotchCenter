@@ -45,15 +45,15 @@ struct MediaControlsDrawerBlockView: View {
         VStack(spacing: 10) {
             Image(systemName: symbol)
                 .font(NotchTokens.Text.system( 22, weight: .light))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
                 .frame(width: 52, height: 52)
                 .background(Circle().fill(.white.opacity(0.07)))
             Text(title)
                 .font(NotchTokens.Text.system( 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
             Text(hint)
                 .font(NotchTokens.Text.system( 10.5))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
                 .padding(.horizontal, 18)
@@ -74,18 +74,18 @@ struct MediaControlsDrawerBlockView: View {
                     .overlay {
                         if isPaused {
                             // 暂停时封面压暗 + 中央播放提示，状态一眼可辨。
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
                                 .fill(.black.opacity(0.42))
                             Image(systemName: "play.fill")
                                 .font(NotchTokens.Text.system( 16, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.9))
+                                .foregroundStyle(NotchTokens.Foreground.hover)
                         }
                     }
                 VStack(alignment: .leading, spacing: 4) {
                     if let title = display.title, !title.isEmpty {
                         Text(title)
                             .font(NotchTokens.Text.system( 13, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.92))
+                            .foregroundStyle(NotchTokens.Foreground.body)
                             .lineLimit(1)
                     }
                     HStack(spacing: 6) {
@@ -101,7 +101,7 @@ struct MediaControlsDrawerBlockView: View {
                         }
                         Text(subtitleLine)
                             .font(NotchTokens.Text.system( 11))
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(NotchTokens.Foreground.muted)
                             .lineLimit(1)
                     }
                     Spacer(minLength: 0)
@@ -113,7 +113,7 @@ struct MediaControlsDrawerBlockView: View {
             VStack(spacing: 4) {
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.09))
+                        Capsule().fill(NotchTokens.Surface.track)
                         Capsule()
                             .fill(progressAccent(isPaused: isPaused))
                             .frame(width: progressWidth(proxy.size.width))
@@ -127,7 +127,7 @@ struct MediaControlsDrawerBlockView: View {
                     Text(Self.timeText(display.duration))
                 }
                 .font(NotchTokens.Text.system( 9.5, design: .monospaced).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
             }
         }
         .padding(14)
@@ -145,18 +145,18 @@ struct MediaControlsDrawerBlockView: View {
                     .scaledToFill()
             } else {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(.white.opacity(0.07))
+                    RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
+                        .fill(NotchTokens.Surface.fillHighlighted)
                     Image(systemName: "music.note")
                         .font(NotchTokens.Text.system( 18, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(NotchTokens.Foreground.disabled)
                 }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .stroke(.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
+                .stroke(NotchTokens.Hairline.thumbnail, lineWidth: 1)
         )
     }
 
@@ -192,7 +192,7 @@ struct MediaControlsDrawerBlockView: View {
         } label: {
             Image(systemName: symbol)
                 .font(NotchTokens.Text.system( 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(emphasized ? 0.95 : 0.8))
+                .foregroundStyle(emphasized ? NotchTokens.Foreground.selected : NotchTokens.Foreground.secondary)
                 .frame(width: 28, height: 28)
                 .background(
                     Circle().fill(

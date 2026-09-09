@@ -1,9 +1,9 @@
 {
   "comment": "UI token 扫描基线(存量快照,只降不升)。更新: scripts/scan-ui-tokens.sh --update-baseline",
   "files": {
-    "Plugins/CaffeinatePlugin/Sources/CaffeinatePlugin.swift": { "color-rgb": 1, "font-raw": 0, "spring-raw": 0 },
-    "Plugins/MediaControlsPlugin/Sources/MediaControlsBlockViews.swift": { "color-rgb": 1, "font-raw": 0, "spring-raw": 0 },
-    "Plugins/OpenCodeUsagePlugin/Sources/PeakClockLogic.swift": { "color-rgb": 2, "font-raw": 0, "spring-raw": 0 },
-    "Plugins/SystemMonitorPlugin/Sources/BlockViews.swift": { "color-rgb": 3, "font-raw": 0, "spring-raw": 0 }
+    "Plugins/CaffeinatePlugin/Sources/CaffeinatePlugin.swift": { "color-rgb": 1, "font-raw": 0, "spring-raw": 0, "radius-raw": 0 },
+    "Plugins/MediaControlsPlugin/Sources/MediaControlsBlockViews.swift": { "color-rgb": 1, "font-raw": 0, "spring-raw": 0, "radius-raw": 0 },
+    "Plugins/OpenCodeUsagePlugin/Sources/PeakClockLogic.swift": { "color-rgb": 2, "font-raw": 0, "spring-raw": 0, "radius-raw": 0 },
+    "Plugins/SystemMonitorPlugin/Sources/BlockViews.swift": { "color-rgb": 3, "font-raw": 0, "spring-raw": 0, "radius-raw": 0 }
   }
 }

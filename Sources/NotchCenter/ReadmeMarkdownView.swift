@@ -91,31 +91,31 @@ struct ReadmeMarkdownView: View {
         case let .heading(level, text):
             Text(text)
                 .font(NotchTokens.Text.system(level <= 1 ? 15 : level == 2 ? 13 : 12, weight: .bold))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(NotchTokens.Foreground.body)
                 .padding(.top, level <= 2 ? 4 : 2)
         case let .bullet(text):
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Text("•")
                     .font(NotchTokens.Text.system(11))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
                 inlineText(text)
                     .font(NotchTokens.Text.system(11))
-                    .foregroundStyle(.white.opacity(0.66))
+                    .foregroundStyle(NotchTokens.Foreground.muted)
             }
         case let .code(lines):
             Text(lines.joined(separator: "\n"))
                 .font(NotchTokens.Text.system(10, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(.white.opacity(0.06))
+                    RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                        .fill(NotchTokens.Surface.fillHighlighted)
                 )
         case let .paragraph(text):
             inlineText(text)
                 .font(NotchTokens.Text.system(11))
-                .foregroundStyle(.white.opacity(0.66))
+                .foregroundStyle(NotchTokens.Foreground.muted)
         }
     }
 

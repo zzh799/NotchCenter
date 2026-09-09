@@ -247,7 +247,7 @@ private struct NotesCompactView: View {
         let slot = context.layoutInfo.frame.size
         return Image(systemName: "note.text")
             .font(NotchTokens.Text.system(13, weight: .medium))
-            .foregroundStyle(.white.opacity(0.72))
+            .foregroundStyle(NotchTokens.Foreground.secondary)
             .frame(width: slot.width, height: slot.height)
             .contentShape(Rectangle())
             .onTapGesture {
@@ -273,7 +273,7 @@ private struct NotesSettingsView: View {
 
             Text(L("notes.settings.description"))
                 .font(NotchTokens.Text.system(11))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(NotchTokens.Foreground.muted)
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(L("notes.newNote")) {

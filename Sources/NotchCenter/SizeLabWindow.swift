@@ -160,14 +160,14 @@ private struct SizeLabView: View {
     @State private var cells: [SizeLabCell] = []
 
     private let contentPadding: CGFloat = NotchGridMetrics.contentPadding
-    private let cardCornerRadius: CGFloat = 12
+    private let cardCornerRadius: CGFloat = NotchTokens.Radius.card
 
     var body: some View {
         VStack(spacing: 0) {
             controls
-            Divider().overlay(Color.white.opacity(0.06))
+            Divider().overlay(NotchTokens.Hairline.divider)
             canvas
-            Divider().overlay(Color.white.opacity(0.06))
+            Divider().overlay(NotchTokens.Hairline.divider)
             footer
         }
         .background(NotchTokens.Surface.drawer)
@@ -361,13 +361,13 @@ private struct SizeLabView: View {
                 }
             }
         }
-        .fill(Color.white.opacity(0.028))
+        .fill(NotchTokens.Surface.fill)
     }
 
     private func spanBadge(_ cell: SizeLabCell) -> some View {
         Text("\(cell.columns)×\(cell.rows)  \(Int(cell.size.width))×\(Int(cell.size.height))")
             .font(NotchTokens.Text.system(9, weight: .medium).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.55))
+            .foregroundStyle(NotchTokens.Foreground.muted)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .background(Capsule().fill(Color.black.opacity(0.6)))
@@ -399,7 +399,7 @@ private struct SizeLabView: View {
                 .foregroundStyle(.secondary)
         }
         .font(NotchTokens.Text.system(10).monospacedDigit())
-        .foregroundStyle(.white.opacity(0.5))
+        .foregroundStyle(NotchTokens.Foreground.disabled)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
     }
@@ -425,10 +425,10 @@ private struct SizeLabView: View {
             VStack(spacing: 8) {
                 Image(systemName: "square.grid.2x2")
                     .font(NotchTokens.Text.system(22, weight: .light))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(NotchTokens.Foreground.secondary)
                 Text("占位卡")
                     .font(NotchTokens.Text.system(12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(NotchTokens.Foreground.secondary)
                 ProgressView(value: 0.6)
                     .frame(width: 80)
             }

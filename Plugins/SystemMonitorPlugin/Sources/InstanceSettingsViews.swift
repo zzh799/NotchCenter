@@ -49,7 +49,7 @@ struct SingleInstanceSettingsView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(L("settings.network.exclusions"))
                 .font(NotchTokens.Text.system(10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.6))
+                .foregroundStyle(NotchTokens.Foreground.muted)
             TextField(
                 L("settings.network.exclusions"),
                 text: exclusionsBinding
@@ -59,7 +59,7 @@ struct SingleInstanceSettingsView: View {
             .font(NotchTokens.Text.system(10))
             Text(L("settings.network.exclusions.hint"))
                 .font(NotchTokens.Text.system(9))
-                .foregroundStyle(Color.white.opacity(0.4))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
         }
     }
 
@@ -86,7 +86,7 @@ struct SingleInstanceSettingsView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(NotchTokens.Text.system(10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.6))
+                .foregroundStyle(NotchTokens.Foreground.muted)
             TextField(title, value: binding, format: .number)
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
@@ -202,7 +202,7 @@ struct SingleInstanceSettingsView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(NotchTokens.Text.system(10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.6))
+                .foregroundStyle(NotchTokens.Foreground.muted)
             content()
         }
     }
@@ -211,7 +211,7 @@ struct SingleInstanceSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(NotchTokens.Text.toolbarSmall)
-                .foregroundStyle(Color.white.opacity(0.76))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
             content()
         }
     }
@@ -235,7 +235,7 @@ struct OverviewInstanceSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L("settings.section.general"))
                 .font(NotchTokens.Text.toolbarSmall)
-                .foregroundStyle(Color.white.opacity(0.76))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
             Picker(L("settings.window"), selection: windowBinding) {
                 ForEach(InstanceConfigLogic.allowedWindows, id: \.self) { seconds in
                     Text(L(windowKey(seconds))).tag(seconds)
@@ -245,7 +245,7 @@ struct OverviewInstanceSettingsView: View {
 
             Text(L("settings.section.metrics"))
                 .font(NotchTokens.Text.toolbarSmall)
-                .foregroundStyle(Color.white.opacity(0.76))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
             ForEach(MetricKind.allCases, id: \.self) { kind in
                 Toggle(isOn: toggleBinding(kind)) {
                     HStack(spacing: 5) {
@@ -254,7 +254,7 @@ struct OverviewInstanceSettingsView: View {
                         Text(L(kind.displayNameKey))
                             .font(NotchTokens.Text.system(11))
                     }
-                    .foregroundStyle(Color.white.opacity(0.85))
+                    .foregroundStyle(NotchTokens.Foreground.hover)
                 }
                 .controlSize(.small)
             }

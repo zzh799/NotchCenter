@@ -14,6 +14,9 @@
 #              Text.system(...) 工厂。
 #   spring-raw 裸 spring 动画字面量(.animation/.withAnimation + .spring(response:)
 #              ——优先改用 NotchTokens.Motion(expand/shelfAppear/removal/tabSwitch)。
+#   radius-raw 裸圆角数字字面量(cornerRadius: <数字>;RoundedRectangle 构造与
+#              参数传值都会命中)-优先改用 NotchTokens.Radius(button/card/
+#              chip/thumbnail/panelCompact/panelExpanded)。
 #
 # 豁免:纯注释行;Sources/NotchCenterKit/、Tests/、Vendor/、Derived/、dist.noindex/。
 #
@@ -75,6 +78,7 @@ scan_rule() {
   scan_rule color-rgb  'Color\(red:|Color\(white:|NSColor\(srgbRed:'
   scan_rule font-raw   '\.font\(\.system\(size:'
   scan_rule spring-raw '(\.animation|withAnimation)\(\.spring\('
+  scan_rule radius-raw 'cornerRadius: [0-9]'
 } > "$HITS"
 
 # ---- 输出明细与汇总 ----
@@ -123,8 +127,8 @@ if (( UPDATE_BASELINE == 1 )); then
           f = order[i]
           if (first == 0) printf ",\n"
           first = 0
-          printf "    \"%s\": { \"color-rgb\": %d, \"font-raw\": %d, \"spring-raw\": %d }", \
-            f, wrote[f, "color-rgb"], wrote[f, "font-raw"], wrote[f, "spring-raw"]
+          printf "    \"%s\": { \"color-rgb\": %d, \"font-raw\": %d, \"spring-raw\": %d, \"radius-raw\": %d }", \
+            f, wrote[f, "color-rgb"], wrote[f, "font-raw"], wrote[f, "spring-raw"], wrote[f, "radius-raw"]
         }
         if (first == 0) printf "\n"
       }'
@@ -137,8 +141,9 @@ elif [[ -f "$BASELINE" ]]; then
   # 基线为脚本自生成固定格式,直接 sed 解析,不依赖 jq。
   BASELINE_TS="$(mktemp)"; CURRENT_TS="$(mktemp)"
   trap 'rm -f "$HITS" "$BASELINE_TS" "$CURRENT_TS"' EXIT
-  sed -nE 's/^ *"([^"]+)": \{ "color-rgb": ([0-9]+), "font-raw": ([0-9]+), "spring-raw": ([0-9]+) *\},?$/\1|\2|\3|\4/p' "$BASELINE" > "$BASELINE_TS"
-  # 当前计数也归一为 path|rgb|font|spring(缺失规则按 0)。
+  # 兼容两代基线格式:radius-raw 列缺失(旧基线)时按 0。
+  sed -nE 's/^ *"([^"]+)": \{ "color-rgb": ([0-9]+), "font-raw": ([0-9]+), "spring-raw": ([0-9]+)(, "radius-raw": ([0-9]+))? *\},?$/\1|\2|\3|\4|\6/p' "$BASELINE" > "$BASELINE_TS"
+  # 当前计数也归一为 path|rgb|font|spring|radius(缺失规则按 0)。
   awk -F'\t' '
     { c[$1 "|" $3]++ }
     END {
@@ -149,17 +154,18 @@ elif [[ -f "$BASELINE" ]]; then
       }
       for (i = 1; i <= idx; i++) {
         f = order[i]
-        printf "%s|%d|%d|%d\n", f, cnt[f, "color-rgb"], cnt[f, "font-raw"], cnt[f, "spring-raw"]
+        printf "%s|%d|%d|%d|%d\n", f, cnt[f, "color-rgb"], cnt[f, "font-raw"], cnt[f, "spring-raw"], cnt[f, "radius-raw"]
       }
     }' "$HITS" > "$CURRENT_TS"
   OVER_LINES="$(awk -F'|' '
-    FNR == NR { base[$1] = $2 SUBSEP $3 SUBSEP $4; next }
+    FNR == NR { base[$1] = $2 SUBSEP $3 SUBSEP $4 SUBSEP $5; next }
     {
-      b = ($1 in base) ? base[$1] : 0 SUBSEP 0 SUBSEP 0
+      b = ($1 in base) ? base[$1] : 0 SUBSEP 0 SUBSEP 0 SUBSEP 0
       split(b, bv, SUBSEP)
       if ($2 + 0 > bv[1] + 0) printf "超基线: %s [color-rgb] 当前 %d > 基线 %d (只降不升;迁移 NotchTokens 或收敛为本地命名常量并在 UI规范整改追踪 登记豁免)\n", $1, $2, bv[1]
       if ($3 + 0 > bv[2] + 0) printf "超基线: %s [font-raw] 当前 %d > 基线 %d (只降不升;迁移 NotchTokens 或收敛为本地命名常量并在 UI规范整改追踪 登记豁免)\n", $1, $3, bv[2]
       if ($4 + 0 > bv[3] + 0) printf "超基线: %s [spring-raw] 当前 %d > 基线 %d (只降不升;迁移 NotchTokens 或收敛为本地命名常量并在 UI规范整改追踪 登记豁免)\n", $1, $4, bv[3]
+      if ($5 + 0 > bv[4] + 0) printf "超基线: %s [radius-raw] 当前 %d > 基线 %d (只降不升;迁移 NotchTokens.Radius 或收敛为本地命名常量并在 UI规范整改追踪 登记豁免)\n", $1, $5, bv[4]
     }' "$BASELINE_TS" "$CURRENT_TS")"
   if [[ -n "$OVER_LINES" ]]; then
     printf '%s\n' "$OVER_LINES"

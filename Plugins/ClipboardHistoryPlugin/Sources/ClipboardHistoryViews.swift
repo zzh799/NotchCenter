@@ -176,7 +176,7 @@ struct ClipboardHistoryBlockView: View {
             TextField(L("drawer.search.placeholder"), text: $query)
                 .textFieldStyle(.plain)
                 .font(NotchTokens.Text.system(12))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(NotchTokens.Foreground.body)
                 .focused($searchFocused)
                 // 展开后立即可输入（面板 canBecomeKey，见 PanelWindows.swift）。
                 .onAppear { searchFocused = true }
@@ -186,7 +186,7 @@ struct ClipboardHistoryBlockView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(NotchTokens.Text.system(12))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(NotchTokens.Foreground.disabled)
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
@@ -235,25 +235,25 @@ struct ClipboardHistoryBlockView: View {
             Text(L("drawer.paused.banner"))
                 .font(NotchTokens.Text.system(11, weight: .medium))
         }
-        .foregroundStyle(.white.opacity(0.6))
+        .foregroundStyle(NotchTokens.Foreground.muted)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
-        .background(.white.opacity(0.04))
+        .background(NotchTokens.Surface.fillHover)
     }
 
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "clipboard")
                 .font(NotchTokens.Text.system(22, weight: .light))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
                 .frame(width: 52, height: 52)
                 .background(Circle().fill(.white.opacity(0.07)))
             Text(L("drawer.empty.title"))
                 .font(NotchTokens.Text.system(12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
             Text(L("drawer.empty.hint"))
                 .font(NotchTokens.Text.system(10.5))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
                 .padding(.horizontal, 18)
@@ -265,10 +265,10 @@ struct ClipboardHistoryBlockView: View {
         VStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(NotchTokens.Text.system(18, weight: .light))
-                .foregroundStyle(.white.opacity(0.35))
+                .foregroundStyle(NotchTokens.Foreground.unavailable)
             Text(L("drawer.search.empty"))
                 .font(NotchTokens.Text.system(11))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(NotchTokens.Foreground.disabled)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -367,7 +367,7 @@ private struct ClipboardRowView: View {
                 }
                 Text(entry.text)
                     .font(NotchTokens.Text.system(11.5))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(NotchTokens.Foreground.body)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -390,11 +390,11 @@ private struct ClipboardRowView: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
-                .fill(.white.opacity(justCopied ? 0.055 : 0.03))
+                .fill(justCopied ? NotchTokens.Surface.fillHighlighted : NotchTokens.Surface.fill)
         )
         .overlay {
             RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
-                .strokeBorder(.white.opacity(0.09), lineWidth: 1)
+                .strokeBorder(NotchTokens.Hairline.drawerEdge, lineWidth: 1)
         }
         .animation(NotchTokens.Motion.hover, value: justCopied)
         // 主体点击 = 写回、长按 = 全文预览：单手势管线（blockPopoverTrigger，
@@ -432,12 +432,12 @@ private struct ClipboardRowView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(NotchTokens.Text.system(10, weight: .medium))
-                .foregroundStyle(.white.opacity(isActive ? 0.92 : 0.5))
+                .foregroundStyle(isActive ? NotchTokens.Foreground.body : NotchTokens.Foreground.disabled)
                 .frame(width: 22, height: 20)
                 .background {
                     if isActive {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(.white.opacity(0.08))
+                        RoundedRectangle(cornerRadius: NotchTokens.Radius.thumbnail, style: .continuous)
+                            .fill(NotchTokens.Surface.track)
                     }
                 }
                 .contentShape(Rectangle())
@@ -459,7 +459,7 @@ private struct ClipboardEntryPreviewCard: View {
         ScrollView(.vertical) {
             Text(text)
                 .font(NotchTokens.Text.system(11.5))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(NotchTokens.Foreground.body)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
@@ -480,7 +480,7 @@ struct ClipboardTrayView: View {
         return ZStack {
             Image(systemName: store.isPaused ? "clipboard.fill" : "clipboard")
                 .font(NotchTokens.Text.system(13, weight: .medium))
-                .foregroundStyle(.white.opacity(store.isPaused ? 0.4 : 0.72))
+                .foregroundStyle(store.isPaused ? NotchTokens.Foreground.disabled : NotchTokens.Foreground.secondary)
         }
         .frame(width: slot.width, height: slot.height)
         .contentShape(Rectangle())
@@ -498,7 +498,7 @@ struct ClipboardInstanceSettingsView: View {
         HStack {
             Text(L("settings.displayCount"))
                 .font(NotchTokens.Text.system(11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(NotchTokens.Foreground.secondary)
             Spacer()
             Picker(L("settings.displayCount"), selection: displayCountBinding) {
                 ForEach(ClipboardHistoryLogic.allowedDisplayCounts, id: \.self) { count in

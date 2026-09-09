@@ -57,13 +57,13 @@ struct OpenCodeUsageSettingsView: View {
                 if store.isConfigured {
                     Text(LF("settings.statusConfigured", store.maskedCookie.tail, workspaceSummary))
                         .font(NotchTokens.Text.system(11))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(NotchTokens.Foreground.muted)
                 }
             }
 
             Text(L("settings.explanation"))
                 .font(NotchTokens.Text.system(11))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(NotchTokens.Foreground.muted)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let message {
