@@ -13,13 +13,11 @@
 - 非平凡架构/接口/行为变更:动手前先按[模板](docs/templates/agent-note.md)在 `docs/agent-notes/proposed/` 写决策记录;实现落地即 `git mv` 至 `implemented/`;滞留 `proposed/` 超 7 天门禁红(移入 `archive/` 或 `rejected/` 亦可解)。
 - 同一"为什么"信息全局只写一处:领域红线/历史事故 → `docs/agents/` 子文档;代码注释只写从代码看不出的局部原因,不得跨文件复制;注释块 >6 行考虑外置 `docs/`(评审指引,非机器门禁)。
 
-## 改前必读
+## 改前必读与索引
 
-`docs/agents/` 按领域拆分红线、机制、历史事故与回归测试,**改到某领域前先读对应子文档**--分域索引与领域速查见 [开发者工作流与门禁](docs/开发者工作流与门禁.md);宿主通用约定(代码地图 / 命令 / 通用红线)见 [宿主开发约定](docs/agents/宿主开发约定.md)。
+`docs/agents/` 按领域拆分红线、机制、历史事故与回归测试,**改到某领域前先读对应子文档**;宿主通用约定(代码地图 / 构建源真相 / 通用红线)见 [宿主开发约定](docs/agents/宿主开发约定.md);分域索引、`docs/` 目录地图与文档门禁明细见 [开发者工作流与门禁](docs/开发者工作流与门禁.md)。
 
 ## 常用命令
-
-构建源真相是 Project.swift,插件按 Plugin.plist 自动发现,工程与产物皆再生制品。
 
 ```bash
 ./scripts/build.sh dev|run [debug|release]  # 构建 + 组装插件 bundle / 启动
@@ -27,13 +25,6 @@
 ./scripts/build.sh package [-i|-g]          # 发布 .app + zip + dmg(可选安装 / GitHub Release)
 ./scripts/build.sh clean                    # 清理 .build 与 dist.noindex
 ```
-
-## 仓库布局
-
-- `docs/TERMINOLOGY.md` - 术语纪律(banned→preferred,机器校验)
-- `docs/agent-notes/{proposed,implemented,rejected,archive}/` - 设计决策与归档;`docs/postmortem/` 事故复盘;`docs/templates/` 文档模板
-- `scripts/run-doc-checks.sh` - 一键文档门禁(链接/格式等)
-- `doc-budgets.manifest.json` - 字数预算 + 代码块语言白名单;超限冻结,改需 PR
 
 ## 字数预算
 
