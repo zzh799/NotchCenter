@@ -39,7 +39,8 @@ struct DrawerActions {
     let onAddPage: (DrawerPageSide) -> Void
     let onMovePage: (Int, Int) -> Void
     let onShowPageSettings: (Int, CGRect) -> Void
-    let onRemovePage: (Int) -> Void
+    /// (page, 胶囊全局 frame)：非空页删除需二次确认，确认浮窗锚定在该 frame。
+    let onRemovePage: (Int, CGRect) -> Void
     /// 左右滑动切页的**拖拽**通路（网格背景手势）：只上报原始平移量，
     /// 方向、位移与落位判据由控制器按 `DrawerPageSwipe` 决定。松手回调
     /// 第二个参数是 `DragGesture` 的预测终点（速度判据折算了它）。

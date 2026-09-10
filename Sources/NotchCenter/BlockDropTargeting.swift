@@ -272,7 +272,7 @@ extension NotchPanelController {
     }
 
     /// 抽屉块落位：按 `placement` 分派；落到别的页时切过去。
-    /// 页数已达上限且没有空页时**直接失败并提示**，不自动清理任何页。
+    /// 页数已达上限且当前页非空时**直接失败并提示**，不自动清理任何页。
     private func addDrawerBlock(pluginID: String, blockID: String) {
         switch layoutEngine.addDrawerBlock(
             pluginID: pluginID,
@@ -288,7 +288,11 @@ extension NotchPanelController {
         }
     }
 
-    /// 抽屉页已满（上限 9）且没有空页可占用时的提示。
+    /// 抽屉页已满（上限 9）且当前页非空时的提示。
+    ///
+    /// 这条路径由**设置窗口**的组件目录触发，而设置窗口打开期间抽屉常驻
+    /// （`DrawerStayConditions.isSettingsPresented`），因此模态提示不会遇到
+    /// 「抽屉先收起、弹窗悬空」的问题，沿用 `NSAlert` 即可（与删页确认不同）。
     private func warnDrawerPagesFull() {
         let alert = NSAlert()
         alert.messageText = L("panel.page.add.fullTitle")

@@ -122,7 +122,8 @@ struct DrawerPageCapsule: View {
     let onAdd: (DrawerPageSide) -> Void
     let onMove: (Int, Int) -> Void
     let onShowSettings: (Int, CGRect) -> Void
-    let onRemove: (Int) -> Void
+    /// 删除请求（带胶囊全局 frame：非空页需二次确认，确认浮窗锚定在该 frame）。
+    let onRemove: (Int, CGRect) -> Void
     /// 胶囊拖动回调（聚合至滑动让路）。
     var onDraggingChanged: (Bool) -> Void = { _ in }
 
@@ -222,7 +223,7 @@ struct DrawerPageCapsule: View {
             },
             onDraggingChanged: { isDragging in onDraggingChanged(isDragging) },
             onShowSettings: { onShowSettings(page, $0) },
-            onRemove: { onRemove(page) }
+            onRemove: { onRemove(page, $0) }
         )
     }
 
@@ -322,7 +323,8 @@ private struct DrawerPagePill: View {
     var onDraggingChanged: (Bool) -> Void = { _ in }
     /// 设置角标触发：上报胶囊全局 frame 作为浮窗锚点。
     let onShowSettings: (CGRect) -> Void
-    let onRemove: () -> Void
+    /// 删除请求（带胶囊全局 frame：确认浮窗锚定于此）。
+    let onRemove: (CGRect) -> Void
 
     @State private var isHovering = false
     @State private var dragOffset: CGFloat = 0
@@ -437,7 +439,7 @@ private struct DrawerPagePill: View {
                         systemImage: "xmark.circle.fill",
                         helpText: L("panel.help.page.delete"),
                         side: DrawerPagePillLayout.badgeSide,
-                        action: onRemove
+                        action: { onRemove(globalFrame) }
                     )
                 }
             }

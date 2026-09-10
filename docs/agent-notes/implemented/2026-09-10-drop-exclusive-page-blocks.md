@@ -77,10 +77,11 @@ superseded-by: <无>
 - **行为变更（存量）**：原本是整页块的大组件重新可拖动 / 缩放 / 重排 / 跨页搬移；`drawerElements` 不再有整页特例；插件停用时整页块从"宿主占位视图"退回"静默跳过"。
 - **API**：`currentVersion` 1.2.0 → 1.3.0；穷举 `BlockKind` 的插件须删 `case .page`；新增 `placement` 有默认值，不声明即零影响。
 - **门禁**：`verify-sizes` 删除 `.page` 分支，恢复"所有 drawer 块强制 probes"；`pomodoro.page` 因此必须补探针声明。
-- **保留意见（记录在案）**：`BlockPlacement.newPageWhenOccupied` 目前只有`pomodoro.page` 一个使用者，且有默认值兜底，本质上仍是为单一场景新增的枚举档位。收益/成本比偏薄；若日后仍无第二个使用者，应考虑收紧回 `Bool` 或直接移除。
-- 落地后本 note 移入 `docs/agent-notes/implemented/`；被替代的`2026-09-10-plugin-page-blocks.md` 原地标注 `superseded-by`。
+- **保留意见（记录在案）**：`BlockPlacement.newPageWhenOccupied` 目前只有 `pomodoro.page` 一个使用者，且有默认值兜底，本质上仍是为单一场景新增的枚举档位。收益/成本比偏薄；若日后仍无第二个使用者，应考虑收紧回 `Bool` 或直接移除。
+- 落地后本 note 移入 `docs/agent-notes/implemented/`；被替代的 `2026-09-10-plugin-page-blocks.md` 原地标注 `superseded-by`。
 
 ## Changelog
 
 - v1.0.0:初稿（撤销 `.page` 独占语义 + 落点偏好改插件声明；Q1–Q6 逐题拍板结论汇总）。
 - v1.0.0 落地：宿主侧删除 `LayoutEnginePages` 整文件、`BlockKind.page`、`PlacedBlock.isPage`、`LayoutIssue.pageBlockSharing` 与整页渲染变体；新增 `BlockPlacement` + `NotchBlock.placement`（默认 `.autoGrid`，零破坏）与 `addDrawerBlockOnNewPageIfOccupied` 落点函数。插件侧 `pomodoro.page` 转 `.drawer` + `.newPageWhenOccupied`，不再自管滚动，补声明探针。`verify-sizes` 恢复对全部官方抽屉块强制探针。全量测试通过，文档门禁全绿；本 note 移入 `implemented/`，并在 `2026-09-10-plugin-page-blocks` 标注 `superseded-by`。
+- v1.0.1:删页确认从 `NSAlert.runModal()` 改为 `BlockPopover` + `InlineConfirmPanel`（模态弹窗抢焦点 + 阻塞主线程，鼠标一离开抽屉它就悬在已收起的抽屉上方点不到也关不掉）；`onRemovePage` 与胶囊 `onRemove` 随之携带锚点全局 frame，新增 `performRemoveDrawerPage` 承担确认后的实际删除。同族的规则沉淀进 `docs/agents/面板与抽屉.md`。

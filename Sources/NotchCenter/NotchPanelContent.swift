@@ -545,8 +545,8 @@ extension NotchPanelController {
             onShowPageSettings: { [weak self] page, anchorFrame in
                 self?.showPageSettings(page: page, anchorFrame: anchorFrame)
             },
-            onRemovePage: { [weak self] page in
-                self?.removeDrawerPage(page)
+            onRemovePage: { [weak self] page, anchorFrame in
+                self?.removeDrawerPage(page, anchorFrame: anchorFrame)
             },
             onSwipeDrag: { [weak self] translation in
                 self?.drawerSwipeDrag(translation: translation)
@@ -1184,15 +1184,53 @@ extension NotchPanelController {
     }
 
     /// 删除页面：连同页内的块一起移除。块里可能装着用户的笔记内容，
-    /// 因此非空页先二次确认（与插件卸载同一套确认样式）。
-    func removeDrawerPage(_ page: Int) {
+    /// 因此非空页先二次确认（与「快捷按钮盒」重动作同一套内联确认浮窗）。
+    ///
+    /// **不用 `NSAlert.runModal()`**：模态弹窗会抢焦点，鼠标一移开宿主就收起
+    /// 抽屉（见 `DrawerStayConditions`），而模态循环又阻塞在主线程上——确认框
+    /// 悬在已收起的抽屉上方，点不到也关不掉。内联确认浮窗是独立
+    /// `nonactivatingPanel`（`BlockPopover`），不吃焦点，抽屉照常存活。
+    func removeDrawerPage(_ page: Int, anchorFrame: CGRect) {
         let pages = layoutEngine.drawerPages
         guard page != LayoutModel.homePage, pages.contains(page) else { return }
         let blocks = layoutEngine.drawerBlocks(onPage: page)
         // 锚定在该页某块上的设置浮窗先收场（与删单个块同一路径）。
         SettingPopover.shared.dismiss()
-        if !blocks.isEmpty, !confirmDeletePage(page, blockCount: blocks.count) { return }
+        guard !blocks.isEmpty else {
+            performRemoveDrawerPage(page, blocks: blocks)
+            return
+        }
+        BlockPopover.shared.present(
+            anchoredTo: anchorFrame,
+            // 比快速区确认浮窗高一档（104）：这里的说明文案更长（含块数与
+            // 页面名），英文两行会顶到按钮行，留出换行余量。
+            cardSize: CGSize(width: 240, height: 124),
+            placement: .below
+        ) {
+            InlineConfirmPanel(
+                title: LF(
+                    "panel.page.delete.confirmTitle",
+                    LayoutModel.pageDisplayName(
+                        in: pages,
+                        page: page,
+                        titles: layoutEngine.drawerPageTitles
+                    )
+                ),
+                message: LF("panel.page.delete.confirmBody", blocks.count),
+                confirmTitle: L("panel.page.delete"),
+                cancelTitle: L("common.cancel"),
+                onConfirm: { [weak self] in
+                    BlockPopover.shared.dismiss()
+                    self?.performRemoveDrawerPage(page, blocks: blocks)
+                },
+                onCancel: { BlockPopover.shared.dismiss() }
+            )
+        }
+    }
 
+    /// 删页的实际执行（确认通过后 / 空页无需确认时）。
+    private func performRemoveDrawerPage(_ page: Int, blocks: [PlacedBlock]) {
+        let pages = layoutEngine.drawerPages
         for block in blocks {
             notifyPlacementRemoved(
                 pluginID: block.pluginID,
@@ -1209,19 +1247,6 @@ extension NotchPanelController {
             uiState.drawerActivePage = fallback
         }
         rebuildContent(animated: true)
-    }
-
-    private func confirmDeletePage(_ page: Int, blockCount: Int) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = LF(
-            "panel.page.delete.confirmTitle",
-            LayoutModel.pageDisplayName(in: layoutEngine.drawerPages, page: page, titles: layoutEngine.drawerPageTitles)
-        )
-        alert.informativeText = LF("panel.page.delete.confirmBody", blockCount)
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: L("panel.page.delete"))
-        alert.addButton(withTitle: L("common.cancel"))
-        return alert.runModal() == .alertFirstButtonReturn
     }
 
     /// 抽屉拖拽 / 缩放与引擎之间的接口（由 `DrawerInteractionState` 驱动）。
