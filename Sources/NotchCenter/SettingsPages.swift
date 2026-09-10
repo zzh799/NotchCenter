@@ -111,8 +111,10 @@ struct ComponentCatalogItem: Identifiable {
     let blockID: String
     let displayName: String
     let symbolName: String?
-    let isCompact: Bool
-    /// 默认跨度（抽屉块）；紧凑块为 1×1。
+    /// 块种类：紧凑 / 抽屉网格 / 整页。整页卡**不可拖拽**（拖拽语义是"落到
+    /// 网格某一格"，整页没有位置），只能单击添加（落点由引擎的独占规则决定）。
+    let kind: BlockKind
+    /// 默认跨度（抽屉块与整页块）；紧凑块为 1×1。
     let span: GridSpan
     let preview: AnyView
     /// 与该块点击同义、可被快捷按钮盒收纳的动作 ID；nil = 纯块卡。
@@ -120,7 +122,12 @@ struct ComponentCatalogItem: Identifiable {
 
     var id: String { pluginID + "." + blockID }
 
-    /// 跟手浮窗的 1:1 像素尺寸：抽屉块按默认跨度的格网尺寸，
+    var isCompact: Bool { kind == .compact }
+
+    /// 是否允许按住拖动起手（整页块不支持拖入落位）。
+    var isDraggable: Bool { !kind.isExclusivePage }
+
+    /// 跟手浮窗的 1:1 像素尺寸：抽屉块与整页块按默认跨度的格网尺寸，
     /// 紧凑块按刘海两侧的槽位尺寸。
     var previewSize: CGSize {
         isCompact
@@ -138,7 +145,7 @@ struct ComponentCatalogItem: Identifiable {
         BlockDragCoordinator.Payload(
             pluginID: pluginID,
             blockID: blockID,
-            kind: isCompact ? .compact : .drawer,
+            kind: kind,
             displayName: displayName,
             symbolName: symbolName,
             span: span,
@@ -213,7 +220,7 @@ enum ComponentCatalogBuilder {
                         blockID: block.id,
                         displayName: block.displayName,
                         symbolName: block.symbolName,
-                        isCompact: block.kind == .compact,
+                        kind: block.kind,
                         span: span,
                         preview: block.makeView(context),
                         quickActionID: ComponentCatalogMerger.actionID(
@@ -221,6 +228,9 @@ enum ComponentCatalogBuilder {
                             in: actions
                         )
                     )
+                    // 整页块混进 drawerItems（不新开分区）：它同样是抽屉区的块，
+                    // 只是添加落点由引擎的独占规则决定、且不可拖入（见
+                    // ComponentCatalogItem.isDraggable）。
                     if block.kind == .compact {
                         compactItems.append(item)
                     } else {
@@ -630,15 +640,18 @@ private struct ComponentCard: View {
         // 会被判定长按失败而整条手势不启动；位移阈值起手没有这个死区，
         // highPriorityGesture 同时压过 ScrollView 对鼠标拖动的竞争。
         // 位移 < 4px 的短按不触发本手势，仍走 onTapGesture 的"单击添加"，
-        // 两者天然互斥。
+        // 两者天然互斥。整页块不参与（拖拽语义是"落到网格某一格"，整页没有
+        // "位置"）：手势传 nil 即完全卸载，只剩单击添加。
         .highPriorityGesture(
-            DragGesture(minimumDistance: 4)
-                .onChanged { _ in
-                    BlockDragCoordinator.shared.beginIfNeeded(item.payload)
-                }
-                .onEnded { _ in
-                    BlockDragCoordinator.shared.commit()
-                }
+            item.isDraggable
+                ? DragGesture(minimumDistance: 4)
+                    .onChanged { _ in
+                        BlockDragCoordinator.shared.beginIfNeeded(item.payload)
+                    }
+                    .onEnded { _ in
+                        BlockDragCoordinator.shared.commit()
+                    }
+                : nil
         )
         // 合一块卡角标：这张卡与某快捷动作同义，除快速区/抽屉外还可拖入
         // 「快捷按钮盒」收纳（原件保留，盒与原件共享同一份状态）。

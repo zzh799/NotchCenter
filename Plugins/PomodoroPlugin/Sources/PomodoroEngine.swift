@@ -3,23 +3,32 @@ import Foundation
 // MARK: - 番茄钟引擎（纯逻辑，时间由调用方注入，随机源可替换，单元测试友好）
 
 /// 番茄钟阶段：空闲 → 专注 ⇄（随机提示音触发）微休息 → 专注 → 休息 → 专注 …
+///
+/// `awaitingRating` 是"评分闸门"落地成的阶段（Agent Note
+/// 2026-09-10-plugin-page-blocks）：`rest` 结束时若上一次专注还没被评价，
+/// 不自动开下一个专注，而是冻结在这个阶段等用户处理。冻结 ≠ 停止——
+/// 待评分记录仍在，评完 / 删掉 / 超时作废后从这里直接续上。
 enum PomodoroPhase: Equatable {
     case idle
     case focus
     case microBreak
     case rest
+    /// 等待上一次专注的评价（冻结、不计时、进度条恒满）。
+    case awaitingRating
 }
 
-/// 引擎产生的事件（store 据此播放音效 / 记录统计）。
+/// 引擎产生的事件（store 据此播放音效 / 记录明细）。
 enum PomodoroEvent: Equatable {
-    /// 专注开始（会话启动、休息结束、微休息结束回归）。
+    /// 专注开始（会话启动、休息结束、微休息结束回归、评分处理完续上）。
     case focusStarted
-    /// 专注自然完成 → 进入休息（计入今日完成数）。
+    /// 专注自然完成 → 进入休息（**唯一**触发待评分的路径）。
     case focusCompleted
-    /// 手动跳过专注 → 进入休息（播放结束音但不计入完成数）。
+    /// 手动跳过专注 → 进入休息（播放结束音但不计入完成数、不评分）。
     case focusSkipped
     /// 随机提示音触发，进入微休息。
     case microBreakStarted
+    /// 休息结束但上一次专注仍未评价 → 冻结在 `.awaitingRating`。
+    case awaitingRatingEntered
 }
 
 /// 引擎运行参数（由 store 从用户设置换算）。
@@ -54,6 +63,12 @@ struct PomodoroEngine {
     /// 随机提醒间隔生成器：返回距调度时刻的秒数。生产注入随机实现，
     /// 测试注入固定值；结果被钳制 ≥ 1s 防止退化配置形成提醒风暴。
     var makeReminderInterval: () -> TimeInterval = { 0 }
+
+    /// 待评分闸门：为真时 `rest` 结束不自动开下一个专注，改为进入
+    /// `.awaitingRating`。由 store 按"是否存在待评分会话"注入——引擎不认识
+    /// 持久化数据，闸门是它与 store 之间唯一的耦合面（与 `makeReminderInterval`
+    /// 同一种注入风格）。
+    var isRatingPending: () -> Bool = { false }
 
     // MARK: 查询
 
@@ -100,16 +115,26 @@ struct PomodoroEngine {
             return resumeFocus(now: now, remaining: remaining, event: .focusStarted)
         case .rest:
             guard let endsAt = phaseEndsAt, now >= endsAt else { return nil }
+            // 评分闸门：还有未评价的专注就冻结在 `.awaitingRating` 等处理，
+            // 不自动开下一个专注（Q14-D「不评就不许开始下一个」）。
+            if isRatingPending() {
+                return enterAwaitingRating()
+            }
             return beginFocus(now: now, config: config, event: .focusStarted)
+        case .awaitingRating:
+            // 冻结态：不计时、不自动推进。唯一的出口是 store 处理完待评分后
+            // 调用 `resolveRating`（或 `stop()` 回空闲）。
+            return nil
         }
     }
 
     /// 跳过当前阶段：专注→休息、微休息→回归专注、休息→专注。暂停中也允许。
+    /// **`.awaitingRating` 禁止跳过**——那正是"不可跳过"的落地。
     mutating func skip(now: Date, config: PomodoroEngineConfig) -> PomodoroEvent? {
         pausedRemaining = nil
         pausedReminderRemaining = nil
         switch phase {
-        case .idle:
+        case .idle, .awaitingRating:
             return nil
         case .focus:
             return beginRest(now: now, config: config, event: .focusSkipped)
@@ -119,6 +144,13 @@ struct PomodoroEngine {
         case .rest:
             return beginFocus(now: now, config: config, event: .focusStarted)
         }
+    }
+
+    /// 待评分处理完毕（评分 / 删除 / 超时作废）后从 `.awaitingRating` 续上：
+    /// 直接开下一个专注。不在冻结态时是空操作（用户可能已经手动停止）。
+    mutating func resolveRating(now: Date, config: PomodoroEngineConfig) -> PomodoroEvent? {
+        guard phase == .awaitingRating else { return nil }
+        return beginFocus(now: now, config: config, event: .focusStarted)
     }
 
     /// 暂停/恢复当前阶段（专注阶段连同随机提示音一起冻结）。
@@ -192,6 +224,21 @@ struct PomodoroEngine {
         pausedRemaining = nil
         pausedReminderRemaining = nil
         return event
+    }
+
+    /// 进入评分闸门冻结态：不计时（`phaseEndsAt = nil`）、进度条恒满
+    /// （`phaseTotal = 1` 且剩余为 0）、无待触发提醒。引擎参数全部清空，
+    /// 退出只可能由 `resolveRating`（续上下一个专注）或 `stop()` 发生。
+    private mutating func enterAwaitingRating() -> PomodoroEvent? {
+        phase = .awaitingRating
+        phaseTotal = 1
+        phaseEndsAt = nil
+        nextReminderAt = nil
+        frozenFocusRemaining = nil
+        frozenFocusTotal = nil
+        pausedRemaining = nil
+        pausedReminderRemaining = nil
+        return .awaitingRatingEntered
     }
 
     private mutating func beginMicroBreak(now: Date, config: PomodoroEngineConfig) -> PomodoroEvent? {

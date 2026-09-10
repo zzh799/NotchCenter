@@ -11,6 +11,8 @@ extension LayoutEngine {
         model.maxColumns = clamped
         // 容量缩小后先修越界块再落盘：越界状态（右侧块被面板裁掉）不进 layout.json。
         repairBlocksBeyondCapacity()
+        // 整页块的列跨度同样吃容量：容量变小后要重新夹进新容量，否则整页会溢出。
+        normalizeExclusivePageGeometry()
         saveToDisk()
     }
 
@@ -41,6 +43,8 @@ extension LayoutEngine {
         )
         guard model.minColumns != clamped else { return }
         model.minColumns = clamped
+        // 最小列数是整页块跨度的**下限**（整页恒铺满内容区），改完要跟着重夹。
+        normalizeExclusivePageGeometry()
         saveToDisk()
     }
 
@@ -81,10 +85,13 @@ extension LayoutEngine {
     }
 
     /// 同步启用插件列表（文档 §5.4：enabledPluginIDs 存于 layout.json）。
+    /// 启用集变化会改变"哪些块能解析"——整页块标记的回写与非法共存的拆解
+    /// 都要跟着重跑一次（插件停用 → 只能靠持久化标记守住独占不变量）。
     func syncEnabledPluginIDs(_ ids: Set<String>) {
         let sorted = ids.sorted()
         guard Set(model.enabledPluginIDs) != ids else { return }
         model.enabledPluginIDs = sorted
+        normalizeExclusivePageState()
         saveToDisk()
     }
 
@@ -326,6 +333,8 @@ extension LayoutEngine {
         guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
             return nil
         }
+        // 整页页拒收任何别的块（独占不变量，与落点判定层无关的引擎侧守卫）。
+        guard !isExclusivePage(page) else { return nil }
         let span = block.sizeBox(cellWidth: cellWidth, cellHeight: cellHeight)?.recommended
             ?? GridSpan.globalMinimum
         let columns = effectiveMaxColumns()
@@ -392,6 +401,8 @@ extension LayoutEngine {
         guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
             return nil
         }
+        // 落点判定层的拦截之外再守一道：整页页收不下任何别的块。
+        guard !isExclusivePage(page) else { return nil }
         let span = block.sizeBox(cellWidth: cellWidth, cellHeight: cellHeight)?.recommended
             ?? GridSpan.globalMinimum
         guard let origin = nearestFreeOrigin(
@@ -508,6 +519,8 @@ extension LayoutEngine {
               model.drawerPages.contains(toPage) else { return nil }
         let block = model.drawerBlocks[index]
         guard block.page != toPage else { return nil }
+        // 整页块不跨页搬移（它的归属由所在页决定），别的块也搬不进整页页。
+        guard !isExclusivePageBlock(block), !isExclusivePage(toPage) else { return nil }
         model.drawerBlocks.remove(at: index)
         // 原页压实：块搬走留下的整行/整列空洞闭合（与 removeDrawerBlock 同款）。
         compactEmptyRows()
@@ -538,7 +551,9 @@ extension LayoutEngine {
     /// 一键重排（编辑模式）：按“从上到下、从左到右”的阅读顺序紧密排布抽屉块。
     /// 以当前布局的阅读顺序为优先级，逐块放到首个不重叠位置（行优先
     /// 扫描），消除移动/缩放留下的空洞；块身份与跨度保持不变，仅调整原点。
+    /// 整页页整体跳过：整页块恒占 (0,0) 满页，不参与网格重排。
     func reorderDrawerBlocks(page: Int = 0) {
+        guard !isExclusivePage(page) else { return }
         let pageBlocks = drawerBlocks(onPage: page)
         guard !pageBlocks.isEmpty else { return }
         let columns = effectiveMaxColumns()
@@ -581,13 +596,15 @@ extension LayoutEngine {
     }
 
     /// 移动抽屉块到目标位置（块只在其所在页内移动）；目标被占用时移动到最近
-    /// 可用位置。无处可放或块不存在返回 false。
+    /// 可用位置。无处可放或块不存在返回 false。整页块不参与页内移动——
+    /// 它恒占满整页、没有"位置"可言（唯一能调的几何是跨度，走缩放路径）。
     @discardableResult
     func moveDrawerBlock(placementID: String, toColumn: Int, toRow: Int) -> Bool {
         guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
             return false
         }
         let block = model.drawerBlocks[index]
+        guard !isExclusivePageBlock(block) else { return false }
         let others = siblings(of: block)
         let occupied = others.map(rectKey)
         let bounds = validColumnRange(others: others, width: block.widthColumns)
@@ -649,6 +666,20 @@ extension LayoutEngine {
                   cellHeight: NotchGridMetrics.cellHeight
               ) else {
             return false
+        }
+
+        // 整页块走独立分支：跨度先夹进 [最小列数, 有效容量]（于是它正好铺满
+        // 内容区），原点恒 (0,0)，不推挤也不压实——它独占一页，没有邻居。
+        if definition.kind.isExclusivePage {
+            let span = normalizedExclusivePageSpan(columns: toColumns, rows: toRows)
+            var resized = block
+            resized.originColumn = 0
+            resized.originRow = 0
+            resized.widthColumns = span.columns
+            resized.heightRows = span.rows
+            model.drawerBlocks[index] = resized
+            saveToDisk()
+            return true
         }
 
         var resized = block

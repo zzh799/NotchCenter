@@ -30,6 +30,8 @@ private enum PomodoroBlockMetrics {
     static let controlSpacing: CGFloat = 12
     /// 空闲态图标徽章直径。
     static let idleBadgeDiameter: CGFloat = 40
+    /// 评分脸直径（抽屉块档；整页用 `PomodoroPageMetrics.moodDiameter`）。
+    static let moodDiameter: CGFloat = 26
 }
 
 /// 开始专注主按钮：白色层级圆角按钮（Kit 基体，带悬停/按压/手型光标）。
@@ -48,7 +50,8 @@ struct PomodoroPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-/// 抽屉块：计时主视图（空闲引导开始；运行中显示阶段、倒计时、进度与控制）。
+/// 抽屉块：计时主视图（空闲引导开始；运行中显示阶段、倒计时、进度与控制；
+/// 有待评分时整块换成评分版式）。
 struct PomodoroDrawerBlockView: View {
     let context: BlockContext
     @ObservedObject private var store = PomodoroStore.shared
@@ -60,7 +63,11 @@ struct PomodoroDrawerBlockView: View {
         let size = context.layoutInfo.frame.size
         BlockCard(hoverEffect: false) { _ in
             Group {
-                if store.display.phase == .idle {
+                // 待评分优先于阶段：整个休息期间都能评（提示在专注完成那刻就
+                // 创建），评分期间**不给**任何计时控制（Agent Note §9）。
+                if let pending = store.display.pendingRating {
+                    ratingContent(pending)
+                } else if store.display.phase == .idle {
                     idleContent
                 } else {
                     runningContent
@@ -69,6 +76,34 @@ struct PomodoroDrawerBlockView: View {
             .frame(width: size.width, height: size.height)
         }
         .accessibilityLabel(L("a11y.pomodoro"))
+    }
+
+    // MARK: 待评分（整块替换）
+
+    /// 复用空闲态同款骨架与内边距、**不新增第五行**——存量 300×120 的放置
+    /// 在评分态下依然合法（决策见 Agent Note 2026-09-10-plugin-page-blocks §9）。
+    private func ratingContent(_ pending: PomodoroPendingRating) -> some View {
+        VStack(spacing: PomodoroBlockMetrics.sectionSpacing) {
+            HStack(spacing: PomodoroBlockMetrics.statusSpacing) {
+                Image(systemName: PomodoroTheme.symbol(for: .awaitingRating))
+                    .font(NotchTokens.Text.system(12, weight: .medium))
+                    .foregroundStyle(PomodoroTheme.activeAccent)
+                Text(L("rating.prompt"))
+                    .font(NotchTokens.Text.system(12, weight: .semibold))
+                    .foregroundStyle(NotchTokens.Foreground.secondary)
+                    .lineLimit(1)
+            }
+            PomodoroRatingBar(
+                pending: pending,
+                diameter: PomodoroBlockMetrics.moodDiameter,
+                showsDetail: false,
+                isDisabled: isPreview,
+                onRate: { store.ratePending($0) },
+                onDiscard: { store.discardPending() }
+            )
+        }
+        .padding(PomodoroBlockMetrics.insets)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: 空闲

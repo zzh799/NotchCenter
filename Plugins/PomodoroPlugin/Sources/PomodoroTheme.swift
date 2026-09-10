@@ -16,7 +16,7 @@ enum PomodoroTheme {
     static func accent(for phase: PomodoroPhase) -> Color {
         switch phase {
         case .idle: .white
-        case .focus, .rest, .microBreak: activeAccent
+        case .focus, .rest, .microBreak, .awaitingRating: activeAccent
         }
     }
 
@@ -25,6 +25,7 @@ enum PomodoroTheme {
         case .focus, .idle: "timer"
         case .rest: "leaf.fill"
         case .microBreak: "eye.fill"
+        case .awaitingRating: "face.smiling"
         }
     }
 
@@ -34,6 +35,7 @@ enum PomodoroTheme {
         case .focus, .idle: return L("phase.focus")
         case .rest: return L("phase.rest")
         case .microBreak: return L("phase.microBreak")
+        case .awaitingRating: return L("phase.awaitingRating")
         }
     }
 }

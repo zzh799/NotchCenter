@@ -110,7 +110,7 @@ final class LayoutEngineTests: XCTestCase {
                 kind: kind,
                 makeView: makeView
             )
-        case .drawer:
+        case .drawer, .page:
             let box = fixtureBox(sizes: sizes, defaultSize: defaultSize)
             registry["\(pluginID)|\(blockID)"] = NotchBlock(
                 id: blockID,
@@ -1475,6 +1475,7 @@ private func layoutIssueKind(_ issue: LayoutEngine.LayoutIssue) -> String {
     case .unknownBlock: return "unknownBlock"
     case .compactBlockKindMismatch: return "compactBlockKindMismatch"
     case .drawerBlockKindMismatch: return "drawerBlockKindMismatch"
+    case .pageBlockSharing: return "pageBlockSharing"
     case .schemaVersionMismatch: return "schemaVersionMismatch"
     }
 }

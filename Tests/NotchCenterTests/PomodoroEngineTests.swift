@@ -177,6 +177,88 @@ final class PomodoroEngineTests: XCTestCase {
         XCTAssertEqual(engine.progress(now: base), 0, accuracy: 0.0001)
     }
 
+    // MARK: 评分闸门（.awaitingRating）
+
+    /// 休息结束且仍有未评价的专注 → 冻结在 `.awaitingRating`，不自动开下一个专注。
+    func testRestCompletionFreezesWhenRatingPending() {
+        var engine = makeEngine(reminderInterval: 10_000)
+        engine.isRatingPending = { true }
+        engine.start(now: base, config: config())
+        XCTAssertEqual(engine.tick(now: base.addingTimeInterval(1500), config: config()), .focusCompleted)
+
+        let event = engine.tick(now: base.addingTimeInterval(1800), config: config())
+        XCTAssertEqual(event, .awaitingRatingEntered)
+        XCTAssertEqual(engine.phase, .awaitingRating)
+        XCTAssertNil(engine.phaseEndsAt)
+        XCTAssertNil(engine.nextReminderAt)
+        // 冻结态进度条恒满（无剩余可走）。
+        XCTAssertEqual(engine.remaining(now: base.addingTimeInterval(10_000)), 0, accuracy: 0.001)
+        XCTAssertEqual(engine.progress(now: base.addingTimeInterval(10_000)), 1, accuracy: 0.0001)
+    }
+
+    /// 冻结态：tick 不推进、skip 被禁（"不可跳过"的落地）、暂停无事可做。
+    func testAwaitingRatingRejectsTickSkipAndPause() {
+        var engine = makeEngine(reminderInterval: 10_000)
+        engine.isRatingPending = { true }
+        engine.start(now: base, config: config())
+        _ = engine.tick(now: base.addingTimeInterval(1500), config: config())
+        _ = engine.tick(now: base.addingTimeInterval(1800), config: config())
+        XCTAssertEqual(engine.phase, .awaitingRating)
+
+        XCTAssertNil(engine.tick(now: base.addingTimeInterval(99_999), config: config()))
+        XCTAssertNil(engine.skip(now: base.addingTimeInterval(99_999), config: config()))
+        XCTAssertEqual(engine.phase, .awaitingRating)
+
+        engine.togglePause(now: base.addingTimeInterval(99_999))
+        XCTAssertNil(engine.phaseEndsAt)
+        XCTAssertNil(engine.pausedRemaining)
+    }
+
+    /// 评分处理完毕 → 从冻结态直接续上下一个专注。
+    func testResolveRatingStartsNextFocus() {
+        var engine = makeEngine(reminderInterval: 180)
+        engine.isRatingPending = { true }
+        engine.start(now: base, config: config())
+        _ = engine.tick(now: base.addingTimeInterval(1500), config: config())
+        _ = engine.tick(now: base.addingTimeInterval(1800), config: config())
+
+        // 闸门已放开（用户评了 / 删了 / 超时作废）后放行。
+        engine.isRatingPending = { false }
+        let resumeAt = base.addingTimeInterval(2000)
+        XCTAssertEqual(engine.resolveRating(now: resumeAt, config: config()), .focusStarted)
+        XCTAssertEqual(engine.phase, .focus)
+        XCTAssertEqual(engine.phaseEndsAt, resumeAt.addingTimeInterval(1500))
+        XCTAssertEqual(engine.nextReminderAt, resumeAt.addingTimeInterval(180))
+
+        // 非冻结态调用是空操作。
+        XCTAssertNil(engine.resolveRating(now: resumeAt, config: config()))
+    }
+
+    func testStopFromAwaitingRatingReturnsToIdle() {
+        var engine = makeEngine(reminderInterval: 10_000)
+        engine.isRatingPending = { true }
+        engine.start(now: base, config: config())
+        _ = engine.tick(now: base.addingTimeInterval(1500), config: config())
+        _ = engine.tick(now: base.addingTimeInterval(1800), config: config())
+
+        engine.stop()
+        XCTAssertEqual(engine.phase, .idle)
+        XCTAssertNil(engine.phaseEndsAt)
+        // 闸门仍在（待评分记录没被处理），但此时 start 由 store 层拒绝。
+        XCTAssertTrue(engine.isRatingPending())
+    }
+
+    func testNoRatingPendingKeepsAutoRestartBehavior() {
+        // 默认闸门恒 false：存量行为（休息结束自动开下一个专注）不受影响。
+        var engine = makeEngine(reminderInterval: 10_000)
+        engine.start(now: base, config: config())
+        _ = engine.tick(now: base.addingTimeInterval(1500), config: config())
+        XCTAssertEqual(
+            engine.tick(now: base.addingTimeInterval(1800), config: config()),
+            .focusStarted
+        )
+    }
+
     // MARK: 倒计时文本
 
     func testCountdownTextFormatting() {

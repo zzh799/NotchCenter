@@ -120,7 +120,7 @@ final class BlockPlacementTests: XCTestCase {
             registry["\(pluginID)|\(blockID)"] = NotchBlock(
                 id: blockID, displayName: blockID, kind: kind, makeView: makeView
             )
-        case .drawer:
+        case .drawer, .page:
             let box = fixtureBox(sizes: sizes, defaultSize: defaultSize)
             registry["\(pluginID)|\(blockID)"] = NotchBlock(
                 id: blockID, displayName: blockID, kind: kind,

@@ -5,17 +5,21 @@ import SwiftUI
 /// 抽屉块容器：稳定身份 + 块视图 + 编辑模式（文档 §5.5）。
 /// - 拖动整块移动：拖动中实时预览（被占用块向下推挤自动重排），松手提交；
 /// - 右下角握把拖动调整尺寸，缩放过程中组件左上角保持不动；
-/// - 编辑模式角标：左上角设置按钮（插件提供设置界面时，经 SettingPopover
-///   弹出）+ 右上角移除按钮 + 右下角缩放握把，均跟随块一起移动；三者只在
-///   指针悬停于该块上时出现（与紧凑区图标、分页胶囊同一交互），压暗层与
-///   边缘描边恒在以标示可编辑态。设置 / 移除 / 缩放握把
-///   共用组件默认圆形按钮样式（Kit `IconCircleBadge`）。
+/// - 左上角设置按钮（插件提供设置界面时，经 SettingPopover 弹出）+ 右上角
+///   移除按钮 + 右下角缩放握把，均跟随块一起移动；
+/// - **设置按钮**只要块有设置界面，指针悬停即出现（不再要求编辑模式，设置是
+///   高频可达入口）；**移除与缩放握把**仍收在"编辑模式 + 悬停"里（布局类操作
+///   归编辑模式，保住"编辑模式 = 可以动布局"这个既有心智）；
+/// - 整页块（`isPage`）不可拖动——它恒占满整页，没有"位置"可言；
+/// - 设置 / 移除 / 缩放握把共用组件默认圆形按钮样式（Kit `IconCircleBadge`）。
 struct DrawerBlockContainer: View {
     let element: DrawerElement
     let isEditing: Bool
     let isDragging: Bool
-    /// 插件是否提供设置界面（编辑模式左上角齿轮按钮的显隐条件）。
+    /// 插件是否提供设置界面（设置齿轮按钮的显隐条件）。
     let hasSettings: Bool
+    /// 是否整页块（独占整页）：不可拖动。
+    let isPage: Bool
     /// 滑动中暂停手势。
     var isSwipeActive: Bool = false
     /// 缩放预览目标（由父视图持有；nil 表示未在缩放）。
@@ -88,7 +92,7 @@ struct DrawerBlockContainer: View {
                 }
             }
             .overlay(alignment: .topLeading) {
-                if showsEditControls && hasSettings {
+                if showsSettingsControl && hasSettings {
                     // 左上角设置按钮：经 SettingPopover 展示插件设置。
                     IconCircleButton(
                         systemImage: "gearshape",
@@ -122,11 +126,14 @@ struct DrawerBlockContainer: View {
             }
             .contentShape(Rectangle())
             .onHover { isHovering = $0 }
+            .animation(.easeOut(duration: 0.12), value: showsSettingsControl)
             .animation(.easeOut(duration: 0.12), value: showsEditControls)
             .offset(compensation)
             .offset(dragOffset)
             .gesture(
-                isEditing && !isResizing && !isSwipeActive
+                // 整页块不可拖动：它恒占满整页、没有"位置"，唯一能调的几何是
+                // 跨度（右下握把）。引擎侧的 moveDrawerBlock 也有同一道守卫。
+                isEditing && !isResizing && !isSwipeActive && !isPage
                     ? DragGesture(minimumDistance: 2)
                         .onChanged { value in
                             dragOffset = value.translation
@@ -158,7 +165,14 @@ struct DrawerBlockContainer: View {
         previewColumns != nil || previewRows != nil
     }
 
-    /// 编辑角标（设置 / 移除 / 缩放握把）的显隐：编辑模式下随指针悬停。
+    /// 设置齿轮的显隐：只要有设置界面，指针悬停（或手势进行中）即出现。
+    /// **不再要求编辑模式**——设置是高频可达入口，藏在编辑模式后面反直觉；
+    /// 布局类操作（移除 / 缩放）仍留在编辑模式，见 `showsEditControls`。
+    private var showsSettingsControl: Bool {
+        hasSettings && (isHovering || isDragging || isResizing)
+    }
+
+    /// 移除与缩放握把的显隐：编辑模式下随指针悬停。
     /// 手势进行中强制保持：拖动时被拖块会落到相邻块之下（ZStack 次序不变、
     /// 不抬升 z），相邻块抢走 hover；缩放时预览尺寸按格吸附、滞后于光标，
     /// 向外拖的那一瞬指针会落在块矩形之外——任一情况都会让角标

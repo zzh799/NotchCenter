@@ -68,6 +68,22 @@ public final class PomodoroPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugi
                     AnyView(PomodoroDrawerBlockView(context: context))
                 }
             ),
+            // 整页形态：独占一个抽屉页（大计时器 + 今日节奏 + 历史复盘）。
+            // 与上面的小控制卡是两种形态，二者可同时放置。
+            // 不声明 probes——整页自管滚动、且独占页内没有"伸到邻居块"这回事
+            // （打包校验对 `.page` 豁免，见 Agent Note 2026-09-10-plugin-page-blocks）。
+            NotchBlock(
+                id: "pomodoro.page",
+                displayName: L("block.page.name"),
+                kind: .page,
+                minSize: BlockPixelSize(width: 300, height: 240),
+                maxSize: BlockPixelSize(width: 900, height: 600),
+                recommendedSize: BlockPixelSize(width: 600, height: 360),
+                symbolName: "timer.circle",
+                makeView: { context in
+                    AnyView(PomodoroPageView(context: context))
+                }
+            ),
         ]
     }
 

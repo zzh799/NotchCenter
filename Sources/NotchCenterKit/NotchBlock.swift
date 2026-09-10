@@ -4,9 +4,26 @@ import SwiftUI
 // MARK: - 块种类与物理尺寸声明（文档 §4.2）
 
 /// 块所属区域：紧凑区（刘海两侧，槽位数随图标动态伸缩）或抽屉区（展开网格）。
+///
+/// `.page` 是抽屉区的**独占变体**：它同样占格跨、同样吃 `sizeBox` 三档换算，
+/// 但宿主保证同一抽屉页内只会有它一个块（见 Agent Note
+/// 2026-09-10-plugin-page-blocks）。用枚举而不是布尔标志，是为了让
+/// "紧凑 / 抽屉网格 / 独占整页"互斥关系由类型承担。
 public enum BlockKind: Sendable, Hashable {
     case compact
     case drawer
+    /// 整页块：独占一个抽屉页，同页不得再有任何其它块。
+    case page
+}
+
+extension BlockKind {
+    /// 是否落在抽屉网格里并吃像素三档 / 格跨换算（`.compact` 之外都吃）。
+    /// 尺寸换算、渲染元素构建等"只关心有没有格跨"的站点用它，别写 `!= .compact`
+    /// ——新种类落地时这里是要重新审的唯一一处。
+    public var occupiesDrawerGrid: Bool { self != .compact }
+
+    /// 是否独占整页（同页禁止共存、不可拖动、不参与重排与跨页搬移）。
+    public var isExclusivePage: Bool { self == .page }
 }
 
 /// 紧凑块点击行为（文档 §4.2 / §6.2）：默认点击展开抽屉，`.custom` 由插件自行处理。
@@ -95,7 +112,7 @@ public struct NotchBlock: Identifiable {
     public let id: String
     /// 用户可见名称。
     public let displayName: String
-    /// 块种类：紧凑块或抽屉块。
+    /// 块种类：紧凑块、抽屉网格块或独占整页块。
     public let kind: BlockKind
     /// 抽屉块的**物理像素**尺寸声明——最小/最大/推荐三档（点）。
     ///
@@ -103,7 +120,7 @@ public struct NotchBlock: Identifiable {
     /// （`sizeBox(metrics:)`）：min 取上整（物理 ≥ 最小）、max 取下整（物理
     /// ≤ 最大）、recommended 就近取整并夹进盒内。用户改格子大小时换算随之
     /// 变化，组件物理尺寸始终尊重声明区间。
-    /// 紧凑块固定 44×44，三档恒为 nil。
+    /// 紧凑块固定 44×44，三档恒为 nil；`.drawer` 与 `.page` 都必须声明。
     public let minSize: BlockPixelSize?
     public let maxSize: BlockPixelSize?
     public let recommendedSize: BlockPixelSize?
@@ -120,17 +137,20 @@ public struct NotchBlock: Identifiable {
     /// 回退插件级 `NotchCenterPlugin.settingsView`（所有实例共享一份内容）。
     public let instanceSettingsView: (@MainActor (BlockContext) -> AnyView)?
 
-    /// 打包期自检探针（可选，仅抽屉块有意义）：给定布局，返回关键 UI 区的
+    /// 打包期自检探针（可选，仅 `.drawer` 有意义）：给定布局，返回关键 UI 区的
     /// `BlockProbe` 矩形（见 `BlockProbe` 的声明语义）。打包校验（`verify-sizes`）
     /// 以 `minSize` 作内容盒对探针做几何校验，拦截"最小尺寸下会互遮/溢出"的布局。
     /// 官方 drawer 块必须声明（门禁强制）；compact 与未声明的第三方块跳过校验。
+    /// **`.page` 豁免**：探针的"越界 = 会伸到邻居块"论证以"同页还有别的块"为前提，
+    /// 整页独占没有这个前提；且整页自管滚动、`minSize` 只是拖拽下限而非运行时
+    /// 保证，几何比对会给出假阳性。整页块声明了照常校验，但不强制。
     /// 注意：探针推导**只能依赖 `BlockLayoutInfo.frame`（像素）**，不得依赖
     /// `size/widthColumns/heightRows`（校验时网格上下文不存在，恒为 nil）。
     public let probes: (@MainActor (BlockLayoutInfo) -> [BlockProbe])?
 
     // MARK: 便捷访问
 
-    /// 抽屉块的物理像素三档；紧凑块恒 nil。
+    /// 抽屉区块的物理像素三档；紧凑块恒 nil。`.drawer` 与 `.page` 共用。
     public var pixelBox: (min: BlockPixelSize, max: BlockPixelSize, recommended: BlockPixelSize)? {
         guard let minSize, let maxSize, let recommendedSize else { return nil }
         return (minSize, maxSize, recommendedSize)
@@ -245,6 +265,9 @@ public struct NotchBlock: Identifiable {
 
     /// 抽屉块构造：声明 最小/最大/推荐 三档**物理像素**尺寸。
     ///
+    /// `.drawer` 与 `.page` 共用本构造（整页块的像素三档语义与网格块一致，
+    /// 只是它的列跨度会被宿主夹到 `[最小列数, 有效容量]` 之间以铺满内容区）。
+    ///
     /// 声明必须满足：三档齐全、逐轴 `min ≤ recommended ≤ max`、min 不小于
     /// 全局下限 `globalMinimumPixel`（75×60）。违反时 `validationError` 非空，
     /// 宿主拒绝该块（运行期与打包期一致拦截）。
@@ -276,8 +299,9 @@ public struct NotchBlock: Identifiable {
 
     /// 校验块声明是否满足架构文档 §4.2 的规则。
     /// - 紧凑块固定 44×44，不得声明抽屉三档；
-    /// - 抽屉块必须三档齐全，且逐轴 `min ≤ recommended ≤ max`、
-    ///   min 不小于全局像素下限 `globalMinimumPixel`（75×60）。
+    /// - `.drawer` / `.page` 必须三档齐全，且逐轴 `min ≤ recommended ≤ max`、
+    ///   min 不小于全局像素下限 `globalMinimumPixel`（75×60）；
+    /// - `.page` 不得声明 `interaction`（那是紧凑块专属语义，整页没有点击行为）。
     public var validationError: String? {
         switch kind {
         case .compact:
@@ -286,21 +310,32 @@ public struct NotchBlock: Identifiable {
             }
             return nil
         case .drawer:
-            guard let minSize, let maxSize, let recommendedSize else {
-                return "drawer block \(id) must declare minSize/maxSize/recommendedSize"
-            }
-            let floor = Self.globalMinimumPixel
-            if minSize.width < floor.width || minSize.height < floor.height {
-                return "drawer block \(id) minSize must be at least \(Int(floor.width))×\(Int(floor.height)) pt (global minimum)"
-            }
-            if minSize.width > maxSize.width || minSize.height > maxSize.height {
-                return "drawer block \(id) minSize must not exceed maxSize"
-            }
-            if !recommendedSize.isWithin(min: minSize, max: maxSize) {
-                return "drawer block \(id) recommendedSize must lie within [minSize...maxSize]"
+            return pixelBoxValidationError(label: "drawer")
+        case .page:
+            if let error = pixelBoxValidationError(label: "page") { return error }
+            if interaction != .expandDrawer {
+                return "page block \(id) must not declare interaction (compact-only)"
             }
             return nil
         }
+    }
+
+    /// 像素三档的逐轴校验（`.drawer` 与 `.page` 共用，`label` 只影响报错措辞）。
+    private func pixelBoxValidationError(label: String) -> String? {
+        guard let minSize, let maxSize, let recommendedSize else {
+            return "\(label) block \(id) must declare minSize/maxSize/recommendedSize"
+        }
+        let floor = Self.globalMinimumPixel
+        if minSize.width < floor.width || minSize.height < floor.height {
+            return "\(label) block \(id) minSize must be at least \(Int(floor.width))×\(Int(floor.height)) pt (global minimum)"
+        }
+        if minSize.width > maxSize.width || minSize.height > maxSize.height {
+            return "\(label) block \(id) minSize must not exceed maxSize"
+        }
+        if !recommendedSize.isWithin(min: minSize, max: maxSize) {
+            return "\(label) block \(id) recommendedSize must lie within [minSize...maxSize]"
+        }
+        return nil
     }
 }
 

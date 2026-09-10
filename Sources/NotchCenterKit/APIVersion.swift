@@ -110,10 +110,13 @@ public struct APIVersionRange: Sendable, CustomStringConvertible, Equatable {
 }
 
 /// 当前核心 API 版本（文档 §9.1：「核心当前 API 版本为 NotchCenterKit 中定义的 currentVersion」）。
+///
+/// **本枚举是版本号的唯一真源**：`docs/api-changelog/` 的条目按 `currentVersion`
+/// 标注版本，不再各自写口号式大版本（2026-09-10 起；此前 09-07 两条误标 v2.0.0）。
 public enum NotchCenterKitAPI {
-    /// v1.1.0：`HostController` 移除活动岛（showActivityIsland / removeActivityIsland /
-    /// ActivityIslandContent），新增紧凑带活动摘要通道（showActivitySummary /
-    /// removeActivitySummary / ActivitySummary）。属破坏性变更，随插件迁移同版本落地；
-    /// 明细见 docs/api-changelog/（Agent Note 2026-09-03-compact-area-activity-summary）。
-    public static let currentVersion = SemanticVersion(major: 1, minor: 1, patch: 0)
+    /// v1.2.0：`BlockKind` 新增 `.page`（独占整页的抽屉块）。纯新增，但枚举新增
+    /// case 对"穷举 `switch BlockKind`"的插件是源码级破坏——只做 `== .drawer`
+    /// 比较的插件零影响。明细见 docs/api-changelog/NotchBlock.md
+    /// （Agent Note 2026-09-10-plugin-page-blocks）。
+    public static let currentVersion = SemanticVersion(major: 1, minor: 2, patch: 0)
 }

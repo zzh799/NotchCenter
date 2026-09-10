@@ -135,3 +135,9 @@
 /* 快捷按钮统一（2026-09-05） */
 "quick.confirm.run" = "执行";
 "quick.confirm.body" = "此操作会立即执行。";
+
+/* 整页块（2026-09-10） */
+"panel.page.add.fullTitle" = "抽屉页已满";
+"panel.page.add.fullBody" = "抽屉页数已达上限 %d，且没有空页可占用。请先删除一个页面，或清空某一页后再添加整页组件。";
+"panel.page.unavailable.title" = "%@ 已停用";
+"panel.page.unavailable.body" = "在「插件」设置中重新启用它，即可继续使用这个页面。";

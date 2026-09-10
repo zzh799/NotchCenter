@@ -20,6 +20,8 @@ final class LayoutEngine: ObservableObject {
         case unknownBlock(pluginID: String, blockID: String)
         case compactBlockKindMismatch(placementID: String)
         case drawerBlockKindMismatch(placementID: String)
+        /// 整页块与别的块共存于同一页（独占不变量被破坏）。
+        case pageBlockSharing(placementID: String)
     }
 
     /// 布局模型真源。setter 为模块内可见（原为 `private(set)`，拆分到独立
@@ -72,6 +74,9 @@ final class LayoutEngine: ObservableObject {
             )
             model = loaded
             didLoadFromDisk = true
+            // 整页块的标记回写、几何归一与非法共存拆解：必须在 window/内容
+            // 首次构建前收敛，否则首帧就会带着"整页 + 同页邻居"的非法状态上屏。
+            normalizeExclusivePageState()
         } else {
             model = LayoutModel()
             didLoadFromDisk = false

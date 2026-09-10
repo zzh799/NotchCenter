@@ -21,6 +21,8 @@ extension LayoutEngine {
         guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
             return [:]
         }
+        // 整页块不可拖动：没有预览（视图层的手势也已被容器关掉，这里是引擎兜底）。
+        guard !isExclusivePageBlock(model.drawerBlocks[index]) else { return [:] }
         var changed = model.drawerBlocks[index]
         let siblings = siblings(of: changed)
         let bounds = validColumnRange(others: siblings, width: changed.widthColumns)
@@ -104,6 +106,16 @@ extension LayoutEngine {
                   cellHeight: NotchGridMetrics.cellHeight
               ) else {
             return [:]
+        }
+        // 整页块：跨度先夹进 [最小列数, 有效容量]，原点恒 (0,0)，无邻居可推挤
+        // ——预览与提交（`resizeDrawerBlock` 的整页分支）必须是同一套数字。
+        if definition.kind.isExclusivePage {
+            let span = normalizedExclusivePageSpan(columns: toColumns, rows: toRows)
+            changed.widthColumns = span.columns
+            changed.heightRows = span.rows
+            changed.originColumn = 0
+            changed.originRow = 0
+            return [changed.placementID: GridOrigin(column: 0, row: 0)]
         }
         let bounds = validColumnRange(others: siblings(of: changed), width: toColumns)
         changed.widthColumns = toColumns

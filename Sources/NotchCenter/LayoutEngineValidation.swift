@@ -31,11 +31,16 @@ extension LayoutEngine {
             switch blockResolver(block.pluginID, block.blockID)?.kind {
             case .compact:
                 issues.append(.drawerBlockKindMismatch(placementID: block.placementID))
-            case .drawer, .none:
+            case .drawer, .page, .none:
                 break
             }
             if blockResolver(block.pluginID, block.blockID) == nil {
                 issues.append(.unknownBlock(pluginID: block.pluginID, blockID: block.blockID))
+            }
+            // 独占不变量：整页块所在页不得再有别的块。加载路径会把这种非法共存
+            // 收敛掉（整页块自己搬到新页），这里的报错用于捕捉绕过写路径的手改数据。
+            if isExclusivePageBlock(block), drawerBlocks(onPage: block.page).count > 1 {
+                issues.append(.pageBlockSharing(placementID: block.placementID))
             }
             // 尺寸盒校验自三档模型起移出 validate()：存量布局中"显示跨度落在
             // 插件声明盒外"是插件更新后的合法窗口期（照常显示、下次拖拽被钳进
@@ -45,7 +50,8 @@ extension LayoutEngine {
 
         for slot in model.compactSlots {
             guard let slot else { continue }
-            if blockResolver(slot.pluginID, slot.blockID)?.kind == .drawer {
+            // 占抽屉网格的种类（.drawer / .page）都不该出现在紧凑槽位里。
+            if blockResolver(slot.pluginID, slot.blockID)?.kind.occupiesDrawerGrid == true {
                 issues.append(.compactBlockKindMismatch(placementID: slot.placementID))
             }
             if blockResolver(slot.pluginID, slot.blockID) == nil {

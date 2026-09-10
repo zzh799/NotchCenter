@@ -135,3 +135,9 @@
 /* 快捷按钮统一（2026-09-05） */
 "quick.confirm.run" = "Run";
 "quick.confirm.body" = "This will run immediately.";
+
+/* Full-page blocks (2026-09-10) */
+"panel.page.add.fullTitle" = "Drawer Pages Full";
+"panel.page.add.fullBody" = "The drawer already has the maximum of %d pages and no page is free. Delete a page, or empty one, before adding a full-page component.";
+"panel.page.unavailable.title" = "%@ is disabled";
+"panel.page.unavailable.body" = "Re-enable it in Settings → Plugins to use this page again.";

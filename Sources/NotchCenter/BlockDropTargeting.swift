@@ -257,13 +257,21 @@ extension NotchPanelController {
     }
 
     /// 「组件」页卡片上的 + 按钮：不拖拽时的快捷添加路径——紧凑块追加到
-    /// 快速区末尾，抽屉块自动放置到首个空位（与编辑模式目录条同一语义）。
+    /// 快速区末尾，抽屉网格块自动放置到首个空位（与编辑模式目录条同一语义），
+    /// **整页块走独占落点规则**（空页就地占用，否则新开一页；见
+    /// `LayoutEngine.addPageBlock`）。
+    ///
+    /// 整页块不支持拖入落位：拖拽的语义是"落到网格的某一格"，而整页块没有
+    /// "位置"（恒占满整页），所以只有这条点击路径，拖拽路径被引擎守卫拒收。
     func addBlock(pluginID: String, blockID: String) {
         guard let block = pluginManager.block(pluginID: pluginID, blockID: blockID) else { return }
-        if block.kind == .compact {
+        switch block.kind {
+        case .compact:
             _ = layoutEngine.addCompactBlock(pluginID: pluginID, blockID: blockID)
             refreshCompactGeometry()
-        } else {
+        case .page:
+            addExclusivePageBlock(pluginID: pluginID, blockID: blockID)
+        case .drawer:
             _ = layoutEngine.autoPlaceDrawerBlock(
                 pluginID: pluginID,
                 blockID: blockID,
@@ -271,6 +279,36 @@ extension NotchPanelController {
             )
         }
         refreshAfterEdit()
+    }
+
+    /// 整页块落位：按"空页就地占用，否则新开一页"落到某页并切过去。
+    /// 页数已达上限且没有空页时**直接失败并提示**，不自动清理任何页。
+    private func addExclusivePageBlock(pluginID: String, blockID: String) {
+        switch layoutEngine.addPageBlock(
+            pluginID: pluginID,
+            blockID: blockID,
+            preferredPage: uiState.drawerActivePage
+        ) {
+        case let .placed(_, page):
+            uiState.drawerActivePage = page
+        case .noPageCapacity:
+            warnDrawerPagesFull()
+        case .unavailable:
+            break
+        }
+    }
+
+    /// 抽屉页已满（上限 9）且没有空页可占用时的提示。
+    private func warnDrawerPagesFull() {
+        let alert = NSAlert()
+        alert.messageText = L("panel.page.add.fullTitle")
+        alert.informativeText = LF(
+            "panel.page.add.fullBody",
+            LayoutModel.maxDrawerPageCount
+        )
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L("common.ok"))
+        alert.runModal()
     }
 
     /// 「组件」页快捷按钮卡的快捷添加路径：追加一个快捷动作槽位到快速区

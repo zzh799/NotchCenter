@@ -27,9 +27,9 @@ import XCTest
 /// 第三方插件不在本仓、无探针声明即跳过（不在此门禁范围）。
 @MainActor
 final class BlockMinSizeVerificationTests: XCTestCase {
-    /// 全部官方 drawer 块（插件模块已逐一 @testable import；CaffeinatePlugin
+    /// 全部官方块（插件模块已逐一 @testable import；CaffeinatePlugin
     /// 只有紧凑块，无需探针故不列入）。
-    private static let officialDrawerBlocks: [(plugin: String, block: NotchBlock)] = {
+    private static let officialBlocks: [(plugin: String, block: NotchBlock)] = {
         [
             ("CalibrePlugin", CalibrePlugin.blocks),
             ("ClipboardHistoryPlugin", ClipboardHistoryPlugin.blocks),
@@ -44,13 +44,20 @@ final class BlockMinSizeVerificationTests: XCTestCase {
             ("SystemMonitorPlugin", SystemMonitorPlugin.blocks),
         ]
         .flatMap { plugin, blocks in blocks.map { (plugin, $0) } }
-        .filter { $0.block.kind == .drawer }
     }()
+
+    /// 受"必须声明探针"约束的官方块：抽屉网格块。
+    private static let officialDrawerBlocks = officialBlocks.filter { $0.block.kind == .drawer }
+
+    /// 整页块：**豁免**探针声明，但声明合法性与（声明了的话）几何仍受校验。
+    /// 豁免理由见 `NotchBlock.probes` 文档与 Agent Note
+    /// 2026-09-10-plugin-page-blocks（遮挡论证的前提"同页还有别的块"不成立）。
+    private static let officialPageBlocks = officialBlocks.filter { $0.block.kind == .page }
 
     func testAllOfficialDrawerBlocksPassMinSizeVerification() {
         var failures: [String] = []
         for (plugin, block) in Self.officialDrawerBlocks {
-            failures.append(contentsOf: verify(plugin: plugin, block: block))
+            failures.append(contentsOf: verify(plugin: plugin, block: block, requiresProbes: true))
         }
         XCTAssertTrue(
             failures.isEmpty,
@@ -58,8 +65,22 @@ final class BlockMinSizeVerificationTests: XCTestCase {
         )
     }
 
-    /// 校验单个 drawer 块，返回违规描述列表（空 = 通过）。
-    private func verify(plugin: String, block: NotchBlock) -> [String] {
+    /// 整页块不强制探针，但**声明仍须合法**（三档齐全、逐轴 min≤recommended≤max、
+    /// min ≥ 75×60、不声明 compact 专属的 interaction）；声明了探针的照常跑几何校验。
+    func testAllOfficialPageBlocksAreDeclaredLegally() {
+        var failures: [String] = []
+        for (plugin, block) in Self.officialPageBlocks {
+            failures.append(contentsOf: verify(plugin: plugin, block: block, requiresProbes: false))
+        }
+        XCTAssertTrue(
+            failures.isEmpty,
+            "整页块校验失败（共 \(failures.count) 处）：\n" + failures.joined(separator: "\n")
+        )
+    }
+
+    /// 校验单个块，返回违规描述列表（空 = 通过）。
+    /// - Parameter requiresProbes: 官方抽屉块必须声明探针；整页块传 false。
+    private func verify(plugin: String, block: NotchBlock, requiresProbes: Bool) -> [String] {
         let tag = "\(plugin)/\(block.id)"
 
         // 声明合法性（双保险，正常在运行期已被宿主拦截）。
@@ -67,8 +88,9 @@ final class BlockMinSizeVerificationTests: XCTestCase {
             return ["\(tag): 声明非法 —— \(declarationError)"]
         }
 
-        // 1. 官方 drawer 块必须声明探针。
+        // 1. 抽屉块必须声明探针；整页块未声明即跳过几何校验（豁免）。
         guard let probesClosure = block.probes else {
+            guard requiresProbes else { return [] }
             return ["\(tag): 未声明打包期遮挡校验探针（probes）。"
                 + "官方抽屉块必须在 minSize 下可校验——请参照其他官方插件为关键 UI 区声明 BlockProbe。"]
         }
@@ -76,7 +98,7 @@ final class BlockMinSizeVerificationTests: XCTestCase {
         // 2. min 布局：frame = minSize 物理像素内容盒；无网格跨度上下文
         //    （探针只准依赖 frame，打包期没有格子换算）。
         guard let minPixel = block.minSize else {
-            return ["\(tag): drawer 块缺少 minSize（声明不完整）"]
+            return ["\(tag): 缺少 minSize（声明不完整）"]
         }
         let minLayout = BlockLayoutInfo(
             region: .drawer,

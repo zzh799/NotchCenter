@@ -2,6 +2,7 @@
 
 /* 块与菜单 */
 "block.drawer.name" = "Pomodoro Timer";
+"block.page.name" = "Pomodoro Page";
 "menu.start" = "Start Pomodoro";
 "menu.stop" = "Stop Pomodoro";
 
@@ -10,10 +11,24 @@
 "phase.rest" = "Break";
 "phase.microBreak" = "Micro Break";
 "phase.paused" = "Paused";
+"phase.awaitingRating" = "Awaiting Rating";
 "help.pause" = "Pause";
 "help.resume" = "Resume";
 "help.skip" = "Skip";
 "help.stop" = "Stop";
+
+/* 评分条（不可跳过、不可补评） */
+"rating.prompt" = "How did that focus feel?";
+"rating.microBreaks" = "%d micro breaks this session";
+"rating.delete" = "Delete this record";
+"rating.mood1" = "Very poor";
+"rating.mood2" = "Poor";
+"rating.mood3" = "Okay";
+"rating.mood4" = "Good";
+"rating.mood5" = "Great";
+
+/* 活动摘要 */
+"summary.awaitingRating" = "Rate the focus session";
 
 /* 抽屉块无障碍 */
 "a11y.pomodoro" = "Pomodoro timer";
@@ -22,6 +37,31 @@
 "drawer.startFocus" = "Start Focus";
 "drawer.focusFor" = "Focus for %d min";
 "drawer.completed" = "%d completed today";
+
+/* 整页块：区块与今日节奏 */
+"page.section.today" = "Today's Rhythm";
+"page.section.history" = "History Review";
+"page.today.hours" = "Completed per period";
+"page.today.empty" = "No focus sessions completed today yet";
+"page.week.title" = "Last 7 Days";
+
+/* 整页块：历史复盘 */
+"page.history.empty" = "Finish your first focus session and the review shows up here";
+"page.history.sessions" = "%d sessions · %d completed";
+"page.history.sessionsShort" = "%d sessions";
+"page.history.rating" = "Average feel %.1f (%d rated)";
+"page.history.microBreaks" = "%d micro breaks";
+"page.history.contrast.title" = "Micro Break Contrast";
+"page.history.contrast.with" = "With breaks";
+"page.history.contrast.without" = "Without breaks";
+"page.history.contrast.score" = "%.1f pts";
+"page.history.contrast.completion" = "%d%% completed";
+"page.history.contrast.caveat" = "Both groups come from real usage — an association, not a causal finding";
+"page.history.outcome.natural" = "Ran out";
+"page.history.outcome.skipped" = "Ended early";
+"page.history.outcome.aborted" = "Interrupted";
+"page.history.legacy" = "Includes %d days of early records (only daily counts, no detail)";
+"page.history.trimmed" = "Record limit reached; the oldest entries are dropped automatically";
 
 /* 设置界面 */
 "settings.section.timer" = "Timer";
