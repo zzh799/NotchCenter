@@ -38,6 +38,11 @@ struct DrawerBlockContainer: View {
     @State private var isHovering = false
 
     var body: some View {
+        #if DEBUG
+        // 跟手性能打点：本次 body 求值计入当前拖动会话（未拖动时不累加）。
+        // 用 `let _ =` 而非 `if`：`body` 里必须返回同一类型的视图表达式。
+        let _ = DragPerfLog.enabled ? DragPerfCollector.shared.noteBody() : ()
+        #endif
         let columns = previewColumns ?? element.placement.widthColumns
         let rows = previewRows ?? element.placement.heightRows
         let metrics = GridMetrics.current
@@ -131,14 +136,24 @@ struct DrawerBlockContainer: View {
                 isEditing && !isResizing && !isSwipeActive
                     ? DragGesture(minimumDistance: 2)
                         .onChanged { value in
+                            #if DEBUG
+                            let startedAt = DragPerfLog.enabled
+                                ? DragPerfCollector.shared.beginEvent(label: element.id) : nil
+                            #endif
                             dragOffset = value.translation
                             onDragChanged(value.translation)
+                            #if DEBUG
+                            if let startedAt { DragPerfCollector.shared.endEvent(startedAt: startedAt) }
+                            #endif
                         }
                         .onEnded { value in
                             withAnimation(DrawerAnimation.spring) {
                                 dragOffset = .zero
                             }
                             onDragEnded(value.translation)
+                            #if DEBUG
+                            if let summary = DragPerfCollector.shared.finish() { print(summary) }
+                            #endif
                         }
                     : nil
             )

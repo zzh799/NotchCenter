@@ -41,6 +41,11 @@ struct DrawerActions {
     let onShowPageSettings: (Int, CGRect) -> Void
     /// (page, 胶囊全局 frame)：非空页删除需二次确认，确认浮窗锚定在该 frame。
     let onRemovePage: (Int, CGRect) -> Void
+    /// 某个已放置块在屏幕上的矩形（Cocoa，左下原点）：脱离容器拖动时
+    /// 浮窗的基准位置。由控制器经 `DrawerScreenMapper` 提供 —— 视图层不
+    /// 重复实现「格 → 屏幕」换算（那是 `DrawerScreenMapper` 的唯一职责）。
+    /// 返回 nil 表示该块当前不可解析（浮窗不建立，退回容器内拖动）。
+    let blockScreenRect: (String) -> CGRect?
     /// 左右滑动切页的**拖拽**通路（网格背景手势）：只上报原始平移量，
     /// 方向、位移与落位判据由控制器按 `DrawerPageSwipe` 决定。松手回调
     /// 第二个参数是 `DragGesture` 的预测终点（速度判据折算了它）。
@@ -71,6 +76,14 @@ struct DrawerPanelView: View {
 
     /// 胶囊排序进行中（聚合至 `isDrawerInteractionActive`）。
     @State private var isCapsuleDragging = false
+
+    /// 正在被「脱离容器」拖动的块 + 它的浮窗。非 nil 期间网格内该块渲染为
+    /// `opacity(0)`（留位），画面由浮窗独占 —— 见 `DrawerDragPanel`。
+    @State private var detachedDrag: (placementID: String, panel: DrawerDragPanel)?
+
+    /// 按下瞬间「光标在块内的抓握偏移」（左上原点）。不补偿的话浮窗左上角会
+    /// 跳到光标处——与真块的抓握点不一致。
+    @State private var detachedGrabOffset: CGSize?
 
     init(
         ui: PanelUIState,
@@ -137,6 +150,16 @@ struct DrawerPanelView: View {
         // 永远是透明区（命中测试穿透），面板顶缘钉死窗口顶缘、绕屏幕中线
         // 居中——宽度随占用列数自适应时面板始终对准刘海。
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: ui.drawerActivePage) { _, _ in
+            // 切页会重建元素：浮窗内容取自旧页的元素视图，跨页后即失效
+            // （且跨页搬移本就该由引擎重定位）。收掉浮窗，让块按新页正常渲染。
+            endDetachedDrag()
+        }
+        .onChange(of: ui.isEditing) { _, editing in
+            // 退出编辑 = 拖拽手势的挂载条件消失（`.gesture` 为 nil），
+            // 不会再有 onEnded，必须主动收场，否则浮窗残留。
+            if !editing { endDetachedDrag() }
+        }
         .onAppear {
             syncInteractionActive()
         }
@@ -163,6 +186,9 @@ struct DrawerPanelView: View {
                 // 手势状态随面板存活（content 退出布局但状态对象不释放）：
                 // 不清的话残留的预览原点会让块在下次展开时停在旧预览位置。
                 interaction.reset()
+                // 脱离容器的浮窗是**独立窗口**，不会随面板收起自动消失；
+                // 漏了这一句抽屉收起后浮窗会孤零零挂在屏幕上。
+                endDetachedDrag()
                 // 顶栏悬停同理：收起那一刻指针可能还在顶栏内，视图直接退出
                 // 层级收不到 hover 结束事件，残留的 true 会让加号凭空挂着。
                 isTopBarHovering = false
@@ -517,6 +543,10 @@ struct DrawerPanelView: View {
             },
             onDragChanged: { translation in
                 interaction.beginDrag(element.id)
+                // 脱离容器：把块渲染到独立浮窗，原位置留占位（见
+                // DrawerDragPanel 与 `detachedDrag`）。必须早于推挤预览，
+                // 让浮窗从第一帧就接管画面。
+                beginDetachedDragIfNeeded(for: element, translation: translation)
                 let target = dragTarget(for: element, translation: translation)
                 // 推挤预览与落点占位框都在这里更新（详见 DrawerInteractionState）。
                 interaction.updateDrag(
@@ -545,15 +575,21 @@ struct DrawerPanelView: View {
                 // 曲线。参数一旦漂移，合成曲线会折一下——这就是
                 // DrawerAnimation 必须唯一的原因。
                 interaction.endDrag(element.id, column: target.0, row: target.1)
+                endDetachedDrag()
             }
         )
         .frame(width: blockFrame.width, height: blockFrame.height)
         .position(x: blockFrame.midX, y: blockFrame.midY)
         // 落位飞行：新块先隐形，让跟手浮窗独占画面（避免一明一暗的重影）；
         // 飞行结束时同一次更新里清空，交接不留空帧。
+        // 脱离容器拖动期间同样隐形：画面由 DrawerDragPanel 浮窗独占，
+        // 否则会看到"容器内一份 + 浮窗一份"的重影。
         // 独立于方法之外、不内联回 grid —— 内联会让 SwiftUI 类型检查
         // 耗时显著回退（本方法的拆分就是为此）。
-        .opacity(ui.landingPlacementID == element.id ? 0 : 1)
+        .opacity(
+            ui.landingPlacementID == element.id || detachedDrag?.placementID == element.id
+                ? 0 : 1
+        )
     }
 
     /// 网格高度 = 块实占行数（预览/非预览一律按块包围盒计）：预览可能把
@@ -613,6 +649,69 @@ struct DrawerPanelView: View {
     /// 聚合块/胶囊拖动态写入 `isDrawerInteractionActive`。
     private func syncInteractionActive() {
         ui.isDrawerInteractionActive = interaction.phase != .idle || isCapsuleDragging
+    }
+
+    // MARK: 脱离容器拖动（浮窗接管被拖块的渲染）
+
+    /// 首次 `onChanged` 建立浮窗，之后每帧只移动窗口。
+    ///
+    /// 定位用**屏幕坐标**而非网格坐标：面板宽度在拖动中被 spring 改变、面板绕
+    /// 中线重新居中，网格原点（面板左缘）因此逐帧移动；只有屏幕坐标与面板无关。
+    private func beginDetachedDragIfNeeded(
+        for element: DrawerElement,
+        translation: CGSize
+    ) {
+        // 已在拖同一块：只更新位置（逐帧走这条）。
+        if let detached = detachedDrag, detached.placementID == element.id {
+            moveDetachedDrag(translation: translation)
+            return
+        }
+        if detachedDrag != nil { endDetachedDrag() }   // 异常：两个浮窗不并存
+
+        // 基准屏幕矩形由控制器给出（`DrawerScreenMapper` 是格→屏幕的唯一换算桥）。
+        guard let baseRect = actions.blockScreenRect(element.id) else { return }
+        let base = CGPoint(x: baseRect.minX, y: baseRect.maxY)   // Cocoa → 左上原点
+        // 抓握偏移 = 按下时光标 − 块左上角。**取实时光标而非手势 startLocation**：
+        // DragGesture 默认 .local 空间挂在块身上，块被 .offset(dragOffset) 移动时
+        // 该空间整体平移、translation 反跳（同"缩放握把"的自激教训）。
+        let mouse = NSEvent.mouseLocation
+        let grab = CGSize(width: mouse.x - base.x, height: base.y - mouse.y)
+        let metrics = GridMetrics.current
+        let size = CGSize(
+            width: metrics.width(columns: max(element.placement.widthColumns, 1)),
+            height: metrics.height(rows: max(element.placement.heightRows, 1))
+        )
+        guard size.width > 0, size.height > 0 else { return }
+
+        detachedGrabOffset = grab
+        // 内容用**新实例**渲染（方案 4）：同插件视图值、数据同源，显示一致。
+        let content = element.view
+            .frame(width: size.width, height: size.height)
+            .clipShape(RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous))
+            .shadow(color: .black.opacity(0.35), radius: 14, y: 5)
+            .environment(\.colorScheme, .dark)
+
+        let panel = DrawerDragPanel(view: AnyView(content), size: size)
+        panel.show()
+        detachedDrag = (element.id, panel)
+        panel.move(toScreenTopLeft: base)   // 首帧与块像素重合，无跳变
+    }
+
+    /// 逐帧移动浮窗：以光标为锚，保持按下时的抓握偏移不变。
+    private func moveDetachedDrag(translation _: CGSize) {
+        guard let detached = detachedDrag, let grab = detachedGrabOffset else { return }
+        let mouse = NSEvent.mouseLocation
+        detached.panel.move(toScreenTopLeft: CGPoint(
+            x: mouse.x - grab.width,
+            y: mouse.y + grab.height
+        ))
+    }
+
+    /// 收起浮窗（松手 / 抽屉收起 / 退出编辑 / 切页）。
+    private func endDetachedDrag() {
+        detachedDrag?.panel.close()
+        detachedDrag = nil
+        detachedGrabOffset = nil
     }
 
 }

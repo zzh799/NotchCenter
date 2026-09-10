@@ -354,6 +354,123 @@ enum DragProbeLog {
         ProcessInfo.processInfo.environment["NOTCHCENTER_DRAG_PROBE_LOG"] == "1"
 }
 
+#if DEBUG
+
+// MARK: - 跟手性能探针
+
+/// 跟手性能诊断开关（`NOTCHCENTER_DRAG_PERF_LOG=1`）：抽屉内拖动时按块身份
+/// 累计「手势事件数 / body 求值次数 / 帧间隔 / 回调耗时」，松手时打一行汇总
+/// （与 `NOTCHCENTER_DRAG_PROBE_LOG` 同族，非发布路径）。
+///
+/// **为什么需要它**：拖动跟手问题的三个候选根因（`GlobalFrameReader` 几何
+/// 自反馈回路、左扩窗口尺寸动画、推挤 spring 逐帧重启）**全部被本探针的读数
+/// 证伪**。肉眼"好像好一点"无法区分真改善与巧合，本探针给出可对照的数字。
+///
+/// 判读方法：
+/// - `bodyPerEvent` 恒定 ≈3 = **与负载无关的结构性开销**（实测七次会话
+///   3.00–3.13，方差极小）；它若随块尺寸/数量显著波动，才是负载性瓶颈；
+/// - `gapMax` ≫ `gapAvg` = 偶发长帧，这才是"顿一下再跳过去"的来源
+///   （实测 `gapAvg` 14–30ms 达标，而 `gapMax` 可达 145–488ms）；
+/// - `callbackMax` 远小于 `gapAvg` = 耗时不在手势回调里，而在渲染/提交阶段
+///   （实测 6–12ms，基本排除回调内计算）。
+enum DragPerfLog {
+    static let enabled =
+        ProcessInfo.processInfo.environment["NOTCHCENTER_DRAG_PERF_LOG"] == "1"
+}
+
+/// 单次拖动会话的性能累加器（`DragPerfLog.enabled` 为假时只做布尔判断、
+/// 不计时不分配）。
+///
+/// **进程内单例**：单次拖动同一时刻只有一个会话，全局一份语义成立；若每个
+/// `DrawerBlockContainer` 各持一份，会造成**每块一次堆分配 + 一个 `@StateObject`
+/// 观察槽位**，在探针关闭时纯属白付（块多的页面尤其）。容器因此不再持有它。
+///
+/// **刻意一个 `@Published` 都不用**（不发 `objectWillChange`）：否则探针自己
+/// 会触发重绘、把测量对象变成被测负载。
+@MainActor
+final class DragPerfCollector: ObservableObject {
+    /// 生产路径共用的一份（单次拖动同一时刻只有一个会话）。
+    static let shared = DragPerfCollector()
+
+    /// 可自由构造：单测需要多份互不干扰的会话来验证会话隔离语义。
+    init() {}
+
+    private var label = ""
+    /// 本次拖动累计的 `body` 求值次数。
+    private var bodyEvaluations = 0
+    /// 本次拖动累计的 `onChanged` 事件数。
+    private var gestureEvents = 0
+    /// 相邻手势事件的最大间隔（ms）：跟手卡顿的尖峰来源。
+    private var maxGapMs: Double = 0
+    /// 相邻手势事件间隔之和（ms），除 `gestureEvents` 得均值。
+    private var totalGapMs: Double = 0
+    /// 单次 `onChanged` 回调自身的耗时上界（ms）：分辨"回调里算得慢"与"渲染慢"。
+    private var maxCallbackMs: Double = 0
+    /// 会话是否已开始（首次事件置位，`finish()` 清位）。
+    private var isSessionActive = false
+    private var lastEventAt: TimeInterval?
+
+    /// 记一次 `body` 求值。只在会话进行中累加——拖动前的挂载/空闲期求值
+    /// 不属于任何会话，计进去会把比值稀释。
+    func noteBody() {
+        guard isSessionActive else { return }
+        bodyEvaluations += 1
+    }
+
+    /// 开始一次手势事件；返回其起始时刻供 `endEvent` 配对。
+    func beginEvent(label: String) -> TimeInterval {
+        if !isSessionActive {
+            // 新会话：清掉上一次的累计值。
+            self.label = label
+            bodyEvaluations = 0
+            gestureEvents = 0
+            maxGapMs = 0
+            totalGapMs = 0
+            maxCallbackMs = 0
+            isSessionActive = true
+        }
+        let now = Date().timeIntervalSince1970
+        gestureEvents += 1
+        if let last = lastEventAt {
+            let gap = (now - last) * 1000
+            maxGapMs = max(maxGapMs, gap)
+            totalGapMs += gap
+        }
+        lastEventAt = now
+        return now
+    }
+
+    func endEvent(startedAt: TimeInterval) {
+        maxCallbackMs = max(maxCallbackMs, (Date().timeIntervalSince1970 - startedAt) * 1000)
+    }
+
+    /// 松手汇总并结束会话；无有效会话时返回 nil（不打印噪声）。
+    func finish() -> String? {
+        defer {
+            isSessionActive = false
+            lastEventAt = nil
+        }
+        guard gestureEvents > 0 else { return nil }
+        let gaps = max(gestureEvents - 1, 1)
+        let avgGap = totalGapMs / Double(gaps)
+        let perEvent = Double(bodyEvaluations) / Double(gestureEvents)
+        return String(
+            format: "[drag-perf] %@ events=%d body=%d bodyPerEvent=%.2f "
+                + "gapAvg=%.1fms gapMax=%.1fms callbackMax=%.1fms",
+            label,
+            gestureEvents,
+            bodyEvaluations,
+            perEvent,
+            avgGap,
+            maxGapMs,
+            maxCallbackMs
+        )
+    }
+}
+
+#endif
+
+
 /// 指针压在分页胶囊上驻留 0.5s 即回调——iOS 桌面把图标拖到屏幕边缘自动
 /// 翻页的同款交互。设置目录拖拽（`BlockDragCoordinator`）与抽屉内重排
 /// 拖拽（`DrawerInteractionState`）两条路径共用：命中与落位动作由构造处

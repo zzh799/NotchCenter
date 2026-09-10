@@ -548,6 +548,21 @@ extension NotchPanelController {
             onRemovePage: { [weak self] page, anchorFrame in
                 self?.removeDrawerPage(page, anchorFrame: anchorFrame)
             },
+            blockScreenRect: { [weak self] placementID in
+                // 脱离容器拖动的浮窗基准：复用「格 → 屏幕」的唯一换算桥。
+                guard let self,
+                      let placement = self.layoutEngine.drawerBlocks
+                          .first(where: { $0.placementID == placementID }),
+                      let pair = self.activePair ?? self.pairs.first else { return nil }
+                return self.drawerScreenMapper(for: pair).screenRect(
+                    for: GridCell(
+                        column: placement.originColumn,
+                        row: placement.originRow,
+                        columnSpan: max(placement.widthColumns, 1),
+                        rowSpan: max(placement.heightRows, 1)
+                    )
+                )
+            },
             onSwipeDrag: { [weak self] translation in
                 self?.drawerSwipeDrag(translation: translation)
             },
