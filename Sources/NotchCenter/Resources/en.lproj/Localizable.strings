@@ -60,6 +60,7 @@
 "settings.layout.minSection" = "Minimum size";
 "settings.layout.minRows" = "Minimum rows";
 "settings.layout.minRow.count" = "%d Rows";
+"settings.layout.rowCapacity" = "Up to %d rows fit the current screen.";
 "settings.layout.minHint" = "Blank cells pad the drawer up to the configured row count.";
 "settings.layout.minColumnsUnavailable" = "Maximum columns is below 3, so the column floor follows it.";
 "settings.layout.previewSection" = "Preview";

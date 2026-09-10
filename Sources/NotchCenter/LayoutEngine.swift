@@ -48,7 +48,19 @@ final class LayoutEngine: ObservableObject {
 
     /// 当前可用屏幕宽度（由面板控制器随屏幕变化更新，文档 §7.2）。
     /// （模块内私有：拆分后供修改路径的容量计算读取。）
-    var availableScreenWidth: CGFloat = 1440
+    ///
+    /// `@Published`：列/行容量既进滑条轨道端点（设置页），也随展开换屏变化；
+    /// 不发通知的话设置页拿到的是换屏前的档位。
+    @Published var availableScreenWidth: CGFloat = 1440
+
+    /// 当前屏幕可用的**抽屉高度**（屏高 − 顶部留白 − 紧凑带高，见控制器
+    /// `maxDrawerHeight(for:)`）。`nil` = 未约束——测试与尚未接入屏幕的路径
+    /// 保持原行为（行侧不设容量上限），与 `DrawerLayoutMetricsResolver` 的
+    /// `maxHeight: CGFloat?` 同款约定。
+    ///
+    /// 有意**不**接收含设置面板让位的 `drawerMaxVisibleHeight`：那个值随设置
+    /// 面板开合瞬变，会让行列档位在面板打开时突然缩水。
+    @Published var availableScreenHeight: CGFloat?
 
     init(
         fileURL: URL = CorePaths.layoutFileURL,

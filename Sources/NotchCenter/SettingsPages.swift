@@ -831,6 +831,9 @@ struct LayoutSettingsPage: View {
                     ColumnRangeSlider(
                         minValue: min(layoutEngine.userMinColumns, layoutEngine.userMaxColumns),
                         maxValue: layoutEngine.userMaxColumns,
+                        // 轨道端点随屏幕列容量与当前格宽动态伸缩：配置值高于容量时
+                        // 游标钉在右端（`fraction` 自带 0...1 夹取），存量配置不回改。
+                        valueRange: layoutEngine.selectableMaxColumnsRange,
                         onMinChange: { newValue in
                             layoutEngine.setUserMinColumns(newValue)
                             controller.refreshAfterLayoutChange(animated: true)
@@ -862,13 +865,16 @@ struct LayoutSettingsPage: View {
                         .foregroundStyle(NotchTokens.Foreground.secondary)
                     Spacer(minLength: 0)
                     Picker("", selection: minRowsBinding) {
-                        ForEach(Array(LayoutModel.minRowsRange), id: \.self) { rows in
+                        ForEach(Array(rowRange), id: \.self) { rows in
                             Text(LF("settings.layout.minRow.count", rows)).tag(rows)
                         }
                     }
                     .labelsHidden()
                     .frame(width: 130)
                 }
+                Text(LF("settings.layout.rowCapacity", rowRange.upperBound))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 Text(L("settings.layout.minHint"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -896,9 +902,15 @@ struct LayoutSettingsPage: View {
         }
     }
 
+    /// 行数可选档位（屏幕可用高度 + 当前格高的函数；屏高未知时退回静态兜底上界）。
+    private var rowRange: ClosedRange<Int> {
+        layoutEngine.selectableMinRowsRange
+    }
+
     private var minRowsBinding: Binding<Int> {
         Binding(
-            get: { layoutEngine.userMinRows },
+            // 显示值按档位上界夹取（存量值超出容量时不留白选态），写入仍走 setter。
+            get: { min(layoutEngine.userMinRows, rowRange.upperBound) },
             set: { newValue in
                 layoutEngine.setUserMinRows(newValue)
                 controller.refreshAfterLayoutChange(animated: true)

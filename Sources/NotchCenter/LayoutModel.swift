@@ -125,11 +125,30 @@ struct LayoutModel: Codable, Equatable {
     /// 主页索引：永远存在、不可删除（页面显示序列里可以排到任意位置）。
     static let homePage = 0
 
-    static let maxColumnsRange = 2...8
-    static let minRowsRange = 1...9
-    /// 最小列数可选项范围。存储值**不随最大列数回改**——生效下限由
+    /// 列数上限的「最小可用」值：抽屉至少要能并排放下两格。
+    /// 动态轨道端点 = `min(本值, 屏幕列容量)...屏幕列容量`。
+    static let preferredMaxColumns = 2
+    /// 列数下限的「设计意图」值：抽屉不塌成一列窄条。
+    /// 动态下限 = `min(本值, 上限)...上限`。
+    static let preferredMinColumns = 3
+
+    /// 行列维度的**绝对上限**：只兜住手改 layout.json / 异常入参产生的荒谬值。
+    /// 架构文档 §7.2 的「全局上限 = 屏幕可用宽能容纳的列数」由
+    /// `LayoutEngine.selectable*Range` 落实，正常「屏幕 × 合法格尺寸」组合下
+    /// 容量远在本值以内——它不会成为档位瓶颈（取 64 是为了留足余量：最小格
+    /// 75×60 配零间距/零边距时，6K 级屏幕的容量也只在 40 上下）。
+    static let absoluteGridLimit = 64
+
+    /// ⚠️ 以下三个静态范围的语义已降级为**持久化解码 / 绝对兜底边界**
+    /// （手改 layout.json 时自愈），**不再是设置页可选档位的真源**——可选档位由
+    /// `LayoutEngine.selectable{MaxColumns,MinColumns,MinRows}Range` 按屏幕尺寸与
+    /// 当前格尺寸推导。同理，配置**存储值**只在用户主动调档时写入静态范围内，
+    /// 换屏只改生效值、不回改存量（见 `LayoutEngine.updateScreenConstraint`）。
+    static let maxColumnsRange = preferredMaxColumns...absoluteGridLimit
+    static let minRowsRange = 1...absoluteGridLimit
+    /// 最小列数兜底范围。存储值**不随最大列数回改**——生效下限由
     /// `LayoutEngine.minimumColumnCount()` 夹容量，所以调小再调回最大列数不会抹掉设置。
-    static let minColumnsRange = 3...8
+    static let minColumnsRange = preferredMinColumns...absoluteGridLimit
     /// 默认值同时是旧 layout.json 缺这两个键时的回落值：行数保持现状，
     /// 列数至少 3（抽屉不再塌成一列窄条）。
     static let defaultMinRows = 1

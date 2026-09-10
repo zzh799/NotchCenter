@@ -1150,13 +1150,15 @@ final class LayoutEngineTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    /// setter 夹紧：行夹进 1...9；列封顶到最大列数，最大列数小于可选项下界时忽略写入。
+    /// setter 夹紧：行夹进静态兜底范围；列封顶到最大列数，最大列数小于设计下界时
+    /// 忽略写入。静态范围已是非约束性兜底（真实档位见「行列容量与动态档位」一节），
+    /// 所以断言一律引用常量而不是写死数字。
     func testMinimumSettersClampAndRespectMaxColumns() throws {
         let (engine, directory, _) = try makeEngine()
         engine.setUserMinRows(0)
-        XCTAssertEqual(engine.userMinRows, 1)
+        XCTAssertEqual(engine.userMinRows, LayoutModel.minRowsRange.lowerBound)
         engine.setUserMinRows(99)
-        XCTAssertEqual(engine.userMinRows, 9)
+        XCTAssertEqual(engine.userMinRows, LayoutModel.minRowsRange.upperBound)
         engine.setUserMinColumns(99)
         XCTAssertEqual(engine.userMinColumns, 4, "封顶到最大列数")
         engine.setUserMaxColumns(2)
@@ -1186,6 +1188,141 @@ final class LayoutEngineTests: XCTestCase {
             "预览 == 提交：同一条下限公式"
         )
         XCTAssertEqual(engine.previewBottomRow(origins: preview), 5)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    // MARK: 行列容量与动态档位（屏幕尺寸 + 格尺寸）
+
+    /// 行容量按屏幕可用高度推导；屏高未知时行侧不设约束（`nil`）。
+    func testScreenRowCapacityDerivesFromUsableHeight() throws {
+        let (engine, directory, _) = try makeEngine()
+        XCTAssertNil(engine.screenRowCapacity(), "未记录屏高 → 不约束")
+
+        // 可用高 900：floor((900 − 36 − 16 + 12) / 132) = 6
+        engine.updateScreenConstraint(width: 1440, height: 900)
+        XCTAssertEqual(engine.screenRowCapacity(), 6)
+        // 列容量仍是宽度公式，单参版本口径不变。
+        XCTAssertEqual(engine.screenColumnCapacity(), 8)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 行容量随格高变化：格子调高，可容纳行数下降（不缓存，随取随算）。
+    func testScreenRowCapacityFollowsCellHeight() throws {
+        let (engine, directory, _) = try makeEngine()
+        engine.updateScreenConstraint(width: 1440, height: 900)
+        XCTAssertEqual(engine.screenRowCapacity(), 6)
+
+        GridMetricsStore.shared.set(.cellHeight, to: 240)
+        // floor((900 − 36 − 16 + 12) / 252) = 3
+        XCTAssertEqual(engine.screenRowCapacity(), 3)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 可选档位 = 屏幕容量与格尺寸的函数；容量不足两列时退化但恒非空。
+    func testSelectableColumnRangesFollowScreenCapacity() throws {
+        let (engine, directory, _) = try makeEngine()
+        XCTAssertEqual(engine.selectableMaxColumnsRange, 2...8, "默认屏 1440 → 容量 8")
+        XCTAssertEqual(engine.selectableMinColumnsRange(maxColumns: 8), 3...8)
+
+        engine.updateScreenConstraint(width: 700, height: 900)
+        XCTAssertEqual(engine.selectableMaxColumnsRange, 2...4, "宽 700 → 容量 4")
+        XCTAssertEqual(engine.selectableMinColumnsRange(maxColumns: 8), 3...4, "下限不越过容量")
+        XCTAssertEqual(engine.selectableMinColumnsRange(maxColumns: 2), 2...2, "上限夹到当前最大列数")
+
+        // 宽 300 → floor((300 − 32 + 12) / 162) = 1：轨道退化为单点而不是空区间。
+        engine.updateScreenConstraint(width: 300, height: 900)
+        XCTAssertEqual(engine.selectableMaxColumnsRange, 1...1)
+        XCTAssertEqual(engine.selectableMinColumnsRange(maxColumns: 1), 1...1)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 宽屏不再被写死的旧上界卡住：档位与可存储值都跟着容量走。
+    func testWideScreenAllowsMoreThanLegacyColumnCap() throws {
+        let (engine, directory, _) = try makeEngine()
+        // 宽 2000：floor((2000 − 32 + 12) / 162) = 12 列
+        engine.updateScreenConstraint(width: 2000, height: 900)
+        XCTAssertEqual(engine.selectableMaxColumnsRange, 2...12)
+
+        engine.setUserMaxColumns(12)
+        XCTAssertEqual(engine.userMaxColumns, 12, "旧写死上界 8 不再截断")
+        XCTAssertEqual(engine.effectiveMaxColumns(), 12)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 行档位 = 1...行容量；屏高未知时退回静态兜底上界。
+    func testSelectableMinRowsRangeFollowsRowCapacity() throws {
+        let (engine, directory, _) = try makeEngine()
+        XCTAssertEqual(
+            engine.selectableMinRowsRange,
+            1...LayoutModel.minRowsRange.upperBound,
+            "屏高未知 → 静态兜底"
+        )
+
+        engine.updateScreenConstraint(width: 1440, height: 900)
+        XCTAssertEqual(engine.selectableMinRowsRange, 1...6)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 行下限与列下限同款：夹一次容量，但**不回改**存量配置。
+    func testMinimumRowCountIsClampedByRowCapacity() throws {
+        let (engine, directory, _) = try makeEngine(minRows: 9)
+        XCTAssertEqual(engine.minimumRowCount(), 9, "屏高未知：不夹")
+
+        engine.updateScreenConstraint(width: 1440, height: 900)   // 行容量 6
+        XCTAssertEqual(engine.minimumRowCount(), 6, "小屏上 9 行下限夹到容量")
+        XCTAssertEqual(engine.userMinRows, 9, "存量配置不回改")
+        XCTAssertEqual(engine.drawerContentRows(), 6, "行数下限与内容行数同一出口")
+
+        engine.updateScreenConstraint(width: 1440, height: 2000)  // 行容量放宽
+        XCTAssertEqual(engine.minimumRowCount(), 9, "换回高屏后原配置恢复")
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 换屏只改生效值与档位，绝不回写 layout.json（临时状态不永久改写）。
+    func testScreenConstraintChangeDoesNotRewriteStoredConfig() throws {
+        let (engine, directory, _) = try makeEngine(userMaxColumns: 8, minRows: 5)
+        engine.updateScreenConstraint(width: 700, height: 600)
+        XCTAssertEqual(engine.effectiveMaxColumns(), 4)
+        XCTAssertEqual(engine.minimumRowCount(), 4, "可用高 600 → 行容量 4")
+
+        XCTAssertEqual(engine.userMaxColumns, 8, "存量最大列数不回改")
+        XCTAssertEqual(engine.userMinRows, 5, "存量最小行数不回改")
+
+        engine.updateScreenConstraint(width: 2000, height: 1200)
+        XCTAssertEqual(engine.effectiveMaxColumns(), 8)
+        XCTAssertEqual(engine.minimumRowCount(), 5)
+        XCTAssertEqual(engine.userMaxColumns, 8)
+        XCTAssertEqual(engine.userMinRows, 5)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 多屏取**最小**屏幕：容量由最憋屈那块屏决定，宽/高各自取最小（文档 §7.1 / §7.2）。
+    func testMultiScreenConstraintUsesSmallestScreen() throws {
+        let (engine, directory, _) = try makeEngine()
+
+        // 笔记本 1512×936 + 外接 2560×1400：小屏全面压制。
+        engine.updateScreenConstraint(availableScreenSizes: [
+            CGSize(width: 2560, height: 1400),
+            CGSize(width: 1512, height: 936)
+        ])
+        XCTAssertEqual(engine.screenColumnCapacity(), 9, "floor((1512 − 32 + 12) / 162) = 9")
+        XCTAssertEqual(engine.screenRowCapacity(), 6, "floor((936 − 36 − 16 + 12) / 132) = 6")
+
+        // 单块屏时与双参版本逐位等价。
+        engine.updateScreenConstraint(width: 1512, height: 936)
+        XCTAssertEqual(engine.screenColumnCapacity(), 9)
+        XCTAssertEqual(engine.screenRowCapacity(), 6)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 空序列不动已有约束（无参考屏；兜底归控制器）。
+    func testEmptyScreenSizesLeavesConstraintUntouched() throws {
+        let (engine, directory, _) = try makeEngine()
+        engine.updateScreenConstraint(width: 1512, height: 936)
+
+        engine.updateScreenConstraint(availableScreenSizes: [])
+        XCTAssertEqual(engine.screenColumnCapacity(), 9)
+        XCTAssertEqual(engine.screenRowCapacity(), 6)
         try? FileManager.default.removeItem(at: directory)
     }
 

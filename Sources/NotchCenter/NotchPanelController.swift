@@ -236,9 +236,25 @@ final class NotchPanelController: NSObject {
         pairs.first { $0.hotFrame.contains(point) }
     }
 
+    /// 屏幕约束同步：宽度 + **可用抽屉高度**（行容量与行档位的来源）。
+    ///
+    /// 高度取 `maxDrawerHeight`（屏高 − 顶部留白 − 紧凑带），**不取**
+    /// `drawerMaxVisibleHeight`——后者含设置面板让位量、随面板开合瞬变，
+    /// 会让行列档位在打开设置面板时突然缩水。
+    ///
+    /// 取**所有屏幕**的最小可用尺寸（文档 §7.1 / §7.2）：布局是全屏共享的一份，
+    /// 按单块屏算会让抽屉搬到小屏放不下、档位随所在的屏跳变。因此这里不接收
+    /// pair——没有"当前屏"的概念，活动屏换到哪块都不影响结果。
     func updateScreenConstraint() {
-        let width = pairs.first?.screenFrame.width ?? 1440
-        layoutEngine.updateScreenConstraint(width: width)
+        guard !pairs.isEmpty else {
+            layoutEngine.updateScreenConstraint(width: 1440, height: nil)
+            return
+        }
+        layoutEngine.updateScreenConstraint(
+            availableScreenSizes: pairs.map {
+                CGSize(width: $0.screenFrame.width, height: maxDrawerHeight(for: $0))
+            }
+        )
     }
 
     // MARK: - 对外入口
@@ -264,7 +280,9 @@ final class NotchPanelController: NSObject {
             if let pair = pairContainingLocation(NSEvent.mouseLocation),
                pair !== activePair {
                 activePair = pair
-                layoutEngine.updateScreenConstraint(width: pair.screenFrame.width)
+                // 容量与所在屏无关（全屏最小值，见 `updateScreenConstraint()`）；
+                // 这里同步只是保新鲜（屏配置可能刚变过），结果不随 pair 变。
+                updateScreenConstraint()
                 cancelCollapse()
                 isAwaitingDrawerReentry = false
                 presentDrawer(animated: animated, activate: activate)
@@ -282,7 +300,7 @@ final class NotchPanelController: NSObject {
             return
         }
         activePair = pair
-        layoutEngine.updateScreenConstraint(width: pair.screenFrame.width)
+        updateScreenConstraint()
 
         cancelCollapse()
         isExpanded = true

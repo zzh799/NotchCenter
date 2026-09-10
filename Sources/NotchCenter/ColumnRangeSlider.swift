@@ -6,14 +6,18 @@ import SwiftUI
 /// 双游标列数滑条的纯数学：值 ↔ 轨道分数、量化、游标选择与标签排布。
 /// 与视图解耦以便单测（同 `DrawerPagePillLayout` 惯例）。
 struct ColumnRangeSliderMath {
-    /// 整条轨道代表的列数区间（`LayoutModel.maxColumnsRange`）。
+    /// 整条轨道代表的列数区间。调用方按**屏幕列容量**动态传入
+    /// （`LayoutEngine.selectableMaxColumnsRange`）。
     let valueRange: ClosedRange<Int>
-    /// 左游标（最小列数）自身的下限（`LayoutModel.minColumnsRange.lowerBound`）。
+    /// 左游标（最小列数）自身的下限 = 设计意图值 `LayoutModel.preferredMinColumns`
+    /// （抽屉不塌成一列窄条）。
     let minThumbFloor: Int
 
+    /// `valueRange` **必传**（无静态默认）：轨道端点是屏幕列容量与当前格宽的函数，
+    /// 给一个默认值只会让「忘了传」静默退回写死范围。
     init(
-        valueRange: ClosedRange<Int> = LayoutModel.maxColumnsRange,
-        minThumbFloor: Int = LayoutModel.minColumnsRange.lowerBound
+        valueRange: ClosedRange<Int>,
+        minThumbFloor: Int = LayoutModel.preferredMinColumns
     ) {
         self.valueRange = valueRange
         self.minThumbFloor = minThumbFloor
@@ -100,10 +104,31 @@ struct ColumnRangeSlider: View {
     let minValue: Int
     /// 右游标值。
     let maxValue: Int
+    /// 整条轨道代表的列数区间。**必传**（无静态默认）：轨道端点是屏幕列容量与
+    /// 当前格宽的函数（`LayoutEngine.selectableMaxColumnsRange`），漏传会让
+    /// 档位悄悄退回写死范围。
+    let valueRange: ClosedRange<Int>
     let onMinChange: (Int) -> Void
     let onMaxChange: (Int) -> Void
 
-    private let math = ColumnRangeSliderMath()
+    init(
+        minValue: Int,
+        maxValue: Int,
+        valueRange: ClosedRange<Int>,
+        onMinChange: @escaping (Int) -> Void,
+        onMaxChange: @escaping (Int) -> Void
+    ) {
+        self.minValue = minValue
+        self.maxValue = maxValue
+        self.valueRange = valueRange
+        self.onMinChange = onMinChange
+        self.onMaxChange = onMaxChange
+    }
+
+    private var math: ColumnRangeSliderMath {
+        ColumnRangeSliderMath(valueRange: valueRange)
+    }
+
     private let thumbDiameter: CGFloat = 16
 
     @State private var activeThumb: ColumnRangeSliderMath.Thumb?

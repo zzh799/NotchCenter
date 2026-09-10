@@ -60,6 +60,7 @@
 "settings.layout.minSection" = "最小尺寸";
 "settings.layout.minRows" = "最小行数";
 "settings.layout.minRow.count" = "%d 行";
+"settings.layout.rowCapacity" = "当前屏幕最多容纳 %d 行。";
 "settings.layout.minHint" = "块不够时用空白格把抽屉补到设定的行数。";
 "settings.layout.minColumnsUnavailable" = "最大列数小于 3，列下限以最大列数为准。";
 "settings.layout.previewSection" = "示意";

@@ -6,7 +6,9 @@ import XCTest
 /// （引擎侧 setter 契约——夹紧 / 忽略写入 / 不回改存量值——见
 /// `LayoutEngineTests.testMinimumSettersClampAndRespectMaxColumns`。）
 final class ColumnRangeSliderTests: XCTestCase {
-    private let math = ColumnRangeSliderMath()
+    /// 纯数学用例钉在 2...8 轨道上：轨道端点由调用方按**屏幕列容量**传入
+    /// （`LayoutEngine.selectableMaxColumnsRange`），与静态兜底范围无关。
+    private let math = ColumnRangeSliderMath(valueRange: 2...8)
 
     // MARK: 值 ↔ 轨道分数
 

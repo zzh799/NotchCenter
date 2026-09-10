@@ -49,22 +49,77 @@ extension LayoutEngine {
     }
 
     /// 屏幕宽度约束（文档 §7.2）：实际列数 = min(用户配置, 屏幕能容纳的列数)。
+    ///
+    /// 只写宽度、**不动**已记录的屏高：它被大量只关心宽度的路径与测试复用，
+    /// 顺手清空屏高会让行侧档位无声退化为「未约束」。需要同时约束高度时用
+    /// 下面的双参版本。
     func updateScreenConstraint(width: CGFloat) {
         availableScreenWidth = width
+    }
+
+    /// 屏幕约束（宽 + 高）。`height` = 屏高 − 顶部留白 − 紧凑带高
+    /// （控制器 `maxDrawerHeight(for:)`）；`nil` = 高度未约束。
+    ///
+    /// 与列数一样，换屏只改**生效值**与可选档位，**绝不回改** layout.json 里的
+    /// 存量配置：容量变化是临时状态（外接/拔掉屏幕），回写会把布局永久改写。
+    func updateScreenConstraint(width: CGFloat, height: CGFloat?) {
+        availableScreenWidth = width
+        availableScreenHeight = height
+    }
+
+    /// 多屏约束：取**所有屏幕**可用尺寸的分量最小值（文档 §7.1「同一布局在任何
+    /// 屏幕都适配」/ §7.2「按最小分辨率屏幕算」）。
+    ///
+    /// 单屏时与双参版本等价；多屏时容量按最小那块屏定，抽屉在任何屏上都放得下，
+    /// 档位也不会随当前所在的屏幕跳变。空序列不写任何东西（无参考屏，兜底归调用方）。
+    func updateScreenConstraint(availableScreenSizes sizes: [CGSize]) {
+        guard let merged = GridCapacity.minimumAvailability(sizes) else { return }
+        // 值没变就不写：这两个量是 `@Published`，而本方法在每次展开抽屉时都会
+        // 被调一次（结果与活动屏无关，通常与上次相同），不夹一下会让设置页
+        // 跟着无谓重算档位。
+        guard availableScreenWidth != merged.width || availableScreenHeight != merged.height else {
+            return
+        }
+        availableScreenWidth = merged.width
+        availableScreenHeight = merged.height
     }
 
     /// 屏幕宽度能容纳的最大列数（容量分量，不受用户最大列数配置约束）。
     /// 抽屉窗口的固定满宽按它取（见 `NotchPanelController.drawerFrame`）
     /// ——列数配置变化只 spring 可见面板，窗口 frame 不动。
     func screenColumnCapacity() -> Int {
-        max(
-            1,
-            Int(
-                (availableScreenWidth - NotchGridMetrics.contentPadding * 2
-                    + NotchGridMetrics.spacing)
-                / (NotchGridMetrics.cellWidth + NotchGridMetrics.spacing)
-            )
-        )
+        GridCapacity.columns(availableWidth: availableScreenWidth, metrics: .current)
+    }
+
+    /// 屏幕可用高度能容纳的最大行数；屏高未知（`availableScreenHeight == nil`）返回 nil。
+    /// `nil` 表示「行侧不设容量约束」，与 `DrawerLayoutMetricsResolver` 的
+    /// `maxHeight: CGFloat?` 同款约定。
+    func screenRowCapacity() -> Int? {
+        guard let availableScreenHeight else { return nil }
+        return GridCapacity.rows(availableHeight: availableScreenHeight, metrics: .current)
+    }
+
+    // MARK: 行列数可选档位（设置页消费：屏幕尺寸与格尺寸的函数）
+
+    /// 最大列数的可选范围 = `min(设计下界, 列容量)...列容量`。恒非空——容量不足
+    /// 两列时退化为 `容量...容量`（滑条游标钉死），绝不构造空 `ClosedRange`。
+    var selectableMaxColumnsRange: ClosedRange<Int> {
+        let capacity = screenColumnCapacity()
+        return min(LayoutModel.preferredMaxColumns, capacity)...capacity
+    }
+
+    /// 最小列数的可选范围 = `min(设计下界, 上限)...上限`，上限 = min(当前最大列数, 列容量)。
+    /// 恒非空、恒不越过当前最大列数（与 `setUserMinColumns` 的「不生效就不写」契约一致）。
+    func selectableMinColumnsRange(maxColumns: Int) -> ClosedRange<Int> {
+        let upper = max(min(maxColumns, screenColumnCapacity()), 1)
+        return min(LayoutModel.preferredMinColumns, upper)...upper
+    }
+
+    /// 最小行数的可选范围 = `1...行容量`；屏高未知时退回静态兜底上界（`LayoutModel.minRowsRange`）。
+    var selectableMinRowsRange: ClosedRange<Int> {
+        let floor = LayoutModel.minRowsRange.lowerBound
+        let upper = screenRowCapacity() ?? LayoutModel.minRowsRange.upperBound
+        return floor...max(upper, floor)
     }
 
     func effectiveMaxColumns() -> Int {
@@ -74,8 +129,12 @@ extension LayoutEngine {
     /// 行/列下限（配置项「最小行数 / 最小列数」）的**唯一计算出口**从这里取：
     /// 各面板与网格尺寸站点用它替代原先硬编码的 `1`。只夹尺寸，不改块原点——
     /// 压实、推挤、落点夹紧与校验都看不到这个下限。
+    ///
+    /// 行下限与列侧对称，也夹一次**行容量**（屏高未知时不夹）：小屏上配 9 行下限
+    /// 只会凭空多出视口外看不到的空白行，夹紧后抽屉不虚高。
     func minimumRowCount() -> Int {
-        model.minRows
+        guard let capacity = screenRowCapacity() else { return model.minRows }
+        return min(model.minRows, capacity)
     }
 
     /// 列下限还要夹一次**有效容量**：容量小于配置值时面板恒为满宽，但不会宽出
