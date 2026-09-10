@@ -351,11 +351,8 @@ extension NotchPanelController {
                   let block = pluginManager.block(pluginID: placement.pluginID, blockID: placement.blockID),
                   block.kind.occupiesDrawerGrid,
                   let store = entry.stateStore else {
-                // 普通块维持现状的静默跳过（宿主卡片里留一格空白）；整页块换成
-                // 宿主占位视图——一整页空白没有解释，用户只会以为面板坏了。
-                if placement.isPage {
-                    elements.append(pagePlaceholderElement(for: placement))
-                }
+                // 插件不可用（停用 / 卸载 / 块定义已不存在）时静默跳过，宿主
+                // 卡片里留一格空白。
                 continue
             }
             let frame = layoutEngine.frame(for: placement)
@@ -416,8 +413,7 @@ extension NotchPanelController {
                 minSize: box?.min ?? GridSpan.globalMinimum,
                 maxSize: box?.max ?? GridSpan.globalMinimum,
                 currentSpan: currentSpan,
-                hasSettings: hasSettings,
-                isPage: block.kind.isExclusivePage
+                hasSettings: hasSettings
             ))
         }
         // 提交布局（非预览）构建后更新缓存：与旧缓存**并集**保留——切页往返时
@@ -437,30 +433,6 @@ extension NotchPanelController {
             drawerViewCache = merged
         }
         return elements
-    }
-
-    /// 整页块不可用（插件被停用 / 卸载，或块定义已不存在）时的宿主占位元素。
-    ///
-    /// 判定用持久化标记 `PlacedBlock.isPage` 而不是插件声明——此刻正因为
-    /// "插件解析不出来"才走到这里。不写视图缓存：占位是宿主自绘的廉价视图，
-    /// 且它的内容只随插件启用状态变化（那会走整批 `rebuildContent`）。
-    private func pagePlaceholderElement(for placement: PlacedBlock) -> DrawerElement {
-        let span = GridSpan(
-            columns: max(placement.widthColumns, 1),
-            rows: max(placement.heightRows, 1)
-        )
-        return DrawerElement(
-            placement: placement,
-            view: AnyView(ExclusivePagePlaceholderView(
-                pluginName: pluginManager.entry(for: placement.pluginID)?.metadata.displayName
-                    ?? placement.pluginID
-            )),
-            minSize: span,
-            maxSize: span,
-            currentSpan: span,
-            hasSettings: false,
-            isPage: true
-        )
     }
 
     /// 槽位矩形（窗口内容坐标，左上原点）；与视图共享同一 strip 布局。

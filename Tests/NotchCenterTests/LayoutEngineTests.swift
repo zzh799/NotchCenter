@@ -99,7 +99,8 @@ final class LayoutEngineTests: XCTestCase {
         blockID: String,
         kind: BlockKind,
         sizes: Set<FixtureSize> = [],
-        defaultSize: FixtureSize? = nil
+        defaultSize: FixtureSize? = nil,
+        placement: BlockPlacement = .autoGrid
     ) {
         let makeView: @MainActor (BlockContext) -> AnyView = { _ in AnyView(EmptyView()) }
         switch kind {
@@ -110,7 +111,7 @@ final class LayoutEngineTests: XCTestCase {
                 kind: kind,
                 makeView: makeView
             )
-        case .drawer, .page:
+        case .drawer:
             let box = fixtureBox(sizes: sizes, defaultSize: defaultSize)
             registry["\(pluginID)|\(blockID)"] = NotchBlock(
                 id: blockID,
@@ -119,6 +120,7 @@ final class LayoutEngineTests: XCTestCase {
                 minSize: box.min,
                 maxSize: box.max,
                 recommendedSize: box.recommended,
+                placement: placement,
                 makeView: makeView
             )
         }
@@ -1612,7 +1614,6 @@ private func layoutIssueKind(_ issue: LayoutEngine.LayoutIssue) -> String {
     case .unknownBlock: return "unknownBlock"
     case .compactBlockKindMismatch: return "compactBlockKindMismatch"
     case .drawerBlockKindMismatch: return "drawerBlockKindMismatch"
-    case .pageBlockSharing: return "pageBlockSharing"
     case .schemaVersionMismatch: return "schemaVersionMismatch"
     }
 }

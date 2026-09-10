@@ -63,13 +63,6 @@ struct PlacedBlock: Codable, Equatable, Identifiable {
     var originRow: Int
     var widthColumns: Int
     var heightRows: Int
-    /// 该放置实例是整页块（独占一页）。
-    ///
-    /// 插件声明是**唯一真源**（`LayoutEngine.blockResolver` 能解析时以它为准，
-    /// 并在加载 / 启用集变化时回写本字段防漂移）；这里持久化一份，是为了
-    /// "插件被停用 / 卸载、块定义查不到"时宿主仍能识别整页页——否则那一页会
-    /// 退化成空白，独占守卫也会失效。旧版 layout.json 无此键 → false。
-    var isPage: Bool
 
     var id: String { placementID }
 
@@ -81,8 +74,7 @@ struct PlacedBlock: Codable, Equatable, Identifiable {
         originColumn: Int,
         originRow: Int,
         widthColumns: Int,
-        heightRows: Int,
-        isPage: Bool = false
+        heightRows: Int
     ) {
         self.pluginID = pluginID
         self.blockID = blockID
@@ -92,13 +84,12 @@ struct PlacedBlock: Codable, Equatable, Identifiable {
         self.originRow = originRow
         self.widthColumns = widthColumns
         self.heightRows = heightRows
-        self.isPage = isPage
     }
 
-    // 旧版 layout.json 无 page / isPage 键 → 主页 0 / 非整页。
+    // 旧版 layout.json 无 page 键 → 主页 0。
     private enum CodingKeys: String, CodingKey {
         case pluginID, blockID, placementID, page, originColumn, originRow
-        case widthColumns, heightRows, isPage
+        case widthColumns, heightRows
     }
 
     init(from decoder: Decoder) throws {
@@ -111,7 +102,6 @@ struct PlacedBlock: Codable, Equatable, Identifiable {
         originRow = try container.decode(Int.self, forKey: .originRow)
         widthColumns = try container.decode(Int.self, forKey: .widthColumns)
         heightRows = try container.decode(Int.self, forKey: .heightRows)
-        isPage = try container.decodeIfPresent(Bool.self, forKey: .isPage) ?? false
     }
 }
 

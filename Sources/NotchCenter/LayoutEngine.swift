@@ -5,6 +5,16 @@ import NotchCenterKit
 
 // MARK: - 布局引擎
 
+/// 添加抽屉块的结果。`.noPageCapacity` 与 `.unavailable` 分开，是因为前者需要
+/// 向用户解释"抽屉页已满"（可行动），后者只是块声明有问题（内部错误）。
+enum DrawerAddOutcome: Equatable {
+    case placed(placementID: String, page: Int)
+    /// 页数已达上限且没有空页——调用方提示用户，宿主不自动清理任何页。
+    case noPageCapacity
+    /// 块查不到、不是抽屉块，或声明非法。
+    case unavailable
+}
+
 /// 布局引擎：紧凑槽位 + 抽屉网格的放置、移动、缩放、重叠检测与原子持久化
 /// （文档 §5 / §7）。
 /// 本文件只保留类声明、存储属性、加载、查询与持久化；其余职责按只读/协作
@@ -20,8 +30,6 @@ final class LayoutEngine: ObservableObject {
         case unknownBlock(pluginID: String, blockID: String)
         case compactBlockKindMismatch(placementID: String)
         case drawerBlockKindMismatch(placementID: String)
-        /// 整页块与别的块共存于同一页（独占不变量被破坏）。
-        case pageBlockSharing(placementID: String)
     }
 
     /// 布局模型真源。setter 为模块内可见（原为 `private(set)`，拆分到独立
@@ -86,9 +94,6 @@ final class LayoutEngine: ObservableObject {
             )
             model = loaded
             didLoadFromDisk = true
-            // 整页块的标记回写、几何归一与非法共存拆解：必须在 window/内容
-            // 首次构建前收敛，否则首帧就会带着"整页 + 同页邻居"的非法状态上屏。
-            normalizeExclusivePageState()
         } else {
             model = LayoutModel()
             didLoadFromDisk = false

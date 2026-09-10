@@ -1,17 +1,16 @@
 import NotchCenterKit
 import SwiftUI
 
-// MARK: - 整页块视图（pomodoro.page）：大计时器 + 今日节奏 + 历史复盘
+// MARK: - 大组件视图（pomodoro.page）：大计时器 + 今日节奏 + 历史复盘
 //
-// 表面满血（Agent Note 2026-09-10-plugin-page-blocks §3）：不套 BlockCard、
-// 不进宿主的抽屉 ScrollView，所以内边距与滚动由本页自管；顶部额外留出一段
-// 空档让开宿主叠在左上角的设置齿轮（24pt 按钮 + 6pt 内距）。
+// 它与所有抽屉块走同一条渲染路径（宿主 BlockCard + 宿主抽屉 ScrollView），
+// 不再自管滚动、也不给自己留设置齿轮的空档——chrome 与滚动都由宿主统一处理。
+// 区别只在于声明了 `.newPageWhenOccupied`：用户添加它时若当前页已被占用，
+// 宿主为它另开一页（只是"添加那一刻"的落点偏好，落位后与任何块同权）。
 
 private enum PomodoroPageMetrics {
-    /// 内容左右内边距（与抽屉内容同值，页面左缘对齐其余块）。
+    /// 内容左右内边距。
     static let horizontal: CGFloat = NotchTokens.Space.contentHorizontal
-    /// 顶部让位：宿主设置齿轮叠在内容区左上角。
-    static let top: CGFloat = 34
     static let bottom: CGFloat = 14
     /// 区块之间的间距。
     static let sectionGap: CGFloat = 20
@@ -49,18 +48,15 @@ struct PomodoroPageView: View {
 
     var body: some View {
         let display = store.display
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: PomodoroPageMetrics.sectionGap) {
-                timerHero(display: display)
-                todaySection
-                historySection
-                footnotes
-            }
-            .padding(.horizontal, PomodoroPageMetrics.horizontal)
-            .padding(.top, PomodoroPageMetrics.top)
-            .padding(.bottom, PomodoroPageMetrics.bottom)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: PomodoroPageMetrics.sectionGap) {
+            timerHero(display: display)
+            todaySection
+            historySection
+            footnotes
         }
+        .padding(.horizontal, PomodoroPageMetrics.horizontal)
+        .padding(.bottom, PomodoroPageMetrics.bottom)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: store.history) { _, newValue in
             review = PomodoroReviewSnapshot(history: newValue, now: Date())
         }

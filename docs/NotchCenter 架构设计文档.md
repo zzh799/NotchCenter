@@ -179,18 +179,16 @@ public enum BlockInteraction { case expandDrawer, custom }
   再次拖拽时按新边界钳制。
 - 存量官方插件迁移公式：旧跨度 × 默认格（150/120）→ 像素。
 
-**整页块（`BlockKind.page`，2026-09-10 新增）：**
+**添加落点偏好（`BlockPlacement`，2026-09-10 新增）：**
 
-- 语义：独占**一整个抽屉页**——该页不得再有任何其它抽屉块；页面主体满血铺满内容区
-  （不套 `BlockCard` 外壳，自管滚动），顶栏 / 分页胶囊仍归宿主。
-- 尺寸：复用网格格跨，`min/recommended/max` 三档与 drawer 同规则；列跨度恒夹进
-  `[minimumColumnCount(), effectiveMaxColumns()]`，原点恒 `(0,0)`（整页不可拖动 / 不可跨页搬运）。
-- 落点：添加时当前页为空则就地占用，否则新开一页；9 页满且无空页即失败提示。
-- chrome：左上角设置齿轮与右下角拖拉握把与普通抽屉块一致；齿轮常驻悬停可用，
-  ✕ / 握把仅编辑模式 + 悬停。✕ 语义 = 移除该组件（页面留空）。
-- 持久化：`PlacedBlock.isPage` 为插件声明失效时的回落标记（防漂移 / 停用后识别）。
-- 异常：插件不可用时宿主渲染整页占位视图；非法共存（同页混排）时整页块自动搬至新页。
-- probes：整页块**豁免**（其内容盒 = 整页，不存在与邻居遮挡），门禁不要求声明。
+- `NotchBlock.placement` 声明**从目录添加该块时**落在哪一页，仅对 `.drawer` 有意义：
+  - `.autoGrid`（默认）：在页里自动寻空位（`autoPlaceDrawerBlock`）。
+  - `.newPageWhenOccupied`：当前页为空则就地占用，否则新开一页；9 页满且当前页非空即
+    失败提示（不搜刮其它空页、不自动清理任何页）。适合"一个就占掉大半页"的大组件。
+- **声明只影响添加那一刻**：落位后该块与任何抽屉块完全同权——可拖动、可缩放、可跨页
+  搬移、可参与一键重排、可与任意块同页共存。它**不是**独占语义。
+- 落点偏好由**插件声明、宿主执行**（与 `QuickAction.defaultInStrip` 同构），
+  宿主不硬编码任何插件 ID。
 
 **打包期遮挡校验（probes，原始需求收尾件）：**
 
@@ -207,8 +205,8 @@ public enum BlockInteraction { case expandDrawer, custom }
 - 紧凑块只能放入紧凑槽位，抽屉块只能放入抽屉网格。
 - 抽屉块必须声明像素三档，且逐轴 `min ≤ recommended ≤ max`、min 不小于 75×60；
   compact 不得声明三档。
-- 整页块与抽屉块同尺寸规则，但**同页不得混排**（`LayoutIssue.pageBlockSharing` 报错）；
-  `interaction` 必须是 `.expandDrawer`，声明 `.custom` 即校验失败。
+- 所有抽屉块同规则、同权，不存在"独占页"这种特殊种类（原 `BlockKind.page` 已于
+  2026-09-10 撤销，见 Agent Note 2026-09-10-drop-exclusive-page-blocks）。
 - 紧凑块尺寸由宿主统一决定（紧凑槽位几何），不属于抽屉三档模型、无需声明尺寸。
 - 紧凑块 `interaction` 可选；默认行为是点击展开抽屉。
 

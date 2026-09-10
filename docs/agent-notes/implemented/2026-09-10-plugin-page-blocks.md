@@ -1,10 +1,15 @@
 # Agent Note:整页块（BlockKind.page）与番茄钟页面化
 
+> **已被取代**：本 note 的「整页独占」语义（`BlockKind.page`、独占守卫、满血渲染变体、
+> `PlacedBlock.isPage`）已由 [2026-09-10-drop-exclusive-page-blocks](2026-09-10-drop-exclusive-page-blocks.md)
+> 整体撤销。番茄钟的整页形态改以普通抽屉块 + `BlockPlacement.newPageWhenOccupied` 存在。
+> 本 note 的数据层 / 评分闸门部分（§8、§9）仍然有效。
+
 status: implemented
 date: 2026-09-10
 deciders: 用户（逐题拍板）+ 实现代理
 replaces: <无>
-superseded-by: <无>
+superseded-by: 2026-09-10-drop-exclusive-page-blocks
 
 ## Context(背景与约束)
 

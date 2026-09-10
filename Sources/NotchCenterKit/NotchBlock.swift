@@ -4,16 +4,9 @@ import SwiftUI
 // MARK: - 块种类与物理尺寸声明（文档 §4.2）
 
 /// 块所属区域：紧凑区（刘海两侧，槽位数随图标动态伸缩）或抽屉区（展开网格）。
-///
-/// `.page` 是抽屉区的**独占变体**：它同样占格跨、同样吃 `sizeBox` 三档换算，
-/// 但宿主保证同一抽屉页内只会有它一个块（见 Agent Note
-/// 2026-09-10-plugin-page-blocks）。用枚举而不是布尔标志，是为了让
-/// "紧凑 / 抽屉网格 / 独占整页"互斥关系由类型承担。
 public enum BlockKind: Sendable, Hashable {
     case compact
     case drawer
-    /// 整页块：独占一个抽屉页，同页不得再有任何其它块。
-    case page
 }
 
 extension BlockKind {
@@ -21,9 +14,23 @@ extension BlockKind {
     /// 尺寸换算、渲染元素构建等"只关心有没有格跨"的站点用它，别写 `!= .compact`
     /// ——新种类落地时这里是要重新审的唯一一处。
     public var occupiesDrawerGrid: Bool { self != .compact }
+}
 
-    /// 是否独占整页（同页禁止共存、不可拖动、不参与重排与跨页搬移）。
-    public var isExclusivePage: Bool { self == .page }
+/// 抽屉块的**添加落点偏好**（仅 `.drawer` 有意义）。
+///
+/// 只影响"用户从目录添加这个块的那一刻"它落在哪一页；落位之后该块与任何其它
+/// 抽屉块**完全同权**——可拖动、可缩放、可跨页搬移、可参与重排、可与任意块同页
+/// 共存。宿主不硬编码任何插件 ID：落点偏好是插件对自己组件的意图，由插件声明、
+/// 宿主执行（与 `QuickAction.defaultInStrip` 同构）。
+public enum BlockPlacement: Sendable, Hashable {
+    /// 默认：在页里自动寻空位（`LayoutEngine.autoPlaceDrawerBlock`）。
+    case autoGrid
+    /// 当前页为空则就地占用，否则新开一页（右外侧）。
+    ///
+    /// 页数已达 `LayoutModel.maxDrawerPageCount` 且当前页非空时**失败并提示**，
+    /// 宿主既不搜刮其它空页、也不自动清理任何页。适合"一个就占掉大半页"的大
+    /// 组件——用户添加它时的意图是"给我一页"，而不是"塞进现在这页的缝里"。
+    case newPageWhenOccupied
 }
 
 /// 紧凑块点击行为（文档 §4.2 / §6.2）：默认点击展开抽屉，`.custom` 由插件自行处理。
@@ -112,7 +119,7 @@ public struct NotchBlock: Identifiable {
     public let id: String
     /// 用户可见名称。
     public let displayName: String
-    /// 块种类：紧凑块、抽屉网格块或独占整页块。
+    /// 块种类：紧凑块或抽屉网格块。
     public let kind: BlockKind
     /// 抽屉块的**物理像素**尺寸声明——最小/最大/推荐三档（点）。
     ///
@@ -120,12 +127,15 @@ public struct NotchBlock: Identifiable {
     /// （`sizeBox(metrics:)`）：min 取上整（物理 ≥ 最小）、max 取下整（物理
     /// ≤ 最大）、recommended 就近取整并夹进盒内。用户改格子大小时换算随之
     /// 变化，组件物理尺寸始终尊重声明区间。
-    /// 紧凑块固定 44×44，三档恒为 nil；`.drawer` 与 `.page` 都必须声明。
+    /// 紧凑块固定 44×44，三档恒为 nil；`.drawer` 必须声明。
     public let minSize: BlockPixelSize?
     public let maxSize: BlockPixelSize?
     public let recommendedSize: BlockPixelSize?
     /// 紧凑块点击行为（仅紧凑块有意义）。默认 `.expandDrawer`。
     public let interaction: BlockInteraction
+    /// 抽屉块的添加落点偏好（仅 `.drawer` 有意义，紧凑块忽略）。
+    /// 只影响"从目录添加的那一刻"落在哪一页，落位后无任何限制。默认 `.autoGrid`。
+    public let placement: BlockPlacement
     /// 目录条目图标（SF Symbol 名称，可选）。宿主在"添加块"目录里渲染
     /// "图标 + 块名"；未声明时回退纯文本条目（向后兼容第三方插件）。
     public let symbolName: String?
@@ -141,16 +151,13 @@ public struct NotchBlock: Identifiable {
     /// `BlockProbe` 矩形（见 `BlockProbe` 的声明语义）。打包校验（`verify-sizes`）
     /// 以 `minSize` 作内容盒对探针做几何校验，拦截"最小尺寸下会互遮/溢出"的布局。
     /// 官方 drawer 块必须声明（门禁强制）；compact 与未声明的第三方块跳过校验。
-    /// **`.page` 豁免**：探针的"越界 = 会伸到邻居块"论证以"同页还有别的块"为前提，
-    /// 整页独占没有这个前提；且整页自管滚动、`minSize` 只是拖拽下限而非运行时
-    /// 保证，几何比对会给出假阳性。整页块声明了照常校验，但不强制。
     /// 注意：探针推导**只能依赖 `BlockLayoutInfo.frame`（像素）**，不得依赖
     /// `size/widthColumns/heightRows`（校验时网格上下文不存在，恒为 nil）。
     public let probes: (@MainActor (BlockLayoutInfo) -> [BlockProbe])?
 
     // MARK: 便捷访问
 
-    /// 抽屉区块的物理像素三档；紧凑块恒 nil。`.drawer` 与 `.page` 共用。
+    /// 抽屉区块的物理像素三档；紧凑块恒 nil。
     public var pixelBox: (min: BlockPixelSize, max: BlockPixelSize, recommended: BlockPixelSize)? {
         guard let minSize, let maxSize, let recommendedSize else { return nil }
         return (minSize, maxSize, recommendedSize)
@@ -257,6 +264,7 @@ public struct NotchBlock: Identifiable {
         self.maxSize = nil
         self.recommendedSize = nil
         self.interaction = interaction
+        self.placement = .autoGrid
         self.symbolName = symbolName
         self.instanceSettingsView = instanceSettingsView
         self.probes = probes
@@ -264,9 +272,6 @@ public struct NotchBlock: Identifiable {
     }
 
     /// 抽屉块构造：声明 最小/最大/推荐 三档**物理像素**尺寸。
-    ///
-    /// `.drawer` 与 `.page` 共用本构造（整页块的像素三档语义与网格块一致，
-    /// 只是它的列跨度会被宿主夹到 `[最小列数, 有效容量]` 之间以铺满内容区）。
     ///
     /// 声明必须满足：三档齐全、逐轴 `min ≤ recommended ≤ max`、min 不小于
     /// 全局下限 `globalMinimumPixel`（75×60）。违反时 `validationError` 非空，
@@ -279,6 +284,7 @@ public struct NotchBlock: Identifiable {
         maxSize: BlockPixelSize,
         recommendedSize: BlockPixelSize,
         interaction: BlockInteraction = .expandDrawer,
+        placement: BlockPlacement = .autoGrid,
         symbolName: String? = nil,
         instanceSettingsView: (@MainActor (BlockContext) -> AnyView)? = nil,
         probes: (@MainActor (BlockLayoutInfo) -> [BlockProbe])? = nil,
@@ -291,6 +297,7 @@ public struct NotchBlock: Identifiable {
         self.maxSize = maxSize
         self.recommendedSize = recommendedSize
         self.interaction = interaction
+        self.placement = placement
         self.symbolName = symbolName
         self.instanceSettingsView = instanceSettingsView
         self.probes = probes
@@ -299,9 +306,8 @@ public struct NotchBlock: Identifiable {
 
     /// 校验块声明是否满足架构文档 §4.2 的规则。
     /// - 紧凑块固定 44×44，不得声明抽屉三档；
-    /// - `.drawer` / `.page` 必须三档齐全，且逐轴 `min ≤ recommended ≤ max`、
-    ///   min 不小于全局像素下限 `globalMinimumPixel`（75×60）；
-    /// - `.page` 不得声明 `interaction`（那是紧凑块专属语义，整页没有点击行为）。
+    /// - `.drawer` 必须三档齐全，且逐轴 `min ≤ recommended ≤ max`、
+    ///   min 不小于全局像素下限 `globalMinimumPixel`（75×60）。
     public var validationError: String? {
         switch kind {
         case .compact:
@@ -311,16 +317,10 @@ public struct NotchBlock: Identifiable {
             return nil
         case .drawer:
             return pixelBoxValidationError(label: "drawer")
-        case .page:
-            if let error = pixelBoxValidationError(label: "page") { return error }
-            if interaction != .expandDrawer {
-                return "page block \(id) must not declare interaction (compact-only)"
-            }
-            return nil
         }
     }
 
-    /// 像素三档的逐轴校验（`.drawer` 与 `.page` 共用，`label` 只影响报错措辞）。
+    /// 像素三档的逐轴校验（`label` 只影响报错措辞）。
     private func pixelBoxValidationError(label: String) -> String? {
         guard let minSize, let maxSize, let recommendedSize else {
             return "\(label) block \(id) must declare minSize/maxSize/recommendedSize"

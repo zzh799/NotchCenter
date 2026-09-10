@@ -11,8 +11,6 @@ extension LayoutEngine {
         model.maxColumns = clamped
         // 容量缩小后先修越界块再落盘：越界状态（右侧块被面板裁掉）不进 layout.json。
         repairBlocksBeyondCapacity()
-        // 整页块的列跨度同样吃容量：容量变小后要重新夹进新容量，否则整页会溢出。
-        normalizeExclusivePageGeometry()
         saveToDisk()
     }
 
@@ -43,8 +41,6 @@ extension LayoutEngine {
         )
         guard model.minColumns != clamped else { return }
         model.minColumns = clamped
-        // 最小列数是整页块跨度的**下限**（整页恒铺满内容区），改完要跟着重夹。
-        normalizeExclusivePageGeometry()
         saveToDisk()
     }
 
@@ -144,13 +140,10 @@ extension LayoutEngine {
     }
 
     /// 同步启用插件列表（文档 §5.4：enabledPluginIDs 存于 layout.json）。
-    /// 启用集变化会改变"哪些块能解析"——整页块标记的回写与非法共存的拆解
-    /// 都要跟着重跑一次（插件停用 → 只能靠持久化标记守住独占不变量）。
     func syncEnabledPluginIDs(_ ids: Set<String>) {
         let sorted = ids.sorted()
         guard Set(model.enabledPluginIDs) != ids else { return }
         model.enabledPluginIDs = sorted
-        normalizeExclusivePageState()
         saveToDisk()
     }
 
@@ -392,8 +385,6 @@ extension LayoutEngine {
         guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
             return nil
         }
-        // 整页页拒收任何别的块（独占不变量，与落点判定层无关的引擎侧守卫）。
-        guard !isExclusivePage(page) else { return nil }
         let span = block.sizeBox(cellWidth: cellWidth, cellHeight: cellHeight)?.recommended
             ?? GridSpan.globalMinimum
         let columns = effectiveMaxColumns()
@@ -441,6 +432,99 @@ extension LayoutEngine {
         return placed
     }
 
+    /// 按插件声明的落点偏好添加抽屉块（`NotchBlock.placement`，目录添加路径）。
+    ///
+    /// - `.autoGrid` → `autoPlaceDrawerBlock`（在当前页自动寻空位）；
+    /// - `.newPageWhenOccupied` → `addDrawerBlockOnNewPageIfOccupied`。
+    ///
+    /// 落点偏好**只影响添加这一刻**落在哪一页：落位后该块与任何其它抽屉块完全
+    /// 同权（可拖动 / 缩放 / 跨页搬移 / 参与重排 / 同页共存）。
+    @discardableResult
+    func addDrawerBlock(
+        pluginID: String,
+        blockID: String,
+        page: Int,
+        cellWidth: CGFloat = NotchGridMetrics.cellWidth,
+        cellHeight: CGFloat = NotchGridMetrics.cellHeight
+    ) -> DrawerAddOutcome {
+        guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
+            return .unavailable
+        }
+        switch block.placement {
+        case .autoGrid:
+            guard let placed = autoPlaceDrawerBlock(
+                pluginID: pluginID,
+                blockID: blockID,
+                page: page,
+                cellWidth: cellWidth,
+                cellHeight: cellHeight
+            ) else { return .unavailable }
+            return .placed(placementID: placed.placementID, page: placed.page)
+        case .newPageWhenOccupied:
+            return addDrawerBlockOnNewPageIfOccupied(
+                pluginID: pluginID,
+                blockID: blockID,
+                preferredPage: page,
+                cellWidth: cellWidth,
+                cellHeight: cellHeight
+            )
+        }
+    }
+
+    /// 添加落点：当前页为空则就地占用，否则新开一页（右外侧）。
+    ///
+    /// 页数已达 `LayoutModel.maxDrawerPageCount` 且无空页时返回 `.noPageCapacity`，
+    /// **不自动清理任何页**（由调用方提示用户）。不做几何归一、不写任何标记、
+    /// 不参与加载期收敛——它就是一次普通的添加，只是选了另一页。
+    @discardableResult
+    func addDrawerBlockOnNewPageIfOccupied(
+        pluginID: String,
+        blockID: String,
+        preferredPage: Int,
+        cellWidth: CGFloat = NotchGridMetrics.cellWidth,
+        cellHeight: CGFloat = NotchGridMetrics.cellHeight
+    ) -> DrawerAddOutcome {
+        guard let block = blockResolver(pluginID, blockID),
+              block.kind == .drawer,
+              block.validationError == nil else {
+            return .unavailable
+        }
+
+        let targetPage: Int
+        if model.drawerPages.contains(preferredPage),
+           drawerBlocks(onPage: preferredPage).isEmpty {
+            targetPage = preferredPage
+        } else if canAddDrawerPage() {
+            targetPage = addDrawerPage(.right)
+        } else {
+            return .noPageCapacity
+        }
+
+        guard let placed = autoPlaceDrawerBlock(
+            pluginID: pluginID,
+            blockID: blockID,
+            page: targetPage,
+            cellWidth: cellWidth,
+            cellHeight: cellHeight
+        ) else { return .unavailable }
+        // 该书签页还没有自定义标题 / 图标时用块名与图标补一次默认值，之后
+        // 用户仍可在分页胶囊的页面设置里改（不清空已有自定义值）。
+        seedPageIdentity(page: targetPage, title: block.displayName, symbol: block.symbolName)
+        saveToDisk()
+        return .placed(placementID: placed.placementID, page: targetPage)
+    }
+
+    /// 落位时为所在页补一次默认标题 / 图标；已有非空值不动。
+    private func seedPageIdentity(page: Int, title: String, symbol: String?) {
+        let key = String(page)
+        if model.drawerPageTitles[key]?.isEmpty != false {
+            model.drawerPageTitles[key] = title
+        }
+        if model.drawerPageIcons[key]?.isEmpty != false, let symbol {
+            model.drawerPageIcons[key] = symbol
+        }
+    }
+
     /// 在指定网格位置放置抽屉块（设置面板拖拽落点，文档 §5.3）：
     /// 落点被占/越界时按行优先扫描最近可用位置（与 `moveDrawerBlock`
     /// 同一语义）；无处可放返回 nil。行仅向下增长（row < 0 一律按 0 计）。
@@ -460,8 +544,6 @@ extension LayoutEngine {
         guard let block = blockResolver(pluginID, blockID), block.kind == .drawer else {
             return nil
         }
-        // 落点判定层的拦截之外再守一道：整页页收不下任何别的块。
-        guard !isExclusivePage(page) else { return nil }
         let span = block.sizeBox(cellWidth: cellWidth, cellHeight: cellHeight)?.recommended
             ?? GridSpan.globalMinimum
         guard let origin = nearestFreeOrigin(
@@ -578,8 +660,6 @@ extension LayoutEngine {
               model.drawerPages.contains(toPage) else { return nil }
         let block = model.drawerBlocks[index]
         guard block.page != toPage else { return nil }
-        // 整页块不跨页搬移（它的归属由所在页决定），别的块也搬不进整页页。
-        guard !isExclusivePageBlock(block), !isExclusivePage(toPage) else { return nil }
         model.drawerBlocks.remove(at: index)
         // 原页压实：块搬走留下的整行/整列空洞闭合（与 removeDrawerBlock 同款）。
         compactEmptyRows()
@@ -610,9 +690,7 @@ extension LayoutEngine {
     /// 一键重排（编辑模式）：按“从上到下、从左到右”的阅读顺序紧密排布抽屉块。
     /// 以当前布局的阅读顺序为优先级，逐块放到首个不重叠位置（行优先
     /// 扫描），消除移动/缩放留下的空洞；块身份与跨度保持不变，仅调整原点。
-    /// 整页页整体跳过：整页块恒占 (0,0) 满页，不参与网格重排。
     func reorderDrawerBlocks(page: Int = 0) {
-        guard !isExclusivePage(page) else { return }
         let pageBlocks = drawerBlocks(onPage: page)
         guard !pageBlocks.isEmpty else { return }
         let columns = effectiveMaxColumns()
@@ -655,15 +733,13 @@ extension LayoutEngine {
     }
 
     /// 移动抽屉块到目标位置（块只在其所在页内移动）；目标被占用时移动到最近
-    /// 可用位置。无处可放或块不存在返回 false。整页块不参与页内移动——
-    /// 它恒占满整页、没有"位置"可言（唯一能调的几何是跨度，走缩放路径）。
+    /// 可用位置。无处可放或块不存在返回 false。
     @discardableResult
     func moveDrawerBlock(placementID: String, toColumn: Int, toRow: Int) -> Bool {
         guard let index = model.drawerBlocks.firstIndex(where: { $0.placementID == placementID }) else {
             return false
         }
         let block = model.drawerBlocks[index]
-        guard !isExclusivePageBlock(block) else { return false }
         let others = siblings(of: block)
         let occupied = others.map(rectKey)
         let bounds = validColumnRange(others: others, width: block.widthColumns)
@@ -725,20 +801,6 @@ extension LayoutEngine {
                   cellHeight: NotchGridMetrics.cellHeight
               ) else {
             return false
-        }
-
-        // 整页块走独立分支：跨度先夹进 [最小列数, 有效容量]（于是它正好铺满
-        // 内容区），原点恒 (0,0)，不推挤也不压实——它独占一页，没有邻居。
-        if definition.kind.isExclusivePage {
-            let span = normalizedExclusivePageSpan(columns: toColumns, rows: toRows)
-            var resized = block
-            resized.originColumn = 0
-            resized.originRow = 0
-            resized.widthColumns = span.columns
-            resized.heightRows = span.rows
-            model.drawerBlocks[index] = resized
-            saveToDisk()
-            return true
         }
 
         var resized = block

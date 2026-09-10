@@ -10,7 +10,6 @@ import SwiftUI
 /// - **设置按钮**只要块有设置界面，指针悬停即出现（不再要求编辑模式，设置是
 ///   高频可达入口）；**移除与缩放握把**仍收在"编辑模式 + 悬停"里（布局类操作
 ///   归编辑模式，保住"编辑模式 = 可以动布局"这个既有心智）；
-/// - 整页块（`isPage`）不可拖动——它恒占满整页，没有"位置"可言；
 /// - 设置 / 移除 / 缩放握把共用组件默认圆形按钮样式（Kit `IconCircleBadge`）。
 struct DrawerBlockContainer: View {
     let element: DrawerElement
@@ -18,8 +17,6 @@ struct DrawerBlockContainer: View {
     let isDragging: Bool
     /// 插件是否提供设置界面（设置齿轮按钮的显隐条件）。
     let hasSettings: Bool
-    /// 是否整页块（独占整页）：不可拖动。
-    let isPage: Bool
     /// 滑动中暂停手势。
     var isSwipeActive: Bool = false
     /// 缩放预览目标（由父视图持有；nil 表示未在缩放）。
@@ -131,9 +128,7 @@ struct DrawerBlockContainer: View {
             .offset(compensation)
             .offset(dragOffset)
             .gesture(
-                // 整页块不可拖动：它恒占满整页、没有"位置"，唯一能调的几何是
-                // 跨度（右下握把）。引擎侧的 moveDrawerBlock 也有同一道守卫。
-                isEditing && !isResizing && !isSwipeActive && !isPage
+                isEditing && !isResizing && !isSwipeActive
                     ? DragGesture(minimumDistance: 2)
                         .onChanged { value in
                             dragOffset = value.translation

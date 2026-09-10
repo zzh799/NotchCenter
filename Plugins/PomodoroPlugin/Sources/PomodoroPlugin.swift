@@ -51,6 +51,44 @@ public final class PomodoroPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugi
         ]
     }
 
+    /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe；区带镜像
+    /// PomodoroPageViews 的 `PomodoroPageMetrics` 布局常量）。
+    ///
+    /// 大组件是普通抽屉块（`.drawer` + `.newPageWhenOccupied`），**不豁免探针**：
+    /// minSize 300×240 下探针若越界，内容会伸到同页邻居块上。因此只声明
+    /// 三个"必须完整可见"的纵向区带（顶部大计时器 / 今日节奏 / 底部复盘标题），
+    /// 中段的历史柱状区域允许在最小高度下被压缩——它是自适应的，不是硬需求。
+    /// 区带高度按实际常量推导：顶部 34(标题+倒计时+进度条+动作)、横纵内边距 14。
+    private static func pomodoroPageLayoutProbes(for size: CGSize) -> [BlockProbe] {
+        let horizontal = NotchTokens.Space.contentHorizontal
+        let top: CGFloat = 0
+        let heroHeight: CGFloat = 104
+        let todayHeight: CGFloat = 46
+        let contentWidth = max(size.width - horizontal * 2, 0)
+        return [
+            BlockProbe(
+                id: "pomodoro.page.hero",
+                rect: CGRect(x: horizontal, y: top, width: contentWidth, height: heroHeight)
+            ),
+            BlockProbe(
+                id: "pomodoro.page.today",
+                rect: CGRect(
+                    x: horizontal,
+                    y: top + heroHeight + 20,
+                    width: contentWidth,
+                    height: todayHeight)
+            ),
+            BlockProbe(
+                id: "pomodoro.page.review",
+                rect: CGRect(
+                    x: horizontal,
+                    y: top + heroHeight + 20 + todayHeight + 20,
+                    width: contentWidth,
+                    height: 20)
+            ),
+        ]
+    }
+
     public static var blocks: [NotchBlock] {
         [
             NotchBlock(
@@ -68,18 +106,21 @@ public final class PomodoroPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugi
                     AnyView(PomodoroDrawerBlockView(context: context))
                 }
             ),
-            // 整页形态：独占一个抽屉页（大计时器 + 今日节奏 + 历史复盘）。
-            // 与上面的小控制卡是两种形态，二者可同时放置。
-            // 不声明 probes——整页自管滚动、且独占页内没有"伸到邻居块"这回事
-            // （打包校验对 `.page` 豁免，见 Agent Note 2026-09-10-plugin-page-blocks）。
+            // 大组件形态：大计时器 + 今日节奏 + 历史复盘。与上面的小控制卡是
+            // 两种形态，二者可同时放置。`.newPageWhenOccupied` 只是"添加那一刻"
+            // 的落点偏好（当前页被占用时另开一页），落位后与任何抽屉块同权。
             NotchBlock(
                 id: "pomodoro.page",
                 displayName: L("block.page.name"),
-                kind: .page,
+                kind: .drawer,
                 minSize: BlockPixelSize(width: 300, height: 240),
                 maxSize: BlockPixelSize(width: 900, height: 600),
                 recommendedSize: BlockPixelSize(width: 600, height: 360),
+                placement: .newPageWhenOccupied,
                 symbolName: "timer.circle",
+                probes: { info in
+                    Self.pomodoroPageLayoutProbes(for: info.frame.size)
+                },
                 makeView: { context in
                     AnyView(PomodoroPageView(context: context))
                 }

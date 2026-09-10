@@ -114,9 +114,10 @@ public struct APIVersionRange: Sendable, CustomStringConvertible, Equatable {
 /// **本枚举是版本号的唯一真源**：`docs/api-changelog/` 的条目按 `currentVersion`
 /// 标注版本，不再各自写口号式大版本（2026-09-10 起；此前 09-07 两条误标 v2.0.0）。
 public enum NotchCenterKitAPI {
-    /// v1.2.0：`BlockKind` 新增 `.page`（独占整页的抽屉块）。纯新增，但枚举新增
-    /// case 对"穷举 `switch BlockKind`"的插件是源码级破坏——只做 `== .drawer`
-    /// 比较的插件零影响。明细见 docs/api-changelog/NotchBlock.md
-    /// （Agent Note 2026-09-10-plugin-page-blocks）。
-    public static let currentVersion = SemanticVersion(major: 1, minor: 2, patch: 0)
+    /// v1.3.0：**移除** `BlockKind.page`（撤销"独占整页"语义，回归统一网格组件），
+    /// 新增 `BlockPlacement`（添加落点偏好，默认 `.autoGrid`，纯新增零破坏）。
+    /// 移除枚举 case 只对"穷举 `switch BlockKind`"的插件是源码级破坏——只做
+    /// `== .drawer` 比较的插件零影响。明细见 docs/api-changelog/NotchBlock.md
+    /// （Agent Note 2026-09-10-drop-exclusive-page-blocks）。
+    public static let currentVersion = SemanticVersion(major: 1, minor: 3, patch: 0)
 }

@@ -16,9 +16,6 @@ struct DrawerElement: Identifiable {
     let currentSpan: GridSpan?
     /// 插件是否提供设置界面（设置齿轮的显隐条件）。
     let hasSettings: Bool
-    /// 是否整页块：渲染上它铺满内容区、**排除出宿主的抽屉 ScrollView**，
-    /// 背景与内部滚动由插件自管（见 Agent Note 2026-09-10-plugin-page-blocks）。
-    let isPage: Bool
 
     var id: String { placement.placementID }
 }
@@ -181,21 +178,12 @@ struct DrawerPanelView: View {
                 .contentShape(Rectangle())
                 .onHover { isTopBarHovering = $0 }
 
-            if let pageElement = ui.drawerElements.first(where: \.isPage) {
-                // 整页块：铺满内容区、**不进宿主的 ScrollView**——页面自管滚动
-                // 与背景（页内滚动交给页面自己，宿主的滚动容器的"内容 ≡ 可视区"
-                // 前提对整页也不成立）。高度由外层 frame 给定（内容区高度），
-                // 屏幕封顶时页面拿到更小的框，须自己在这个框里活。
-                blockContainer(for: pageElement, in: geometry)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                // 滚动指示条必须隐藏：抽屉是内容自适应面板，静止态内容 ≡ 可视区，
-                // 滚动条没有存在意义；且内容高度与可视区高度是两个独立的 spring
-                // 动画值，多行缩少行时二者逐帧量化差会让滚动条反复亮灭。屏幕
-                // 封顶截断内容时滚轮滚动依旧可用（仅无指示条）。
-                ScrollView(showsIndicators: false) {
-                    pageSlide
-                }
+            // 滚动指示条必须隐藏：抽屉是内容自适应面板，静止态内容 ≡ 可视区，
+            // 滚动条没有存在意义；且内容高度与可视区高度是两个独立的 spring
+            // 动画值，多行缩少行时二者逐帧量化差会让滚动条反复亮灭。屏幕
+            // 封顶截断内容时滚轮滚动依旧可用（仅无指示条）。
+            ScrollView(showsIndicators: false) {
+                pageSlide
             }
         }
         .padding(.horizontal, NotchGridMetrics.contentPadding)
@@ -504,7 +492,6 @@ struct DrawerPanelView: View {
             isEditing: ui.isEditing,
             isDragging: interaction.draggingPlacementID == element.id,
             hasSettings: element.hasSettings,
-            isPage: element.isPage,
             isSwipeActive: isSwipeActive,
             previewColumns: previewSpan?.columns,
             previewRows: previewSpan?.rows,

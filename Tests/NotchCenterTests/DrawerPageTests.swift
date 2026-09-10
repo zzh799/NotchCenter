@@ -53,7 +53,7 @@ final class DrawerPageTests: XCTestCase {
             registry["\(pluginID)|\(blockID)"] = NotchBlock(
                 id: blockID, displayName: blockID, kind: kind, makeView: makeView
             )
-        case .drawer, .page:
+        case .drawer:
             let box = fixtureBox(sizes: sizes, defaultSize: defaultSize)
             registry["\(pluginID)|\(blockID)"] = NotchBlock(
                 id: blockID, displayName: blockID, kind: kind,
