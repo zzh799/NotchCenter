@@ -3,6 +3,24 @@
 /* 块名 */
 "block.drawer.name" = "Clipboard History";
 "block.compact.name" = "Clipboard";
+"block.library.name" = "Clipboard Library";
+
+/* 剪贴板库页 */
+"library.a11y" = "Clipboard library";
+"library.search.placeholder" = "Search clipboard…";
+"library.search.clear" = "Clear search";
+"library.filtered" = "%d filters on";
+"library.section.pinned" = "Pinned";
+"library.section.recent" = "Recent";
+"library.empty.title" = "No Clipboard History Yet";
+"library.empty.hint" = "Copy some text and it will show up here.";
+"library.noMatch.title" = "No Matches";
+"library.noMatch.hint" = "Try a different keyword or clear the type filters.";
+"library.kind.text" = "Text";
+"library.kind.link" = "Links";
+"library.kind.color" = "Colors";
+"library.kind.image" = "Images";
+"library.kind.file" = "Files";
 
 /* 抽屉列表 */
 "drawer.search.placeholder" = "Search history";

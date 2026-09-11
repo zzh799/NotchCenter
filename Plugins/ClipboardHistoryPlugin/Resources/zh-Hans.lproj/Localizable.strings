@@ -3,6 +3,24 @@
 /* 块名 */
 "block.drawer.name" = "剪贴板历史";
 "block.compact.name" = "剪贴板";
+"block.library.name" = "剪贴板库";
+
+/* 剪贴板库页 */
+"library.a11y" = "剪贴板库";
+"library.search.placeholder" = "搜索剪贴板…";
+"library.search.clear" = "清空搜索";
+"library.filtered" = "已启用 %d 个筛选";
+"library.section.pinned" = "置顶";
+"library.section.recent" = "最近";
+"library.empty.title" = "还没有剪贴历史";
+"library.empty.hint" = "复制一些文本，它会出现在这里。";
+"library.noMatch.title" = "没有匹配项";
+"library.noMatch.hint" = "换个关键词，或清空类型筛选。";
+"library.kind.text" = "文本";
+"library.kind.link" = "链接";
+"library.kind.color" = "颜色";
+"library.kind.image" = "图片";
+"library.kind.file" = "文件";
 
 /* 抽屉列表 */
 "drawer.search.placeholder" = "搜索历史";

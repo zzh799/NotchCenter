@@ -6,18 +6,105 @@ import Foundation
 // 轮询、剪贴板读写、定时器等副作用全部留在 ClipboardHistoryStore；本文件
 // 在 Linux 容器测试环境也能编译运行。
 
+/// 条目类型（剪贴板库页的分类维度）。
+///
+/// 采集口径（2026-09-11）：本期仍只采集**纯文本**，类型由文本内容推断
+/// （链接 / 颜色 / 文本三态）。`image` / `file` 是**预留位**——富媒体采集涉及
+/// 落盘、去重与缩略图缓存，是独立一期的工作量；枚举先占位，使持久化格式与
+/// 筛选 UI 的形状定下来，二期接采集时不需要再动存储结构。
+enum ClipboardEntryKind: String, Codable, CaseIterable, Sendable {
+    case text
+    case link
+    case color
+    case image
+    case file
+
+    /// 筛选栏图标（SF Symbol）。
+    var symbolName: String {
+        switch self {
+        case .text: return "text.alignleft"
+        case .link: return "link"
+        case .color: return "paintpalette"
+        case .image: return "photo"
+        case .file: return "doc"
+        }
+    }
+
+    /// 筛选栏文案键。
+    var localizationKey: String {
+        switch self {
+        case .text: return "library.kind.text"
+        case .link: return "library.kind.link"
+        case .color: return "library.kind.color"
+        case .image: return "library.kind.image"
+        case .file: return "library.kind.file"
+        }
+    }
+
+    /// 本期实际可出现的类型（富媒体未采集，筛选栏只列这三种）。
+    static let collectable: [ClipboardEntryKind] = [.text, .link, .color]
+}
+
 /// 单条历史：正文 + 首次记录时间 + 置顶标记。
+///
+/// **向后兼容契约**：`kind` / `previewData` / `sourceApp` 是 2026-09-11 新增字段，
+/// 解码走 `decodeIfPresent` + 默认值——旧 `history.entries.v1` 数组（只有
+/// id/text/capturedAt/pinned 四个键）必须能原样读出。因此**不要**把新字段改成
+/// 非可选且无默认值的形式，也不要依赖编码器补键。
 struct ClipboardEntry: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
     var text: String
     var capturedAt: Date
     var pinned: Bool
+    /// 条目类型（旧数据缺失 → 由正文重新推断，见 `init(from:)`）。
+    var kind: ClipboardEntryKind
+    /// 富媒体缩略图原始数据（本期恒 nil，二期采集用；旧数据缺失 → nil）。
+    var previewData: Data?
+    /// 来源应用标识（本期恒 nil，二期写入；旧数据缺失 → nil）。
+    var sourceApp: String?
 
-    init(id: UUID = UUID(), text: String, capturedAt: Date = Date(), pinned: Bool = false) {
+    init(
+        id: UUID = UUID(),
+        text: String,
+        capturedAt: Date = Date(),
+        pinned: Bool = false,
+        kind: ClipboardEntryKind? = nil,
+        previewData: Data? = nil,
+        sourceApp: String? = nil
+    ) {
         self.id = id
         self.text = text
         self.capturedAt = capturedAt
         self.pinned = pinned
+        // 未显式指定类型时按正文推断，保证新建条目与旧条目走同一套判定。
+        self.kind = kind ?? ClipboardHistoryLogic.classify(text: text)
+        self.previewData = previewData
+        self.sourceApp = sourceApp
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case text
+        case capturedAt
+        case pinned
+        case kind
+        case previewData
+        case sourceApp
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let text = try container.decode(String.self, forKey: .text)
+        self.text = text
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.capturedAt = try container.decodeIfPresent(Date.self, forKey: .capturedAt) ?? Date()
+        self.pinned = try container.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+        // 旧数据没有 kind：按正文重新推断，而不是一律记成 text——否则存量
+        // 链接/颜色条目在新库里全被归错类。
+        self.kind = try container.decodeIfPresent(ClipboardEntryKind.self, forKey: .kind)
+            ?? ClipboardHistoryLogic.classify(text: text)
+        self.previewData = try container.decodeIfPresent(Data.self, forKey: .previewData)
+        self.sourceApp = try container.decodeIfPresent(String.self, forKey: .sourceApp)
     }
 }
 
@@ -89,6 +176,69 @@ enum ClipboardHistoryLogic {
         return entries.filter { $0.text.localizedCaseInsensitiveContains(trimmed) }
     }
 
+    // MARK: 类型推断（剪贴板库页的分类维度）
+
+    /// 允许判定为链接的 scheme（白名单，避免把 `foo:bar` 之类的伪协议当链接）。
+    static let linkSchemes: Set<String> = ["http", "https", "ftp", "ftps", "mailto", "file", "ssh"]
+
+    /// 由正文推断条目类型（纯函数）。
+    ///
+    /// 判定顺序：颜色 → 链接 → 文本。颜色优先是因为 `#RRGGBB` 也可能被
+    /// `URL(string:)` 接受成相对引用，先判颜色可避免把色值归成链接。
+    /// 链接判定要求**去掉首尾空白后整串就是一个 URL 且 scheme 在白名单内**
+    /// ——含空白的整段文字不算链接（用户复制的是一段话，不是地址）。
+    static func classify(text: String) -> ClipboardEntryKind {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .text }
+        if isColor(trimmed) { return .color }
+        if isLink(trimmed) { return .link }
+        return .text
+    }
+
+    /// 是否是一个链接：整串可解析、scheme 在白名单内、且不含空白。
+    static func isLink(_ text: String) -> Bool {
+        guard !text.contains(where: \.isWhitespace) else { return false }
+        guard let url = URL(string: text), let scheme = url.scheme?.lowercased() else { return false }
+        guard linkSchemes.contains(scheme) else { return false }
+        // `http://` 这类只有 scheme 没有 host 的串不算链接。
+        if scheme == "mailto" || scheme == "file" { return url.absoluteString.count > scheme.count + 3 }
+        return !(url.host ?? "").isEmpty
+    }
+
+    /// 是否是一个颜色字面量：`#RGB` / `#RRGGBB` / `#RRGGBBAA` / `rgb(...)` / `rgba(...)` / `hsl(...)`。
+    static func isColor(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        if lower.hasPrefix("#") {
+            let digits = lower.dropFirst()
+            guard digits.allSatisfy(\.isHexDigit) else { return false }
+            return digits.count == 3 || digits.count == 6 || digits.count == 8
+        }
+        for prefix in ["rgb(", "rgba(", "hsl(", "hsla("] where lower.hasPrefix(prefix) {
+            return lower.hasSuffix(")")
+        }
+        return false
+    }
+
+    /// 库页的筛选+搜索：类型筛选（空集 = 全部）与关键词是**与**关系。
+    ///
+    /// 与 `filtered` 的区别：那个是抽屉块的"只有搜索"，这个是库页的
+    /// "类型 + 搜索"双条件。保留两个入口，是为了不动抽屉块已验证的行为。
+    static func libraryFiltered(
+        _ entries: [ClipboardEntry],
+        query: String,
+        kinds: Set<ClipboardEntryKind>
+    ) -> [ClipboardEntry] {
+        let byKind = kinds.isEmpty ? entries : entries.filter { kinds.contains($0.kind) }
+        return filtered(byKind, query: query)
+    }
+
+    /// 库页展示分组：置顶看板在前、最近列表在后（各自保持原相对顺序）。
+    static func librarySections(
+        _ entries: [ClipboardEntry]
+    ) -> (pinned: [ClipboardEntry], recent: [ClipboardEntry]) {
+        (entries.filter(\.pinned), entries.filter { !$0.pinned })
+    }
+
     /// 显示条数档位净化：非法值回最近档。
     static func sanitizeDisplayCount(_ count: Int) -> Int {
         allowedDisplayCounts.min(by: { abs($0 - count) < abs($1 - count) }) ?? maxEntries
@@ -130,5 +280,91 @@ enum ClipboardHistoryLogic {
     /// 新条 / 重排条的插入位：置顶落置顶区末尾，普通落置顶区之后（普通区首位）。
     private static func insertionIndex(forPinned _: Bool, in entries: [ClipboardEntry]) -> Int {
         entries.prefix(while: \.pinned).count
+    }
+}
+
+// MARK: - 颜色字面量解析（库页色板用；纯逻辑，不依赖 AppKit）
+//
+// 只负责把文本解成 RGB 分量；`Color`/`NSColor` 桥接留在视图层——这样解析
+// 规则可单测，且本文件在无 AppKit 的环境也能编译。
+
+enum ClipboardColorParsing {
+    /// 解析结果（0…1 分量 + 不透明度）。
+    struct Components: Equatable {
+        var red: Double
+        var green: Double
+        var blue: Double
+        var alpha: Double
+    }
+
+    /// 从文本解出颜色分量；不是可识别的颜色字面量时返回 nil。
+    /// 支持 `#RGB` / `#RRGGBB` / `#RRGGBBAA` / `rgb(r,g,b)` / `rgba(r,g,b,a)`。
+    static func components(from text: String) -> Components? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasPrefix("#") {
+            return hexComponents(String(trimmed.dropFirst()))
+        }
+        if trimmed.hasPrefix("rgb(") || trimmed.hasPrefix("rgba(") {
+            return functionComponents(trimmed)
+        }
+        return nil
+    }
+
+    private static func hexComponents(_ digits: String) -> Components? {
+        guard digits.allSatisfy(\.isHexDigit) else { return nil }
+        func value(_ substring: Substring) -> Double {
+            Double(UInt8(substring, radix: 16) ?? 0) / 255
+        }
+        switch digits.count {
+        case 3:
+            // #RGB：每位重复一次展开成 #RRGGBB。
+            let chars = Array(digits)
+            func expand(_ character: Character) -> Double {
+                let doubled = String([character, character])
+                return Double(UInt8(doubled, radix: 16) ?? 0) / 255
+            }
+            return Components(red: expand(chars[0]), green: expand(chars[1]), blue: expand(chars[2]), alpha: 1)
+        case 6:
+            return Components(
+                red: value(digits.prefix(2)),
+                green: value(digits.dropFirst(2).prefix(2)),
+                blue: value(digits.dropFirst(4).prefix(2)),
+                alpha: 1
+            )
+        case 8:
+            return Components(
+                red: value(digits.prefix(2)),
+                green: value(digits.dropFirst(2).prefix(2)),
+                blue: value(digits.dropFirst(4).prefix(2)),
+                alpha: value(digits.dropFirst(6).prefix(2))
+            )
+        default:
+            return nil
+        }
+    }
+
+    /// `rgb(r, g, b)` / `rgba(r, g, b, a)`：分量取 0…255 整数，alpha 取 0…1 小数。
+    private static func functionComponents(_ text: String) -> Components? {
+        guard text.hasSuffix(")"), let open = text.firstIndex(of: "(") else { return nil }
+        let body = text[text.index(after: open)..<text.index(before: text.endIndex)]
+        let parts = body
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        guard parts.count == 3 || parts.count == 4 else { return nil }
+        guard let red = Double(parts[0]), let green = Double(parts[1]), let blue = Double(parts[2]) else {
+            return nil
+        }
+        let alpha = parts.count == 4 ? (Double(parts[3]) ?? 1) : 1
+        return Components(
+            red: clamp(red / 255),
+            green: clamp(green / 255),
+            blue: clamp(blue / 255),
+            alpha: clamp(alpha)
+        )
+    }
+
+    private static func clamp(_ value: Double) -> Double {
+        min(max(value, 0), 1)
     }
 }

@@ -114,10 +114,17 @@ public struct APIVersionRange: Sendable, CustomStringConvertible, Equatable {
 /// **本枚举是版本号的唯一真源**：`docs/api-changelog/` 的条目按 `currentVersion`
 /// 标注版本，不再各自写口号式大版本（2026-09-10 起；此前 09-07 两条误标 v2.0.0）。
 public enum NotchCenterKitAPI {
+    /// v1.4.0：`HostController` 新增 `permissionStatus(of:)` 与 `presentPermissions(_:)`
+    /// （系统权限查询 + 「权限管理」弹窗引导通道），并新增 `SystemPermission` /
+    /// `PermissionStatus` / `SystemSettingsURL` 与三个可选权限协议。两个成员均为
+    /// 协议**要求** + extension 默认实现，第三方遵守类零影响。
+    /// 明细见 docs/api-changelog/HostController.md
+    /// （Agent Note 2026-09-11-permission-management-panel）。
+    ///
     /// v1.3.0：**移除** `BlockKind.page`（撤销"独占整页"语义，回归统一网格组件），
     /// 新增 `BlockPlacement`（添加落点偏好，默认 `.autoGrid`，纯新增零破坏）。
     /// 移除枚举 case 只对"穷举 `switch BlockKind`"的插件是源码级破坏——只做
     /// `== .drawer` 比较的插件零影响。明细见 docs/api-changelog/NotchBlock.md
     /// （Agent Note 2026-09-10-drop-exclusive-page-blocks）。
-    public static let currentVersion = SemanticVersion(major: 1, minor: 3, patch: 0)
+    public static let currentVersion = SemanticVersion(major: 1, minor: 4, patch: 0)
 }

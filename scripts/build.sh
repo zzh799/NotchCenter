@@ -124,6 +124,11 @@ PLUGIN_IDS=()
 PLUGIN_VERSIONS=()
 PLUGIN_DISPLAYS=()
 PLUGIN_DESCRIPTIONS=()
+# DisplayName / Description 的 XML 转义版本：这两个字段是自由文本，可能含
+# `&`、`<`、`>`（如 "Calendar & Tasks"）。不转义就会生成不合法的 Info.plist，
+# bundle 直接加载失败（`&` 在 XML 里是实体起始符）。
+PLUGIN_DISPLAYS_XML=()
+PLUGIN_DESCRIPTIONS_XML=()
 PLUGIN_PRINCIPALS=()
 PLUGIN_API_RANGES_XML=()
 # 可选的元数据本地化（多语言方案）：Plugin.plist 里 DisplayNameLocales /
@@ -139,6 +144,17 @@ plist_get() { # $1=key $2=plist
     out=""
   fi
   printf '%s' "$out"
+}
+
+# 转义 XML 文本节点里的保留字符。Info.plist 是手写模板拼出来的，任何来自
+# Plugin.plist 的自由文本都必须先过这里（`&` 必须最先替换，否则会把后续
+# 生成的 `&lt;` 再转义成 `&amp;lt;`）。
+xml_escape() {
+  local s="$1"
+  s="${s//&/&amp;}"
+  s="${s//</&lt;}"
+  s="${s//>/&gt;}"
+  printf '%s' "$s"
 }
 
 discover_plugins() {
@@ -179,6 +195,8 @@ discover_plugins() {
     PLUGIN_VERSIONS+=("$version")
     PLUGIN_DISPLAYS+=("$display")
     PLUGIN_DESCRIPTIONS+=("$description")
+    PLUGIN_DISPLAYS_XML+=("$(xml_escape "$display")")
+    PLUGIN_DESCRIPTIONS_XML+=("$(xml_escape "$description")")
     PLUGIN_PRINCIPALS+=("$principal")
     PLUGIN_API_RANGES_XML+=("$api_xml")
     PLUGIN_DISPLAY_ZH+=("$(plist_get "DisplayNameLocales.zh-Hans" "$plist")")
@@ -261,9 +279,9 @@ EOF
   <key>NotchCenterPluginAPIVersion</key>
   <string>${PLUGIN_API_RANGES_XML[$i]}</string>
   <key>NotchCenterPluginDisplayName</key>
-  <string>${PLUGIN_DISPLAYS[$i]}</string>
+  <string>${PLUGIN_DISPLAYS_XML[$i]}</string>
   <key>NotchCenterPluginDescription</key>
-  <string>${PLUGIN_DESCRIPTIONS[$i]}</string>
+  <string>${PLUGIN_DESCRIPTIONS_XML[$i]}</string>
 </dict>
 </plist>
 EOF

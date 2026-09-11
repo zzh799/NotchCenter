@@ -46,6 +46,18 @@ struct GeneralSettingsPage: View {
                     }
                 }
 
+                SettingsSection(title: L("settings.section.permissions")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        PermissionEntryRow {
+                            PermissionCenter.shared.presentPermissionGuide(focus: [])
+                        }
+                        Text(L("permission.entry.hint"))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
                 SettingsSection(title: L("settings.language")) {
                     VStack(alignment: .leading, spacing: 8) {
                         Picker("", selection: $settingsStore.languageOverride) {
@@ -96,6 +108,47 @@ struct GeneralSettingsPage: View {
             return L("settings.launchAtLogin.devHint")
         }
         return nil
+    }
+}
+
+// MARK: 权限管理入口行（决策见 Agent Note 2026-09-11-permission-management-panel）
+
+/// 「设置 → 通用 → 权限管理」的一行入口：点击打开权限管理弹窗（逐条列出
+/// 6 项系统权限 + 系统设置跳转按钮）。**刻意只做弹窗、不新增设置页**。
+private struct PermissionEntryRow: View {
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.shield")
+                    .font(NotchTokens.Text.system(12))
+                    .foregroundStyle(NotchTokens.Foreground.secondary)
+                Text(L("permission.title"))
+                    .font(NotchTokens.Text.system(12))
+                    .foregroundStyle(NotchTokens.Foreground.body)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(NotchTokens.Text.system(10, weight: .semibold))
+                    .foregroundStyle(NotchTokens.Foreground.disabled)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background {
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                .fill(isHovering ? NotchTokens.Surface.fillHover : NotchTokens.Surface.fill)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
+                .strokeBorder(NotchTokens.Hairline.drawerEdge, lineWidth: 1)
+        }
+        .onHover { isHovering = $0 }
+        .animation(NotchTokens.Motion.hover, value: isHovering)
     }
 }
 

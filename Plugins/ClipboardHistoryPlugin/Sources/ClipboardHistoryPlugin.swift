@@ -31,6 +31,34 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
         ]
     }
 
+    /// 剪贴板库页块（`clipboard.library`）的打包期遮挡校验探针。
+    ///
+    /// 区带镜像 `ClipboardLibraryMetricsProbe` 与 `ClipboardLibraryView` 的纵向
+    /// 骨架。最小尺寸 300×240 下只声明两个固定区带（搜索输入行 / 类型筛选行）；
+    /// 置顶看板横向滚动、最近列表纵向滚动，都是自适应容器，允许被压缩。
+    /// 纵向常量：内边距 12、间距 12、搜索行 26、筛选行 22。
+    private static func clipboardLibraryLayoutProbes(for size: CGSize) -> [BlockProbe] {
+        let padding = ClipboardLibraryMetricsProbe.padding
+        let gap = ClipboardLibraryMetricsProbe.sectionGap
+        let searchHeight = ClipboardLibraryMetricsProbe.searchRowHeight
+        let filterHeight = ClipboardLibraryMetricsProbe.filterRowHeight
+        let contentWidth = max(size.width - padding * 2, 0)
+        // 最末区带并入底部内边距：总需求 = 12 + 26 + 12 + 22 + 12 = 84，
+        // 盒高 < 84 时该区带越界 → 触发点与真实布局一致。
+        return [
+            BlockProbe(
+                id: "clipboard.library.search",
+                rect: CGRect(x: padding, y: padding, width: contentWidth, height: searchHeight)),
+            BlockProbe(
+                id: "clipboard.library.filter",
+                rect: CGRect(
+                    x: padding,
+                    y: padding + searchHeight + gap,
+                    width: contentWidth,
+                    height: filterHeight + padding)),
+        ]
+    }
+
     public static var blocks: [NotchBlock] {
         [
             NotchBlock(
@@ -53,6 +81,24 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
                         placementID: context.placementID,
                         isPreview: context.layoutInfo.isPreview
                     ))
+                }
+            ),
+            // 大组件形态：常驻搜索 + 置顶看板 + 类型筛选 + 全文预览。与上面的
+            // 小抽屉块是两种形态，二者可同时放置。
+            NotchBlock(
+                id: "clipboard.library",
+                displayName: L("block.library.name"),
+                kind: .drawer,
+                minSize: BlockPixelSize(width: 300, height: 240),
+                maxSize: BlockPixelSize(width: 900, height: 600),
+                recommendedSize: BlockPixelSize(width: 600, height: 400),
+                placement: .newPageWhenOccupied,
+                symbolName: "rectangle.stack",
+                probes: { info in
+                    Self.clipboardLibraryLayoutProbes(for: info.frame.size)
+                },
+                makeView: { context in
+                    AnyView(ClipboardLibraryView(context: context))
                 }
             ),
         ]

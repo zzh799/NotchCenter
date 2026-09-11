@@ -142,3 +142,35 @@
 "panel.page.add.fullBody" = "The drawer already has the maximum of %d pages and no page is free. Delete a page, or empty one, before adding a full-page component.";
 "panel.page.unavailable.title" = "%@ is disabled";
 "panel.page.unavailable.body" = "Re-enable it in Settings → Plugins to use this page again.";
+
+/* Permission management (2026-09-11) */
+"settings.section.permissions" = "Permissions";
+"permission.title" = "Permissions";
+"permission.close" = "Close";
+"permission.entry.hint" = "NotchCenter asks for a permission only when a plugin actually needs it. Nothing is requested in the background.";
+"permission.footer" = "Granted or denied permissions can only be changed in System Settings. Screen Recording and Accessibility take effect only after NotchCenter is restarted.";
+"permission.openSettings" = "Open Settings";
+"permission.openSettings.help" = "Open the matching pane in System Settings";
+"permission.request" = "Grant";
+"permission.requesting" = "Requesting…";
+"permission.request.deniedHint" = "Denied. Open System Settings to turn it on manually.";
+"permission.relaunchHint" = "Takes effect after NotchCenter restarts.";
+"permission.status.authorized" = "Allowed";
+"permission.status.denied" = "Denied";
+"permission.status.restricted" = "Restricted";
+"permission.status.notDetermined" = "Not asked";
+"permission.error.locationUnsupported" = "Location access is not requested by NotchCenter; set the city manually instead.";
+
+/* Permission names and purposes */
+"permission.name.calendar" = "Calendars";
+"permission.purpose.calendar" = "Show today's agenda and create events from the drawer.";
+"permission.name.reminders" = "Reminders";
+"permission.purpose.reminders" = "Read and check off your reminder lists.";
+"permission.name.camera" = "Camera";
+"permission.purpose.camera" = "Mirror preview and camera-in-use notices.";
+"permission.name.screenRecording" = "Screen Recording";
+"permission.purpose.screenRecording" = "Capture a region and read its text with OCR.";
+"permission.name.accessibility" = "Accessibility";
+"permission.purpose.accessibility" = "Control other apps' windows (window management).";
+"permission.name.location" = "Location";
+"permission.purpose.location" = "Optional: use your current position for local weather.";

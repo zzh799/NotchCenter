@@ -142,3 +142,35 @@
 "panel.page.add.fullBody" = "抽屉页数已达上限 %d，且没有空页可占用。请先删除一个页面，或清空某一页后再添加整页组件。";
 "panel.page.unavailable.title" = "%@ 已停用";
 "panel.page.unavailable.body" = "在「插件」设置中重新启用它，即可继续使用这个页面。";
+
+/* 权限管理（2026-09-11） */
+"settings.section.permissions" = "权限";
+"permission.title" = "权限管理";
+"permission.close" = "关闭";
+"permission.entry.hint" = "只有插件真的需要某项权限时 NotchCenter 才会申请，不会在后台悄悄请求。";
+"permission.footer" = "已授权或已拒绝的权限只能在「系统设置」里修改。屏幕录制与辅助功能需要重启 NotchCenter 后才生效。";
+"permission.openSettings" = "打开系统设置";
+"permission.openSettings.help" = "在系统设置中打开对应的隐私面板";
+"permission.request" = "授权";
+"permission.requesting" = "请求中…";
+"permission.request.deniedHint" = "已被拒绝。请到系统设置中手动开启。";
+"permission.relaunchHint" = "重启 NotchCenter 后生效。";
+"permission.status.authorized" = "已授权";
+"permission.status.denied" = "已拒绝";
+"permission.status.restricted" = "受限";
+"permission.status.notDetermined" = "未请求";
+"permission.error.locationUnsupported" = "NotchCenter 不申请定位权限，请改为手动填写城市。";
+
+/* 权限名称与用途 */
+"permission.name.calendar" = "日历";
+"permission.purpose.calendar" = "在抽屉里显示今日日程，并支持新建事件。";
+"permission.name.reminders" = "提醒事项";
+"permission.purpose.reminders" = "读取并勾选你的提醒事项清单。";
+"permission.name.camera" = "摄像头";
+"permission.purpose.camera" = "镜像预览与摄像头占用提醒。";
+"permission.name.screenRecording" = "屏幕录制";
+"permission.purpose.screenRecording" = "框选截图并用 OCR 读取其中的文字。";
+"permission.name.accessibility" = "辅助功能";
+"permission.purpose.accessibility" = "控制其它应用的窗口（窗口管理）。";
+"permission.name.location" = "定位";
+"permission.purpose.location" = "可选：用当前位置获取本地天气。";

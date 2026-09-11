@@ -33,6 +33,19 @@ public protocol HostController: AnyObject {
     func quickActions() -> [QuickAction]
     /// 按 ID 取快捷动作；不存在（插件禁用/未知 ID）返回 nil。
     func quickAction(id: String) -> QuickAction?
+    /// 查询某项系统权限的当前状态（**同步、无副作用、不弹任何窗**）。权限缺失时
+    /// 插件据此渲染降级态（引导文案 + 「去系统设置」按钮），页面本身仍须可用。
+    ///
+    /// 必须保持为协议**要求**（extension 只提供默认实现）：宿主与插件经存在类型
+    /// 分发，纯 extension 成员会被静态分发遮蔽（同 showActivitySummary 纪律）。
+    func permissionStatus(of permission: SystemPermission) -> PermissionStatus
+    /// 请求宿主弹出「权限管理」弹窗，逐条列出需要的权限并给出跳转按钮。
+    /// 由插件在**运行时真的发现某权限缺失**时调用（不要在启动时无条件弹，
+    /// 那是骚扰）；设置页的「权限管理」入口走同一个终点。
+    /// - Parameter focus: 需要用户优先关注的权限；空数组 = 展示完整清单。
+    ///
+    /// 同上必须保持为协议要求。
+    func presentPermissions(_ focus: [SystemPermission])
 }
 
 extension HostController {
@@ -47,6 +60,12 @@ extension HostController {
 
     /// 默认查不到任何快捷动作。
     public func quickAction(id: String) -> QuickAction? { nil }
+
+    /// 默认按「未请求」处理：宿主未实现权限查询时插件走引导态而不是当成已授权。
+    public func permissionStatus(of permission: SystemPermission) -> PermissionStatus { .notDetermined }
+
+    /// 默认不弹窗（宿主未实现权限弹窗通道时静默忽略）。
+    public func presentPermissions(_ focus: [SystemPermission]) {}
 }
 
 // MARK: - 快捷动作落位接收方（文档 §4.11）

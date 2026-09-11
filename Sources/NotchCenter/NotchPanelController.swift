@@ -794,6 +794,19 @@ extension NotchPanelController: HostController {
         quickActionStore.action(id: id)
     }
 
+    // MARK: 系统权限通道（Agent Note 2026-09-11-permission-management-panel）
+
+    /// 查询某项系统权限的当前状态（同步、无副作用、不弹窗）。
+    func permissionStatus(of permission: SystemPermission) -> PermissionStatus {
+        PermissionCenter.shared.status(of: permission)
+    }
+
+    /// 弹出「权限管理」弹窗；`focus` 为需要用户优先关注的权限（空 = 完整清单）。
+    /// 设置页入口与插件运行时的缺权限引导都汇聚到这一条路径。
+    func presentPermissions(_ focus: [SystemPermission]) {
+        PermissionCenter.shared.presentPermissionGuide(focus: focus)
+    }
+
     // MARK: 活动摘要通道（Agent Note 2026-09-03-compact-area-activity-summary）
 
     /// 展示或覆盖更新活动摘要：同 id 原位覆盖（不改变摘要序列中的新旧次序，

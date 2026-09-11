@@ -1,0 +1,18 @@
+/* CameraPlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+"block.mirror.name" = "Mirror";
+
+/* Mirror */
+"mirror.title" = "Mirror";
+"mirror.start" = "Tap to preview";
+"mirror.pause" = "Stop";
+"mirror.resume" = "Resume";
+
+/* Permission gate */
+"gate.openSettings" = "Permissions";
+"gate.camera.title" = "Camera access needed";
+"gate.camera.message" = "Grant camera access to see the mirror preview.";
+"gate.camera.denied.title" = "Camera access denied";
+"gate.camera.denied.message" = "Turn camera access back on in System Settings to use the mirror.";
+"gate.camera.restricted.title" = "Camera restricted";
+"gate.camera.restricted.message" = "Camera access is blocked by a device policy and cannot be changed here.";

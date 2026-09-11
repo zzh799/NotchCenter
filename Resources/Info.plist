@@ -32,5 +32,16 @@
   <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <!-- 系统权限用途字符串（TCC 弹窗正文）。屏幕录制与辅助功能的 TCC 不读用途
+       字符串（无对应键），只在权限弹窗里做跳转引导，故不在此声明。
+       键与 SystemPermission.usageDescriptionKey 一一对应。 -->
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>NotchCenter shows today's agenda in the drawer and can create events from the Calendar page.</string>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>NotchCenter shows your reminder lists and lets you check items off from the drawer.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>NotchCenter shows a camera mirror preview and reports when the camera is in use by another app.</string>
+  <key>NSLocationUsageDescription</key>
+  <string>NotchCenter uses your location only to look up local weather. Leave it denied and type a city instead.</string>
 </dict>
 </plist>

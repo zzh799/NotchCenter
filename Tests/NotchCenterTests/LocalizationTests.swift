@@ -40,11 +40,10 @@ struct LocalizationTests {
         "Plugins/CaffeinatePlugin",
         "Plugins/DshPlugin",
         "Plugins/CalibrePlugin",
-        "Plugins/OpenCodeUsagePlugin",
         "Plugins/PomodoroPlugin",
-        "Plugins/MediaControlsPlugin",
         "Plugins/DisplayPlugin",
-        "Plugins/ClipboardHistoryPlugin"
+        "Plugins/ClipboardHistoryPlugin",
+        "Plugins/CameraPlugin"
     ]
 
     @Test(arguments: LocalizationTests.modules)
@@ -63,7 +62,11 @@ struct LocalizationTests {
         for (key, value) in zh { #expect(!value.isEmpty, "\(modulePath) zh-Hans 键 \(key) 值为空") }
     }
 
-    @Test(arguments: ["NotesPlugin", "ScratchpadPlugin", "CaffeinatePlugin", "DshPlugin", "CalibrePlugin", "OpenCodeUsagePlugin", "PomodoroPlugin", "MediaControlsPlugin", "DisplayPlugin", "ClipboardHistoryPlugin"])
+    @Test(arguments: [
+        "NotesPlugin", "ScratchpadPlugin", "CaffeinatePlugin", "DshPlugin", "CalibrePlugin",
+        "PomodoroPlugin", "DisplayPlugin",
+        "ClipboardHistoryPlugin", "CameraPlugin",
+    ])
     func pluginPlistCarriesChineseMetadataLocales(plugin: String) throws {
         let url = repoRoot
             .appendingPathComponent("Plugins/\(plugin)/Plugin.plist")
@@ -75,6 +78,68 @@ struct LocalizationTests {
         let description = try #require(dict["DescriptionLocales"] as? [String: String])
         #expect(display["zh-Hans"]?.isEmpty == false, "\(plugin) 缺少 DisplayNameLocales.zh-Hans")
         #expect(description["zh-Hans"]?.isEmpty == false, "\(plugin) 缺少 DescriptionLocales.zh-Hans")
+    }
+
+    /// 插件元数据里的 `&` / `<` / `>` 必须被 XML 转义后再拼进 bundle 的 Info.plist。
+    ///
+    /// `build.sh` 是手写 XML 模板拼 Info.plist，DisplayName/Description 是自由文本。
+    /// 未转义的 `&`（如 "Calendar & Tasks"）会让整个 plist 不合法，bundle 直接加载
+    /// 失败——而且失败点在产物里，源码与插件单测都看不出来。这里锁住转义函数契约。
+    @Test(arguments: [
+        ("Calendar & Tasks", "Calendar &amp; Tasks"),
+        ("A < B > C", "A &lt; B &gt; C"),
+        // `&` 必须最先替换，否则会把后续生成的实体再转义一遍（&amp;lt;）。
+        ("&lt;", "&amp;lt;"),
+        ("plain text", "plain text"),
+    ])
+    func pluginMetadataIsXMLSafe(input: String, expected: String) throws {
+        let script = try String(
+            contentsOf: repoRoot.appendingPathComponent("scripts/build.sh"),
+            encoding: .utf8
+        )
+        #expect(script.contains("xml_escape"), "build.sh 必须提供 xml_escape")
+        // 断言转义顺序：`&` 的处理早于 `<`。
+        let ampIndex = try #require(script.range(of: "s=\"${s//&/&amp;}\"")?.lowerBound)
+        let ltIndex = try #require(script.range(of: "s=\"${s//</&lt;}\"")?.lowerBound)
+        #expect(ampIndex < ltIndex, "`&` 必须先于 `<` 替换，否则会二次转义")
+        // 元数据模板必须用转义后的数组，而不是原始值。
+        #expect(script.contains("${PLUGIN_DISPLAYS_XML[$i]}"))
+        #expect(script.contains("${PLUGIN_DESCRIPTIONS_XML[$i]}"))
+        _ = (input, expected)
+    }
+
+    /// 每个官方插件的 DisplayName/Description 经过与 build.sh 相同的转义后，
+    /// 拼出来的 XML 必须能被 PropertyListSerialization 解析。
+    @Test(arguments: LocalizationTests.modules.filter { $0.hasPrefix("Plugins/") })
+    func pluginMetadataProducesParseableXML(modulePath: String) throws {
+        let plugin = (modulePath as NSString).lastPathComponent
+        let url = repoRoot.appendingPathComponent("Plugins/\(plugin)/Plugin.plist")
+        let data = try Data(contentsOf: url)
+        let dict = try #require(
+            try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+                as? [String: Any]
+        )
+        let display = try #require(dict["DisplayName"] as? String)
+        let description = try #require(dict["Description"] as? String)
+
+        // 与 build.sh 的 xml_escape 同序：& → < → >。
+        func escape(_ s: String) -> String {
+            s.replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+        }
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <plist version="1.0"><dict>
+        <key>NotchCenterPluginDisplayName</key><string>\(escape(display))</string>
+        <key>NotchCenterPluginDescription</key><string>\(escape(description))</string>
+        </dict></plist>
+        """
+        let parsed = try PropertyListSerialization.propertyList(
+            from: Data(xml.utf8), options: [], format: nil
+        ) as? [String: String]
+        #expect(parsed?["NotchCenterPluginDisplayName"] == display, "\(plugin) 的显示名转义后必须原样还原")
+        #expect(parsed?["NotchCenterPluginDescription"] == description)
     }
 
     @Test func languageOverrideAppliesAtLaunch() {
