@@ -34,6 +34,7 @@
 #     Contents/MacOS/NotchCenter
 #     Contents/Frameworks/libNotchCenterKit.dylib（Xcode 按依赖自动嵌入）
 #     Contents/Frameworks/libLaunchdControlKit.dylib（本脚本补齐：宿主不直接链接）
+#     Contents/Frameworks/libLidAngleKit.dylib（同上；盖角传感器复用库）
 #     Contents/PlugIns/<Name>.bundle/{Contents/Info.plist, Contents/MacOS/<Name>}
 #     Contents/Resources/{en,zh-Hans}.lproj（Xcode 本地化变体组自动嵌入）
 #
@@ -43,6 +44,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PLUGINS_SRC_DIR="$ROOT_DIR/Plugins"
+
+# Plugins/ 下的可复用动态库目录（不是插件，不参与发现与打包）。
+# 与 Project.swift 的 sharedLibraryDirNames 必须保持一致。
+SHARED_LIBRARY_DIR_NAMES="LidAngleKit"
 
 # 插件 API 版本全局默认值；个别插件可在其 Plugin.plist 的 APIVersionRange 覆盖。
 API_RANGE="1.0..<2.0"
@@ -162,6 +167,13 @@ discover_plugins() {
   for dir in "$PLUGINS_SRC_DIR"/*/; do
     [[ -d "$dir" ]] || continue
     name="$(basename "$dir")"
+    # 复用库白名单（与 Project.swift 的同名白名单保持一致）：这些目录是可复用动态库
+    # 而非插件，由插件的 Dependencies 引用、在 Project.swift 里显式登记 target，
+    # 不参与插件打包。刻意用白名单而不是「没有 Plugin.plist 就跳过」——后者会让
+    # 漏写元数据的插件被静默漏打包。
+    case " $SHARED_LIBRARY_DIR_NAMES " in
+      *" $name "*) continue ;;
+    esac
     plist="$dir/Plugin.plist"
     # 缺元数据直接报错而非跳过：新建插件忘了写 Plugin.plist 时必须炸出来，不能静默漏打包。
     [[ -f "$plist" ]] || die "插件目录缺少 Plugin.plist：$dir"
@@ -287,8 +299,8 @@ EOF
 EOF
 }
 
-# 组装产物 .app：把 LaunchdControlKit 补进 Frameworks（宿主不直接链接所以
-# Xcode 不会嵌入它），并把各插件 dylib 组装成 bundle 放进 Contents/PlugIns。
+# 组装产物 .app：把 LaunchdControlKit / LidAngleKit 补进 Frameworks（宿主不直接
+# 链接所以 Xcode 不会嵌入它们），并把各插件 dylib 组装成 bundle 放进 Contents/PlugIns。
 # $1=Build/Products 目录（内含 NotchCenter.app 与 lib<Name>.dylib）
 assemble_app() { # $1=products_dir
   local products_dir="$1"
@@ -297,9 +309,13 @@ assemble_app() { # $1=products_dir
   local plugins_out="$app_dir/Contents/PlugIns"
   [[ -d "$app_dir" ]] || die "找不到构建产物：$app_dir"
 
-  local launchd_dylib="$products_dir/libLaunchdControlKit.dylib"
-  [[ -f "$launchd_dylib" ]] || die "找不到框架产物：$launchd_dylib"
-  cp "$launchd_dylib" "$frameworks_dir/libLaunchdControlKit.dylib"
+  # 宿主不直接链接的共享库：Xcode 只嵌入宿主链接到的，其余在这里补齐。
+  local shared_lib
+  for shared_lib in LaunchdControlKit LidAngleKit; do
+    local dylib="$products_dir/lib${shared_lib}.dylib"
+    [[ -f "$dylib" ]] || die "找不到框架产物：$dylib"
+    cp "$dylib" "$frameworks_dir/lib${shared_lib}.dylib"
+  done
 
   rm -rf "$plugins_out"
   mkdir -p "$plugins_out"
@@ -312,6 +328,7 @@ assemble_app() { # $1=products_dir
   # 组装改动过 .app 内容，ad-hoc 重签（幂等）：arm64 对无效签名零容忍，
   # 不重签会导致插件加载失败。
   codesign --force --sign - "$frameworks_dir/libLaunchdControlKit.dylib"
+  codesign --force --sign - "$frameworks_dir/libLidAngleKit.dylib"
   local bundle
   for bundle in "$plugins_out"/*.bundle; do
     codesign --force --sign - "$bundle"
@@ -490,14 +507,14 @@ cmd_package() {
   rm -f "$zip_path" "$checksum_path" "$dmg_path" "$dmg_checksum_path"
   mkdir -p "$dist_dir"
   # 以 Xcode 产物为基底（已含 Info.plist、本地化资源、NotchCenterKit 框架），
-  # 再补齐 LaunchdControlKit 与插件 bundle。
+  # 再补齐 LaunchdControlKit / LidAngleKit 与插件 bundle。
   ditto "$built_app" "$app_dir"
 
   local frameworks_dir="$app_dir/Contents/Frameworks"
   local plugins_out="$app_dir/Contents/PlugIns"
 
   # 共享框架：NotchCenterKit 已由 Xcode 嵌入，这里校验通用架构；
-  # LaunchdControlKit 由本脚本补齐，同样要求通用架构。
+  # LaunchdControlKit / LidAngleKit 由本脚本补齐，同样要求通用架构。
   check_universal_dylib() { # $1=dylib路径 $2=显示名
     local dylib="$1"
     [[ -f "$dylib" ]] || die "找不到框架产物：$dylib"
@@ -508,8 +525,11 @@ cmd_package() {
     fi
   }
   check_universal_dylib "$frameworks_dir/libNotchCenterKit.dylib" "libNotchCenterKit"
-  cp "$products_dir/libLaunchdControlKit.dylib" "$frameworks_dir/libLaunchdControlKit.dylib"
-  check_universal_dylib "$frameworks_dir/libLaunchdControlKit.dylib" "libLaunchdControlKit"
+  local shared_lib
+  for shared_lib in LaunchdControlKit LidAngleKit; do
+    cp "$products_dir/lib${shared_lib}.dylib" "$frameworks_dir/lib${shared_lib}.dylib"
+    check_universal_dylib "$frameworks_dir/lib${shared_lib}.dylib" "lib${shared_lib}"
+  done
 
   local i dylib
   for i in "${!PLUGIN_NAMES[@]}"; do

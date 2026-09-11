@@ -12,6 +12,10 @@
 // - 清单阶段报错只能用 fatalError（Tuist 会原样打印消息），所以这里给出尽量可操作的错误文案。
 // - Tuist 按内容哈希缓存清单求值结果，新增插件目录不会自动触发重扫；
 //   scripts/build.sh 在构建前 touch 本文件强制重算（与原 SPM 流程同一纪律）。
+//
+// 例外：Plugins/LidAngleKit 不含 Plugin.plist，它不是插件而是**可复用动态库**
+// （盖角传感器，见 docs/agent-notes/implemented/2026-09-11-lid-angle-depth-effect.md）。
+// 它在下方 targets 里显式登记，插件经 Dependencies 白名单引用；因此它不参与插件发现。
 
 import Foundation
 import ProjectDescription
@@ -23,11 +27,18 @@ func manifestFatal(_ message: String) -> Never {
 let manifestRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let pluginsRoot = manifestRoot.appendingPathComponent("Plugins", isDirectory: true)
 
+// 复用库白名单：这些目录是**可复用动态库**而不是插件，允许没有 Plugin.plist。
+// 它们只在下方 targets 里显式登记，由插件的 Dependencies 引用。
+// 用白名单而非"没有 Plugin.plist 就跳过"：后者会让漏写元数据的插件被静默漏打包，
+// 正是下面那条 guard 要拦的事故。
+let sharedLibraryDirNames: Set<String> = ["LidAngleKit"]
+
 let pluginDirs: [URL] = {
     do {
         return try FileManager.default
             .contentsOfDirectory(at: pluginsRoot, includingPropertiesForKeys: [.isDirectoryKey])
             .filter { try $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true }
+            .filter { !sharedLibraryDirNames.contains($0.lastPathComponent) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     } catch {
         manifestFatal("无法读取 Plugins/ 目录：\(error.localizedDescription)")
@@ -90,7 +101,7 @@ for dir in pluginDirs {
 
     // 额外依赖必须是本项目声明的依赖；写错名字时在这里给出明确提示，
     // 而不是让构建在后续链接阶段抛出难以定位的错误。NotchCenterKit 是隐式依赖，不用列。
-    let knownExtraDependencies: Set<String> = ["MarkdownEngine", "LaunchdControlKit"]
+    let knownExtraDependencies: Set<String> = ["MarkdownEngine", "LaunchdControlKit", "LidAngleKit"]
     let dependencies = (dict["Dependencies"] as? [String]) ?? []
     for dependency in dependencies where !knownExtraDependencies.contains(dependency) {
         manifestFatal(
@@ -107,13 +118,15 @@ let pluginNames = plugins.map(\.name)
 
 // MARK: - 依赖映射
 // 额外依赖名 -> target 依赖。MarkdownEngine 来自 vendored 本地 SPM 包（Xcode 解析其远程依赖）；
-// LaunchdControlKit 是本项目的动态库 target。新增依赖且声明方式不同时在这里补分支。
+// LaunchdControlKit / LidAngleKit 是本项目的动态库 target。新增依赖且声明方式不同时在这里补分支。
 func extraDependency(_ name: String) -> TargetDependency {
     switch name {
     case "MarkdownEngine":
         return .package(product: "MarkdownEngine")
     case "LaunchdControlKit":
         return .target(name: "LaunchdControlKit")
+    case "LidAngleKit":
+        return .target(name: "LidAngleKit")
     default:
         manifestFatal("未知额外依赖 \(name)")
     }
@@ -200,10 +213,12 @@ let pluginTargets: [Target] = pluginNames.map { name in
 
 // 测试 target 依赖全部插件模块（随 Plugins/ 目录自动伸缩）。
 // TEST_HOST 指向宿主 .app 内部二进制：@testable import NotchCenter 需要从宿主可执行文件解析符号。
+// 复用库（如 LidAngleKit）不在插件发现结果里，需显式列出。
 var testDeps: [TargetDependency] = [
     .target(name: "NotchCenter"),
     .target(name: "NotchCenterKit"),
     .target(name: "LaunchdControlKit"),
+    .target(name: "LidAngleKit"),
 ]
 testDeps += pluginNames.map { TargetDependency.target(name: $0) }
 
@@ -262,7 +277,8 @@ let project = Project(
         ]
     ),
     targets: [hostTarget, dynamicKitTarget(name: "NotchCenterKit", path: "Sources/NotchCenterKit"),
-              dynamicKitTarget(name: "LaunchdControlKit", path: "Sources/LaunchdControlKit")]
+              dynamicKitTarget(name: "LaunchdControlKit", path: "Sources/LaunchdControlKit"),
+              dynamicKitTarget(name: "LidAngleKit", path: "Plugins/LidAngleKit")]
         + pluginTargets
         + [testTarget],
     schemes: [scheme]

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PluginID</key>
+  <string>com.notchcenter.lidangledepth</string>
+  <key>Version</key>
+  <string>1.0.0</string>
+  <key>DisplayName</key>
+  <string>Lid Depth</string>
+  <key>Description</key>
+  <string>iPhone Duo style lid effect: screen content tilts, blurs and fades as you close your MacBook.</string>
+  <!-- 元数据本地化：build.sh 按语言键生成 bundle 内的 InfoPlist.strings（en 基准用上面两个字段） -->
+  <key>DisplayNameLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>合盖透视</string>
+  </dict>
+  <key>DescriptionLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>iPhone Duo 式合盖效果：合上 MacBook 时屏幕内容随之倾斜、模糊并淡出。</string>
+  </dict>
+  <!-- 盖角传感器下沉在可复用动态库 LidAngleKit（非插件目录，见 Project.swift 白名单） -->
+  <key>Dependencies</key>
+  <array>
+    <string>LidAngleKit</string>
+  </array>
+</dict>
+</plist>

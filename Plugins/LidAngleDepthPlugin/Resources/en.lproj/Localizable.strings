@@ -1,0 +1,76 @@
+/* Lid Depth (en, base key set) */
+
+/* Plugin-level */
+"block.console.name" = "Lid Depth";
+"block.console.title" = "Lid Depth";
+"a11y.console" = "Lid depth effect console";
+"a11y.enable" = "Enable lid depth effect";
+
+/* Console */
+"console.angle" = "%.0f";
+"console.degrees" = "deg";
+"console.state.open" = "Open";
+"console.state.closing" = "Closing";
+"console.state.closed" = "Closed";
+"console.state.effect" = "Effect";
+"console.preview" = "Preview";
+"console.preview.help" = "Play the effect once without moving the lid";
+"console.grant" = "Access";
+"console.grant.help" = "Open permission management to grant Screen Recording (restart NotchCenter after granting)";
+"console.degraded" = "Still frame only";
+"console.unsupported.title" = "No lid angle sensor";
+"console.unsupported.detail" = "This Mac has no compatible sensor, so the effect cannot run. Everything else still works.";
+
+/* Menu bar */
+"menu.preview" = "Preview Effect";
+"menu.enable" = "Enable Lid Depth";
+"menu.disable" = "Disable Lid Depth";
+
+/* Quick action */
+"quick.toggle.name" = "Lid Depth";
+
+/* Settings */
+"settings.unsupported" = "This Mac has no compatible lid angle sensor, so the effect cannot run.";
+"settings.enable" = "Lid depth effect";
+"settings.enable.detail" = "Close the lid and the screen content tilts, blurs and fades. Clicks pass through to the apps underneath.";
+"settings.reset" = "Reset to defaults";
+"settings.preview" = "Preview effect";
+
+"settings.trigger.section" = "Trigger";
+"settings.threshold" = "Trigger angle";
+"settings.threshold.help" = "Closing past this angle starts the effect.";
+"settings.blurSpan" = "Blur span";
+"settings.blurSpan.help" = "Degrees below the trigger angle over which the blur reaches full strength.";
+
+"settings.appearance.section" = "Appearance";
+"settings.maxBlur" = "Max blur radius";
+"settings.maxBlur.help" = "Gaussian blur radius at full effect.";
+"settings.maxDim" = "Max dimming";
+"settings.maxDim.help" = "Black overlay opacity where the blur is strongest.";
+"settings.dimReach" = "Dim reach";
+"settings.dimReach.help" = "Share of the height over which dimming reaches full strength.";
+"settings.viewingDistance" = "Viewing distance";
+"settings.viewingDistance.help" = "Distance from your eye to the middle of the screen, as a multiple of the screen height. Raise it if you sit far back.";
+"settings.recession" = "Perspective";
+"settings.recession.help" = "Degrees the picture turns away for each degree the lid closes. One holds it still in the room.";
+"settings.blurEvenness" = "Hinge blur floor";
+"settings.blurEvenness.help" = "Blur at the hinge edge as a fraction of the blur at the far edge.";
+
+"settings.capture.section" = "Picture";
+"settings.live" = "Live screen content";
+"settings.live.detail" = "Follows the screen in real time with ScreenCaptureKit; when off, a single frame is captured as the lid closes. Both need Screen Recording permission.";
+"settings.permission.missing" = "Screen Recording is not granted: neither the live stream nor the still frame can capture anything (restart NotchCenter after granting).";
+"settings.openPermission" = "Grant Screen Recording…";
+
+"settings.diagnostics.section" = "Diagnostics";
+"settings.diag.sensor" = "Sensor";
+"settings.diag.sensor.ready" = "Ready";
+"settings.diag.sensor.none" = "Not available";
+"settings.diag.capture" = "Picture source";
+"settings.diag.capture.live" = "Live stream";
+"settings.diag.capture.still" = "Still frame";
+"settings.diag.capture.none" = "None (no Screen Recording permission)";
+"settings.diag.effect" = "Effect";
+
+"common.on" = "On";
+"common.off" = "Off";

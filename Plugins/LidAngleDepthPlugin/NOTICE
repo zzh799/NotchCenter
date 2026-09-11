@@ -1,0 +1,61 @@
+Lid Depth (NotchCenter plugin)
+Copyright 2026 zhouzihang
+
+This plugin is a port of Mac Duo into the NotchCenter plugin architecture.
+
+Mac Duo
+Copyright 2026 Makito
+https://github.com/sumimakito/Mac-Duo
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+The full license text is in LICENSE-Mac-Duo in this directory.
+
+Ported source files (each carries a header naming the upstream file it came from):
+
+  Plugins/LidAngleKit/Sources/LidAngleSensor.swift
+      <- Mac-Duo Sources/LidAngleKit/LidAngleSensor.swift
+  Plugins/LidAngleDepthPlugin/Sources/DepthShaders.swift
+      <- Mac-Duo Sources/MacDuo/DepthShaders.swift
+  Plugins/LidAngleDepthPlugin/Sources/DepthRenderer.swift
+      <- Mac-Duo Sources/MacDuo/DepthRenderer.swift
+  Plugins/LidAngleDepthPlugin/Sources/DepthOverlay.swift
+      <- Mac-Duo Sources/MacDuo/DepthOverlay.swift
+  Plugins/LidAngleDepthPlugin/Sources/DepthGeometry.swift
+      <- Mac-Duo Sources/MacDuo/DepthOverlay.swift (DepthGeometry, DepthTuning)
+  Plugins/LidAngleDepthPlugin/Sources/ScreenSnapshotter.swift
+      <- Mac-Duo Sources/MacDuo/ScreenSnapshotter.swift
+  Plugins/LidAngleDepthPlugin/Sources/ScreenStreamer.swift
+      <- Mac-Duo Sources/MacDuo/ScreenStreamer.swift
+  Plugins/LidAngleDepthPlugin/Sources/Homography.swift
+      <- Mac-Duo Sources/MacDuo/Homography.swift
+  Plugins/LidAngleDepthPlugin/Sources/CriticallyDampedSpring.swift
+      <- Mac-Duo Sources/MacDuo/CriticallyDampedSpring.swift
+  Plugins/LidAngleDepthPlugin/Sources/BlurGradient.swift
+      <- Mac-Duo Sources/MacDuo/BlurGradient.swift
+  Plugins/LidAngleDepthPlugin/Sources/LidDepthController.swift
+      <- Mac-Duo Sources/MacDuo/LidController.swift
+
+Files with no upstream counterpart (new work for NotchCenter):
+
+  Plugins/LidAngleKit/Sources/LidAngleMonitor.swift
+      Lid state machine (open / closing / closed) and polling, lifted out of
+      Mac-Duo's LidController so other plugins can reuse it.
+  Plugins/LidAngleDepthPlugin/Sources/LidAngleDepthPlugin.swift
+  Plugins/LidAngleDepthPlugin/Sources/LidConsoleBlockView.swift
+  Plugins/LidAngleDepthPlugin/Sources/LidDepthSettingsView.swift
+  Plugins/LidAngleDepthPlugin/Sources/LidDepthPreferences.swift
+  Plugins/LidAngleDepthPlugin/Sources/DepthProjection.swift
+  Plugins/LidAngleDepthPlugin/Sources/NSScreen+Display.swift
+  Plugins/LidAngleDepthPlugin/Sources/LidDepthLog.swift
+  Plugins/LidAngleDepthPlugin/Sources/L10n.swift
+
+Differences from upstream are marked "与上游的差异" in the file headers. The
+substantive ones: the overlay window level avoids the private shielding level so
+the host's own panels stay reachable; settings persist through the host's
+StateStore instead of UserDefaults; capture falls back to a single frame when
+Screen Recording permission is missing.

@@ -43,7 +43,8 @@ struct LocalizationTests {
         "Plugins/PomodoroPlugin",
         "Plugins/DisplayPlugin",
         "Plugins/ClipboardHistoryPlugin",
-        "Plugins/CameraPlugin"
+        "Plugins/CameraPlugin",
+        "Plugins/LidAngleDepthPlugin"
     ]
 
     @Test(arguments: LocalizationTests.modules)

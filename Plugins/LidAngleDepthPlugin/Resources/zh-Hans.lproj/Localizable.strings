@@ -1,0 +1,76 @@
+/* Lid Depth (zh-Hans，键集与 en 基准一一对应) */
+
+/* 插件级 */
+"block.console.name" = "合盖透视";
+"block.console.title" = "合盖透视";
+"a11y.console" = "合盖透视效果控制台";
+"a11y.enable" = "启用合盖透视效果";
+
+/* 控制台 */
+"console.angle" = "%.0f";
+"console.degrees" = "度";
+"console.state.open" = "已打开";
+"console.state.closing" = "合盖中";
+"console.state.closed" = "已合上";
+"console.state.effect" = "效果中";
+"console.preview" = "试播";
+"console.preview.help" = "不动机器，把效果演一遍";
+"console.grant" = "权限";
+"console.grant.help" = "打开权限管理，授予屏幕录制权限（授权后需重启 NotchCenter）";
+"console.degraded" = "仅静帧";
+"console.unsupported.title" = "无盖角传感器";
+"console.unsupported.detail" = "本机没有兼容的传感器，效果无法运行。其余功能不受影响。";
+
+/* 状态栏菜单 */
+"menu.preview" = "试播效果";
+"menu.enable" = "启用合盖透视";
+"menu.disable" = "停用合盖透视";
+
+/* 快捷按钮 */
+"quick.toggle.name" = "合盖透视";
+
+/* 设置 */
+"settings.unsupported" = "本机没有兼容的盖角传感器，效果无法运行。";
+"settings.enable" = "合盖透视效果";
+"settings.enable.detail" = "合上盖子时屏幕内容会随之倾斜、模糊并淡出。点击会穿透到下层应用。";
+"settings.reset" = "恢复默认值";
+"settings.preview" = "试播效果";
+
+"settings.trigger.section" = "触发";
+"settings.threshold" = "触发角度";
+"settings.threshold.help" = "合到此角度以下就开始效果。";
+"settings.blurSpan" = "模糊跨度";
+"settings.blurSpan.help" = "从触发角往下多少度内，模糊到达满强度。";
+
+"settings.appearance.section" = "外观";
+"settings.maxBlur" = "最大模糊半径";
+"settings.maxBlur.help" = "满效果时的高斯模糊半径。";
+"settings.maxDim" = "最大变暗";
+"settings.maxDim.help" = "模糊最强处的黑色叠加强度。";
+"settings.dimReach" = "变暗范围";
+"settings.dimReach.help" = "变暗到达满强度所占的高度比例。";
+"settings.viewingDistance" = "视距";
+"settings.viewingDistance.help" = "眼睛到屏幕中部的距离，以屏幕高度为单位。坐得远就调大。";
+"settings.recession" = "透视强度";
+"settings.recession.help" = "盖子每合 1 度、画面转过的度数。设为 1 时画面在房间里保持不动。";
+"settings.blurEvenness" = "铰链边模糊";
+"settings.blurEvenness.help" = "铰链边的模糊量占远端模糊量的比例。";
+
+"settings.capture.section" = "画面";
+"settings.live" = "实时屏幕内容";
+"settings.live.detail" = "用 ScreenCaptureKit 实时跟随屏幕；关闭时改为合盖瞬间抓取一帧。两者都需要屏幕录制权限。";
+"settings.permission.missing" = "没有屏幕录制权限：实时流与单帧画面都拿不到内容（授权后需重启 NotchCenter）。";
+"settings.openPermission" = "授予屏幕录制权限…";
+
+"settings.diagnostics.section" = "诊断";
+"settings.diag.sensor" = "传感器";
+"settings.diag.sensor.ready" = "就绪";
+"settings.diag.sensor.none" = "不可用";
+"settings.diag.capture" = "画面来源";
+"settings.diag.capture.live" = "实时流";
+"settings.diag.capture.still" = "静帧";
+"settings.diag.capture.none" = "无（缺屏幕录制权限）";
+"settings.diag.effect" = "效果";
+
+"common.on" = "开";
+"common.off" = "关";
