@@ -1604,6 +1604,110 @@ final class LayoutEngineTests: XCTestCase {
         XCTAssertEqual(restored.compactSlot(at: 1)?.blockID, "legacy.compact")
         try? FileManager.default.removeItem(at: directory)
     }
+
+    // MARK: 无效放置项的清理（Agent Note 2026-09-11-invalid-component-visibility）
+
+    /// 带注入判据的引擎：本组用例要区分"停用"与"卸载"，而块解析器在两者上都
+    /// 返回 nil（插件停用时实例已释放），所以判据必须单独注入。
+    private func makeEngine(
+        liveness: @escaping @MainActor (String, String) -> Bool
+    ) throws -> (LayoutEngine, URL, URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LayoutEnginePurge-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fileURL = directory.appendingPathComponent("layout.json")
+        let engine = LayoutEngine(
+            fileURL: fileURL,
+            blockResolver: { [weak self] pluginID, blockID in
+                self?.registry["\(pluginID)|\(blockID)"]
+            },
+            placementLiveness: liveness
+        )
+        var model = engine.modelForTesting
+        model.minRows = 1
+        model.minColumns = 1
+        engine.modelForTesting = model
+        return (engine, directory, fileURL)
+    }
+
+    private func placed(_ pluginID: String, _ blockID: String, column: Int, row: Int) -> PlacedBlock {
+        PlacedBlock(
+            pluginID: pluginID,
+            blockID: blockID,
+            placementID: "\(pluginID)|\(blockID)|\(row)-\(column)",
+            originColumn: column,
+            originRow: row,
+            widthColumns: 1,
+            heightRows: 1
+        )
+    }
+
+    /// 停用 ≠ 失效：判据认可（含"已发现但停用"）的一律保留，只删判据拒绝的，
+    /// 且返回值必须等于清理前的计数——否则调试页会出现"显示几个却删掉几个"。
+    func testPurgeRemovesOnlyPlacementsTheLivenessJudgementRejects() throws {
+        // 判据：只有 com.gone 失效（插件已被移除）；com.disabled 代表"已发现但停用"，
+        // 停用可逆，必须保留。
+        let (engine, directory, _) = try makeEngine(liveness: { pluginID, _ in
+            pluginID != "com.gone"
+        })
+        var model = engine.modelForTesting
+        model.drawerBlocks = [
+            placed("com.live", "shelf", column: 0, row: 0),
+            placed("com.disabled", "shelf", column: 1, row: 0),
+            placed("com.gone", "shelf", column: 0, row: 1),
+        ]
+        model.compactSlots = [
+            CompactSlotReference(pluginID: "com.live", blockID: "notes", placementID: "c1"),
+            CompactSlotReference(pluginID: "com.gone", blockID: "notes", placementID: "c2"),
+        ]
+        engine.modelForTesting = model
+
+        XCTAssertEqual(engine.invalidPlacementCount(), 2, "抽屉 1 个 + 紧凑 1 个")
+
+        XCTAssertEqual(engine.purgeInvalidPlacements(), 2, "返回值必须等于清理前的计数")
+        XCTAssertEqual(engine.drawerBlocks.map(\.pluginID).sorted(), ["com.disabled", "com.live"])
+        XCTAssertEqual(engine.compactSlots.compactMap { $0?.pluginID }, ["com.live"])
+        XCTAssertEqual(engine.invalidPlacementCount(), 0)
+        XCTAssertEqual(engine.purgeInvalidPlacements(), 0, "幂等：无失效项时不动布局")
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 未注入判据时退回"块解析器能查到即有效"。
+    func testPurgeFallsBackToBlockResolverWithoutInjectedLiveness() throws {
+        register(blockID: "notes.compact", kind: .compact)
+        let (engine, directory, _) = try makeEngine()
+        XCTAssertTrue(engine.addCompactBlock(pluginID: "com.test.plugin", blockID: "notes.compact"))
+        var model = engine.modelForTesting
+        model.compactSlots.append(
+            CompactSlotReference(pluginID: "com.test.plugin", blockID: "ghost", placementID: "ghost")
+        )
+        engine.modelForTesting = model
+
+        XCTAssertEqual(engine.invalidPlacementCount(), 1)
+        XCTAssertEqual(engine.purgeInvalidPlacements(), 1)
+        XCTAssertEqual(engine.compactSlots.compactMap { $0?.blockID }, ["notes.compact"])
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 清理要落盘：重开引擎后失效项不再回来。
+    func testPurgePersists() throws {
+        let (engine, directory, fileURL) = try makeEngine(liveness: { pluginID, _ in
+            pluginID == "com.live"
+        })
+        var model = engine.modelForTesting
+        model.drawerBlocks = [
+            placed("com.live", "shelf", column: 0, row: 0),
+            placed("com.gone", "shelf", column: 1, row: 0),
+        ]
+        engine.modelForTesting = model
+        XCTAssertEqual(engine.purgeInvalidPlacements(), 1)
+
+        let restored = LayoutEngine(fileURL: fileURL, blockResolver: { [weak self] pluginID, blockID in
+            self?.registry["\(pluginID)|\(blockID)"]
+        })
+        XCTAssertEqual(restored.drawerBlocks.map(\.pluginID), ["com.live"])
+        try? FileManager.default.removeItem(at: directory)
+    }
 }
 
 @MainActor

@@ -35,6 +35,11 @@
 "settings.debug.sizeLab" = "块尺寸对照实验室";
 "settings.debug.sizeLab.open" = "打开 Size Lab";
 "settings.debug.sizeLab.hint" = "同一组件在全部跨度档下的批量并排对比；仅调试构建可用。";
+"settings.debug.invalid" = "无效组件";
+"settings.debug.invalid.count" = "布局里有 %d 个已失效组件。";
+"settings.debug.invalid.none" = "没有已失效组件。";
+"settings.debug.invalid.purge" = "删除无效组件";
+"settings.debug.invalid.hint" = "清理插件已被移除、或组件已不存在的摆放。插件只是被停用（仍已安装）的摆放会保留，重新启用即恢复。";
 
 /* 设置 → 组件 */
 "settings.components.groups" = "插件";
@@ -111,6 +116,12 @@
 "panel.page.settings.name" = "名称";
 "panel.page.settings.icon" = "图标";
 "panel.page.settings.icon.none" = "无图标";
+
+/* 不可用组件占位（2026-09-11） */
+"block.unavailable.disabled.title" = "插件已停用";
+"block.unavailable.disabled.hint" = "在「插件」设置中重新启用它即可恢复。";
+"block.unavailable.missing.title" = "组件已失效";
+"block.unavailable.missing.hint" = "它的插件已被移除，或这个组件已不存在。";
 
 /* 面板交互提示标签 */
 

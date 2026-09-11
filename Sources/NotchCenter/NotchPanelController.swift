@@ -98,9 +98,18 @@ final class NotchPanelController: NSObject {
         super.init()
 
         pluginManager = PluginManager(hostController: self, quickActionStore: quickActionStore)
-        layoutEngine = LayoutEngine(blockResolver: { [weak self] pluginID, blockID in
-            self?.pluginManager.block(pluginID: pluginID, blockID: blockID)
-        })
+        layoutEngine = LayoutEngine(
+            blockResolver: { [weak self] pluginID, blockID in
+                self?.pluginManager.block(pluginID: pluginID, blockID: blockID)
+            },
+            // 清理判据与占位文案同源（placementAvailability）；判据在这里而不是
+            // 交给块解析器，是因为插件被停用时解析器返回 nil（实例已释放），
+            // 照它清理会删掉可逆停用状态下的摆放。
+            placementLiveness: { [weak self] pluginID, blockID in
+                guard let self else { return true }
+                return placementAvailability(pluginID: pluginID, blockID: blockID).isLive
+            }
+        )
 
         pluginManager.onEnabledPluginIDsChanged = { [weak self] _, newIDs in
             guard let self else { return }
@@ -780,6 +789,34 @@ extension NotchPanelController: HostController {
 
     func refreshCompactDisplay() {
         rebuildContent()
+    }
+
+    // MARK: 组件可用性（Agent Note 2026-09-11-invalid-component-visibility）
+
+    /// 放置项指向的组件当前是否可用。**全项目唯一的可用性判据**——抽屉/紧凑带的
+    /// 占位渲染与调试页「删除无效组件」都读它，避免养出第二套"什么叫失效"。
+    ///
+    /// 关键一条：插件已发现但未加载（= 停用中）判 `.pluginDisabled` 而非 `.missing`。
+    /// 停用可逆，摆放要留着；而 `markEnabled(false)` 会释放实例，块解析器此时
+    /// 返回 nil，光看解析器区分不出"停用"与"卸载"。
+    func placementAvailability(pluginID: String, blockID: String) -> PlacementAvailability {
+        guard let entry = pluginManager.entry(for: pluginID) else { return .missing }
+        guard entry.instance != nil else { return .pluginDisabled }
+        if pluginManager.block(pluginID: pluginID, blockID: blockID) != nil { return .live }
+        // 快捷动作槽位合法绕过块注册表：动作 id 以 blockID 名义入槽，
+        // 不能因解析不到插件块就判它失效。
+        return quickActionStore.action(id: blockID) != nil ? .live : .missing
+    }
+
+    /// 调试页用：当前失效放置项数量（判据同 `placementAvailability`）。
+    var invalidComponentCount: Int { layoutEngine.invalidPlacementCount() }
+
+    /// 调试页用：删除全部失效放置项并刷新画面，返回删除数量。
+    @discardableResult
+    func removeInvalidComponents() -> Int {
+        let removed = layoutEngine.purgeInvalidPlacements()
+        if removed > 0 { rebuildContent() }
+        return removed
     }
 
     // MARK: 快捷动作注册表通道（文档 §4.11）

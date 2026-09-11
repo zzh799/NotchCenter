@@ -1092,6 +1092,14 @@ struct SettingsSection<Content: View>: View {
 struct DebugSettingsPage: View {
     let controller: NotchPanelController
     @ObservedObject var settingsStore: SettingsStore
+    /// 观察引擎：失效组件数量随布局变化刷新（删除、换插件、改布局都会改它）。
+    @ObservedObject private var layoutEngine: LayoutEngine
+
+    init(controller: NotchPanelController, settingsStore: SettingsStore) {
+        self.controller = controller
+        self.settingsStore = settingsStore
+        self.layoutEngine = controller.layoutEngine
+    }
 
     var body: some View {
         ScrollView {
@@ -1115,6 +1123,7 @@ struct DebugSettingsPage: View {
                 }
                 #if DEBUG
                 sizeLabSection
+                invalidComponentsSection
                 #endif
             }
             .padding(22)
@@ -1145,6 +1154,49 @@ struct DebugSettingsPage: View {
                 Text(L("settings.debug.sizeLab.hint"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// 「无效组件」一节（仅 DEBUG 构建）：显示当前失效放置项数量并一键删除。
+    ///
+    /// 数量与删除走同一判据（见 `NotchPanelController.placementAvailability`），
+    /// 所以"显示几个就删几个"；插件只是被停用的摆放不算失效、不会被删。
+    private var invalidComponentsSection: some View {
+        let count = controller.invalidComponentCount
+        return SettingsSection(title: L("settings.debug.invalid")) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(count == 0
+                    ? L("settings.debug.invalid.none")
+                    : LF("settings.debug.invalid.count", count))
+                    .font(NotchTokens.Text.system(12))
+                    .foregroundStyle(NotchTokens.Foreground.secondary)
+                Button {
+                    controller.removeInvalidComponents()
+                } label: {
+                    Text(L("settings.debug.invalid.purge"))
+                        .font(NotchTokens.Text.system(12, weight: .medium))
+                        .foregroundStyle(
+                            count == 0
+                                ? NotchTokens.Foreground.disabled
+                                : NotchTokens.Foreground.hover
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(
+                                cornerRadius: NotchTokens.Radius.button,
+                                style: .continuous
+                            )
+                            .fill(NotchTokens.Surface.fillHighlighted)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(count == 0)
+                Text(L("settings.debug.invalid.hint"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

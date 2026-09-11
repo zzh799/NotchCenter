@@ -51,6 +51,14 @@ final class LayoutEngine: ObservableObject {
     /// 块解析器：由核心注入，用于尺寸/种类校验。
     let blockResolver: @MainActor (String, String) -> NotchBlock?
 
+    /// 放置项是否仍指向"真实存在"的组件（三态判据见
+    /// `NotchPanelController.placementAvailability`）。引擎没有插件发现清单与快捷
+    /// 动作注册表，故由宿主注入；`nil` = 退回"块解析器能查到即有效"（测试与未接
+    /// 宿主的路径）。**插件只是被停用（已发现但未加载）时必须为 true**——停用可逆，
+    /// 删掉用户的摆放不可逆；而 `blockResolver` 在插件停用时恰好返回 nil（实例已释放），
+    /// 所以两者不能互相替代。见 Agent Note 2026-09-11-invalid-component-visibility。
+    let placementLiveness: (@MainActor (String, String) -> Bool)?
+
     private let fileURL: URL
     private let fileManager: FileManager
 
@@ -73,10 +81,12 @@ final class LayoutEngine: ObservableObject {
     init(
         fileURL: URL = CorePaths.layoutFileURL,
         blockResolver: @escaping @MainActor (String, String) -> NotchBlock?,
+        placementLiveness: (@MainActor (String, String) -> Bool)? = nil,
         fileManager: FileManager = .default
     ) {
         self.fileURL = fileURL
         self.blockResolver = blockResolver
+        self.placementLiveness = placementLiveness
         self.fileManager = fileManager
 
         if let data = try? Data(contentsOf: fileURL),

@@ -35,6 +35,11 @@
 "settings.debug.sizeLab" = "Block Size Lab";
 "settings.debug.sizeLab.open" = "Open Size Lab";
 "settings.debug.sizeLab.hint" = "Side-by-side comparison of a block across all span sizes; debug builds only.";
+"settings.debug.invalid" = "Invalid Components";
+"settings.debug.invalid.count" = "%d invalid component(s) in the layout.";
+"settings.debug.invalid.none" = "No invalid components.";
+"settings.debug.invalid.purge" = "Remove Invalid Components";
+"settings.debug.invalid.hint" = "Removes placements whose plugin is gone, or whose component no longer exists. Placements of plugins that are merely disabled are kept — re-enabling brings them back.";
 
 /* Settings → Components */
 "settings.components.groups" = "Plugins";
@@ -111,6 +116,12 @@
 "panel.page.settings.name" = "Name";
 "panel.page.settings.icon" = "Icon";
 "panel.page.settings.icon.none" = "No icon";
+
+/* Unavailable components (2026-09-11) */
+"block.unavailable.disabled.title" = "Plugin disabled";
+"block.unavailable.disabled.hint" = "Re-enable it in Settings → Plugins to bring this back.";
+"block.unavailable.missing.title" = "Component missing";
+"block.unavailable.missing.hint" = "Its plugin was removed, or this component no longer exists.";
 
 /* 面板交互提示标签 */
 

@@ -154,6 +154,59 @@ extension LayoutEngine {
         saveToDisk()
     }
 
+    // MARK: 无效放置项（调试修复，见 Agent Note 2026-09-11-invalid-component-visibility）
+
+    /// 放置项是否仍指向真实存在的组件：注入判据优先，否则退回"块解析器能查到"。
+    func isLivePlacement(pluginID: String, blockID: String) -> Bool {
+        if let placementLiveness {
+            return placementLiveness(pluginID, blockID)
+        }
+        return blockResolver(pluginID, blockID) != nil
+    }
+
+    /// 当前布局里"已失效"的放置项数量（抽屉块 + 紧凑槽）。
+    /// 与 `purgeInvalidPlacements()` 同源判据——否则会出现"显示几个却只删掉几个"。
+    func invalidPlacementCount() -> Int {
+        let drawer = model.drawerBlocks.filter {
+            !isLivePlacement(pluginID: $0.pluginID, blockID: $0.blockID)
+        }
+        let compact = model.compactSlots.compactMap { $0 }.filter {
+            !isLivePlacement(pluginID: $0.pluginID, blockID: $0.blockID)
+        }
+        return drawer.count + compact.count
+    }
+
+    /// 删除全部"已失效"的放置项、压实空洞并落盘，返回删除数量。
+    /// **插件只是被停用不算失效**（判据见 `placementLiveness`），所以本操作不会
+    /// 动到可逆停用状态下的用户摆放；页面本身保留（空页面本就该持久化）。
+    @discardableResult
+    func purgeInvalidPlacements() -> Int {
+        let deadDrawerCount = model.drawerBlocks.filter {
+            !isLivePlacement(pluginID: $0.pluginID, blockID: $0.blockID)
+        }.count
+        // 紧凑槽位数组长度即图标数、元素恒非空（空槽在加载时已被剥除）。
+        let deadCompactCount = model.compactSlots.compactMap { $0 }.filter {
+            !isLivePlacement(pluginID: $0.pluginID, blockID: $0.blockID)
+        }.count
+        guard deadDrawerCount > 0 || deadCompactCount > 0 else { return 0 }
+
+        if deadDrawerCount > 0 {
+            model.drawerBlocks.removeAll {
+                !isLivePlacement(pluginID: $0.pluginID, blockID: $0.blockID)
+            }
+        }
+        if deadCompactCount > 0 {
+            model.compactSlots = model.compactSlots.filter {
+                guard let slot = $0 else { return false }
+                return isLivePlacement(pluginID: slot.pluginID, blockID: slot.blockID)
+            }
+        }
+        compactEmptyRows()
+        compactEmptyColumns()
+        saveToDisk()
+        return deadDrawerCount + deadCompactCount
+    }
+
     // MARK: 紧凑槽位（文档 §5.2：数组长度即图标数，宽度随其动态伸缩）
 
     /// 设置某索引的紧凑块引用。`nil` = 移除该图标（**其余保持屏幕相对顺序**，

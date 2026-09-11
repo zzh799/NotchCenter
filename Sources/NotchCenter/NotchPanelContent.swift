@@ -232,21 +232,44 @@ extension NotchPanelController {
         }
     }
 
+    /// 占位原因：可用性判据仍判 `.live` 却渲染不出来时（块种类放错容器、状态盒
+    /// 缺失这类异常），一律按「已失效」呈现——总之这一格现在没有内容。
+    private func placeholderReason(pluginID: String, blockID: String) -> PlacementAvailability {
+        let availability = placementAvailability(pluginID: pluginID, blockID: blockID)
+        return availability == .live ? .missing : availability
+    }
+
     private func buildCompactElements(layout: NotchLayout) -> [CompactElement] {
         var elements: [CompactElement] = []
         elements.reserveCapacity(compactIconCount)
         var cache: [Int: (key: BlockViewCacheKey, view: AnyView)] = [:]
         for index in 0..<compactIconCount {
             let frame = compactSlotFrame(index: index, layout: layout, slotCount: compactIconCount)
-            guard let reference = layoutEngine.compactSlot(at: index),
-                  let entry = pluginManager.entry(for: reference.pluginID),
-                  entry.isEnabled,
-                  let store = entry.stateStore else {
+            guard let reference = layoutEngine.compactSlot(at: index) else {
                 elements.append(CompactElement(
                     slotIndex: index,
                     reference: nil,
                     block: nil,
                     view: nil,
+                    frame: frame,
+                    hasSettings: false
+                ))
+                continue
+            }
+            guard let entry = pluginManager.entry(for: reference.pluginID),
+                  entry.isEnabled,
+                  let store = entry.stateStore else {
+                // 停用 / 卸载：给一个可见占位，别让图标位静默变空。
+                elements.append(CompactElement(
+                    slotIndex: index,
+                    reference: reference,
+                    block: nil,
+                    view: AnyView(UnavailableBlockView(
+                        availability: placeholderReason(
+                            pluginID: reference.pluginID, blockID: reference.blockID
+                        ),
+                        compact: true
+                    )),
                     frame: frame,
                     hasSettings: false
                 ))
@@ -322,11 +345,12 @@ extension NotchPanelController {
                     hasSettings: false
                 ))
             } else {
+                // 插件在、也启用了，但块与动作都查不到：这一格是失效的。
                 elements.append(CompactElement(
                     slotIndex: index,
                     reference: reference,
                     block: nil,
-                    view: nil,
+                    view: AnyView(UnavailableBlockView(availability: .missing, compact: true)),
                     frame: frame,
                     hasSettings: false
                 ))
@@ -351,8 +375,22 @@ extension NotchPanelController {
                   let block = pluginManager.block(pluginID: placement.pluginID, blockID: placement.blockID),
                   block.kind.occupiesDrawerGrid,
                   let store = entry.stateStore else {
-                // 插件不可用（停用 / 卸载 / 块定义已不存在）时静默跳过，宿主
-                // 卡片里留一格空白。
+                // 渲染不出来也要留痕：占位把"为什么这格是空的"写进格子（停用 vs 失效），
+                // 而不是静默留白让用户只见一个洞。
+                let span = GridSpan(columns: placement.widthColumns, rows: placement.heightRows)
+                elements.append(DrawerElement(
+                    placement: placement,
+                    view: AnyView(UnavailableBlockView(
+                        availability: placeholderReason(
+                            pluginID: placement.pluginID, blockID: placement.blockID
+                        )
+                    )),
+                    // 占位不参与缩放：上下角都钉在当前跨度上。
+                    minSize: span,
+                    maxSize: span,
+                    currentSpan: span,
+                    hasSettings: false
+                ))
                 continue
             }
             let frame = layoutEngine.frame(for: placement)
