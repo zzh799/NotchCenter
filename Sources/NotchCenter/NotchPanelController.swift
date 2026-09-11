@@ -308,6 +308,9 @@ final class NotchPanelController: NSObject {
         guard let pair = pairContainingLocation(NSEvent.mouseLocation) ?? activePair ?? pairs.first else {
             return
         }
+        // 性能探针会话从**冷路径入口**起算（守卫之后、动状态之前）：用户
+        // 感知的等待 = 这里到内容淡入完成，中间每一段都由后续埋点分解。
+        DrawerOpenPerfCollector.shared.begin()
         activePair = pair
         updateScreenConstraint()
 
@@ -322,6 +325,7 @@ final class NotchPanelController: NSObject {
     private func presentDrawer(animated: Bool, activate: Bool) {
         guard let pair = activePair else { return }
         rebuildContent()
+        DrawerOpenPerfCollector.shared.mark(.rebuilt)
         positionCompactPanel(pair)
         // 窗口固定尺寸，只上线不动画；可见面板经 `drawerWindowSize`（唯一
         // 动画真源）从紧凑带 spring 变形到全尺寸。
@@ -335,6 +339,9 @@ final class NotchPanelController: NSObject {
             pair.drawerPanel.orderFrontRegardless()
         }
         setDrawerRevealed(true, animated: animated)
+        // 窗口已上线、尺寸 spring 已起播：此后到首次布局的耗时 = SwiftUI
+        // 构建并布局整棵内容树的成本（块数 N 的主战场）。
+        DrawerOpenPerfCollector.shared.mark(.revealed)
     }
 
     /// 抽屉单例不变量：任一时刻至多一个屏的抽屉窗口在屏。收起完成回调有

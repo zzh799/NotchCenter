@@ -171,11 +171,18 @@ struct DrawerPanelView: View {
         }
         .onChange(of: ui.isDrawerExpanded) { _, expanded in
             if expanded {
+                // 内容分支已进树：SwiftUI 侧构建完成（布局另由宿主视图
+                // 的 onLayoutPass 记，见 DrawerOpenPerfCollector）。
+                DrawerOpenPerfCollector.shared.mark(.inserted)
                 // 先让容器形变启动，内容在后段淡入（形变 commit → 内容到达）。
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     guard ui.isDrawerExpanded else { return }
                     withAnimation(.easeOut(duration: 0.18)) {
                         contentVisible = true
+                    }
+                    // 淡入时长与上面同源；探针的末段读数（用户感知的"打开了"）。
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                        DrawerOpenPerfCollector.shared.mark(.visible)
                     }
                 }
             } else {

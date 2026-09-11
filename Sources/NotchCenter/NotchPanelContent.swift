@@ -166,6 +166,13 @@ extension NotchPanelController {
             // 在飞的自驱弹簧一并停表：会话被清后它的帧与收敛拍不再有意义。
             self.swipeSpringDriver.cancel()
             self.uiState.drawerSwipe = nil
+            // 探针读数：本次重建的内容规模（块数 N / 紧凑槽位 / 页数）。
+            DrawerOpenPerfCollector.shared.noteContent(
+                page: activePage,
+                pageCount: self.uiState.drawerPages.count,
+                drawerBlocks: self.uiState.drawerElements.count,
+                compactSlots: self.uiState.compactElements.count
+            )
         }
         if animated {
             withAnimation(DrawerAnimation.spring) {
@@ -222,6 +229,13 @@ extension NotchPanelController {
             host.visibleHeightProvider = { [weak self, weak pair] in
                 guard let self, let pair else { return 0 }
                 return pair.layout.compactHeight + self.uiState.drawerWindowSize.height
+            }
+            // 展开后首次布局的界标（性能探针；关闭时只多一次布尔判断）。
+            host.onLayoutPass = { [weak self] in
+                guard let self else { return }
+                DrawerOpenPerfCollector.shared.noteHostLayout(
+                    isExpanded: self.uiState.isDrawerExpanded
+                )
             }
             host.translatesAutoresizingMaskIntoConstraints = true
             host.autoresizingMask = [.width, .height]
@@ -320,8 +334,10 @@ extension NotchPanelController {
                 let view: AnyView
                 if let old = compactViewCache[index], old.key == key {
                     view = old.view
+                    DrawerOpenPerfCollector.shared.noteCacheHit()
                 } else {
                     view = block.makeView(context)
+                    DrawerOpenPerfCollector.shared.noteMakeView()
                 }
                 cache[index] = (key, view)
                 elements.append(CompactElement(
@@ -437,8 +453,10 @@ extension NotchPanelController {
             let view: AnyView
             if let old = drawerViewCache[placement.placementID], old.key == key {
                 view = old.view
+                DrawerOpenPerfCollector.shared.noteCacheHit()
             } else {
                 view = block.makeView(context)
+                DrawerOpenPerfCollector.shared.noteMakeView()
             }
             cache[placement.placementID] = (key, view)
             // 物理像素三档 → 当前格子的允许格跨盒（缩放钳制用；格子变化会经

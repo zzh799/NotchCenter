@@ -56,6 +56,15 @@ class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
 class DrawerHostingView<Content: View>: FirstMouseHostingView<Content> {
     /// 可见面板高度，由控制器按当前内容状态提供。
     var visibleHeightProvider: (() -> CGFloat)?
+    /// 每次布局完成回调（性能探针用；生产路径为 nil 时零开销）。
+    /// 展开后的**首次**回调即"内容树已构建并布局完"的界标，见
+    /// `DrawerOpenPerfCollector.noteHostLayout`。
+    var onLayoutPass: (() -> Void)?
+
+    override func layout() {
+        super.layout()
+        onLayoutPass?()
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard bounds.contains(point) else { return nil }

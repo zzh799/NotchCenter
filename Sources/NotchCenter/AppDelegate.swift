@@ -9,6 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // accessory 应用没有默认 Edit 菜单，标准编辑快捷键（⌘C 等）需要
         // 隐藏主菜单承载（见 EditMenuInstaller 顶部说明）。
         EditMenuInstaller.install()
+        // 合成基准：控制器构造前先把布局读写重定向到临时文件（布局是
+        // LayoutEngine init 时读盘的，之后再改环境变量已经晚了）。
+        let benchMode = DrawerBenchLayout.requestedMode
+        if benchMode != nil { DrawerBenchLayout.redirectLayoutFile() }
         panelController = NotchPanelController()
         panelController?.showDocked()
         #if DEBUG
@@ -21,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         maybeRunSmokeTest()
         maybeRunPlacementProbe()
         maybeRunDragProbe()
+        maybeRunDrawerOpenBench(synthetic: benchMode)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -245,6 +250,138 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if ProcessInfo.processInfo.environment["NOTCHCENTER_DRAG_PROBE_KEEP"] != "1" {
                 BlockDragCoordinator.shared.cancel()
             }
+        }
+    }
+
+    // MARK: 抽屉打开基准（开发期诊断，非发布路径）
+
+    /// 抽屉打开基准（`NOTCHCENTER_DRAWER_BENCH=1`，或 `=synthetic` 用合成
+    /// N 曲线布局）：逐页 ×N 轮走**真实**开合链路（`expand` → `rebuildContent`
+    /// → 窗口上线 → SwiftUI 挂载 → 淡入），每轮由 `DrawerOpenPerfCollector`
+    /// 打印一条分解，结束打印按页（= 块数）汇总表后自动退出。轮数经
+    /// `NOTCHCENTER_DRAWER_BENCH_ROUNDS` 覆盖（默认 3）。
+    ///
+    /// 之所以在本机跑而不是单测里跑：耗时的大头（SwiftUI 构建 + AppKit 视图
+    /// 创建 + 布局）必须有真窗口与真插件视图才成立，宿主侧纯计算测不出 N 的
+    /// 曲线。只读运行时状态（切激活页不落盘），不改任何布局数据。
+    ///
+    /// `synthetic` 模式见 `DrawerBenchLayout`：跑同一份合成布局，优化前后数字可比。
+    private func maybeRunDrawerOpenBench(synthetic: DrawerBenchLayout.Mode?) {
+        let requested = ProcessInfo.processInfo.environment["NOTCHCENTER_DRAWER_BENCH"]
+        guard requested == "1" || synthetic != nil, let panelController else { return }
+        if let synthetic, !installSyntheticBenchLayout(panelController, mode: synthetic) {
+            print("!!! 合成基准布局生成失败（一个可用抽屉块都没有？），基准结束")
+            NSApp.terminate(nil)
+            return
+        }
+        let rounds = ProcessInfo.processInfo.environment["NOTCHCENTER_DRAWER_BENCH_ROUNDS"]
+            .flatMap(Int.init) ?? 3
+        let pages = panelController.layoutEngine.drawerPages
+        guard !pages.isEmpty else {
+            print("!!! 没有抽屉页，基准结束")
+            NSApp.terminate(nil)
+            return
+        }
+
+        print("=== 抽屉打开基准启动（模式：\(synthetic?.pageLabel ?? "用户真实布局")）===")
+        print("pages=\(pages) rounds=\(max(rounds, 1)) "
+            + "cell=\(NotchGridMetrics.cellWidth)x\(NotchGridMetrics.cellHeight) "
+            + "spacing=\(NotchGridMetrics.spacing) padding=\(NotchGridMetrics.contentPadding)")
+        if let pair = panelController.activePair ?? panelController.pairs.first {
+            print("screen=\(pair.screenFrame.size) maxDrawerHeight=\(panelController.maxDrawerHeight(for: pair))")
+        }
+        for page in pages {
+            let blocks = panelController.layoutEngine.drawerBlocks(onPage: page).count
+            let natural = panelController.layoutEngine.drawerWindowSize(page: page)
+            let visible = panelController.drawerWindowSize(for: panelController.activePair, page: page)
+            let title = panelController.layoutEngine.drawerPageTitles[String(page)] ?? ""
+            print("  page \(page)[\(title)]: blocks=\(blocks) natural=\(natural) visible=\(visible)"
+                + (natural.height > visible.height ? "  [屏幕封顶→可滚动]" : ""))
+        }
+
+        var steps: [(round: Int, page: Int)] = []
+        for round in 1...max(rounds, 1) {
+            for page in pages { steps.append((round, page)) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            self.runDrawerBenchStep(0, steps: steps)
+        }
+    }
+
+    /// 合成基准的布局装载：块型取本机**已加载可用**的抽屉块（与
+    /// `buildDrawerElements` 同一条可用性判据——未安装插件的块会被静默跳过，
+    /// 不筛会让 N 曲线残废），换模型后重建内容。
+    private func installSyntheticBenchLayout(
+        _ controller: NotchPanelController,
+        mode: DrawerBenchLayout.Mode
+    ) -> Bool {
+        let shapes = controller.layoutEngine.drawerPages
+            .flatMap { controller.layoutEngine.drawerBlocks(onPage: $0) }
+            .filter { placement in
+                guard let entry = controller.pluginManager.entry(for: placement.pluginID),
+                      entry.isEnabled,
+                      let block = controller.pluginManager.block(
+                          pluginID: placement.pluginID,
+                          blockID: placement.blockID
+                      ) else { return false }
+                return block.kind.occupiesDrawerGrid
+            }
+        guard let model = DrawerBenchLayout.writeSyntheticLayout(
+            shapes: shapes,
+            template: controller.layoutEngine.model,
+            mode: mode
+        ) else { return false }
+        controller.layoutEngine.modelForTesting = model
+        controller.updateScreenConstraint()
+        controller.refreshCompactGeometry()
+        controller.rebuildContent()
+        return true
+    }
+
+    /// 基准单步：解钉 → 收起（若展开）→ 切页 → 展开 → 钉住 → **等这次展开
+    /// 读完** → 下一步。
+    ///
+    /// **必须等会话收尾再走下一步**：重页（15+ 块）的"挂载 + 淡入"可达 1.5–2.4s，
+    /// 固定步间隔会让下一次 `begin()` 顶掉上一次未收尾的会话——样本页码滞后一步、
+    /// 淡入埋点串到下一次会话（实测出现过 page=5 的样本挂在 round3/page0 步骤上）。
+    /// 等待上限由收集器自己的 5s 看门狗兜底，不会永久挂住。
+    ///
+    /// **必须钉住**：hover 触发模式下，鼠标不在抽屉停留区时 `handleMouseLocation`
+    /// 会在 0.25s 后安排收起——不钉住量到的是"展开被中途打断"的读数（且
+    /// 淡入段的埋点根本没机会落）。钉住只改停留守卫，不改展开路径本身。
+    private func runDrawerBenchStep(_ index: Int, steps: [(round: Int, page: Int)]) {
+        guard let controller = panelController else { return }
+        guard index < steps.count else {
+            print(DrawerOpenPerfCollector.shared.report())
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { NSApp.terminate(nil) }
+            return
+        }
+        let step = steps[index]
+        print("--- bench round \(step.round) page \(step.page) ---")
+        controller.isPinned = false
+        if controller.isDrawerExpanded() {
+            controller.collapse(animated: true)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            controller.uiState.drawerActivePage = step.page
+            DrawerOpenPerfCollector.shared.pendingLabel = "r\(step.round)p\(step.page)"
+            controller.expand(animated: true, activate: false)
+            controller.isPinned = true
+            self.waitForOpenToSettle(attempt: 0) {
+                self.runDrawerBenchStep(index + 1, steps: steps)
+            }
+        }
+    }
+
+    /// 等当前展开的探针会话收尾（样本已入表）再继续；每 100ms 复查一次，
+    /// 上限交给收集器的看门狗（会话被判未完成后同样收尾）。
+    private func waitForOpenToSettle(attempt: Int, then next: @escaping () -> Void) {
+        guard DrawerOpenPerfCollector.shared.isSessionActive, attempt < 80 else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: next)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.waitForOpenToSettle(attempt: attempt + 1, then: next)
         }
     }
 }
