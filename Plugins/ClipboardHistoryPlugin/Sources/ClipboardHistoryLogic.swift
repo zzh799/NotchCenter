@@ -119,6 +119,83 @@ enum ClipboardHistoryLogic {
     /// 允许的每实例显示条数档位（共识 Q10）。
     static let allowedDisplayCounts = [20, 50]
 
+    /// 诊断：把展示行数压到 N（`NOTCHCENTER_CLIPBOARD_ROW_CAP`，宿主 `NOTCHCENTER_*`
+    /// 探针同族，默认 nil 不干预）。
+    ///
+    /// 为什么需要它：本块的展开耗时随**行数**而非块面积增长（非惰性 `VStack`
+    /// 物化全部条目行，见 `ClipboardHistoryViews` 的 `historyList` 注释）。只有能
+    /// 从二进制外部改行数、其余变量全不动，才能把"行数 → 首渲染耗时"单独量出来；
+    /// 后续"限量 / 惰性物化"的改动也用同一口径复量。
+    ///
+    /// 刻意不进实例配置：它是量测口径，不是用户偏好——写进配置就没法在同一份
+    /// 二进制里被外部改掉了。
+    static var diagnosticRowCap: Int? {
+        ProcessInfo.processInfo.environment["NOTCHCENTER_CLIPBOARD_ROW_CAP"]
+            .flatMap(Int.init)
+            .flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    /// 实例显示条数与诊断压帽取小（纯函数，压帽施加点单点收敛、可单测）。
+    static func effectiveDisplayCount(_ configured: Int, cap: Int? = diagnosticRowCap) -> Int {
+        min(configured, cap ?? Int.max)
+    }
+
+    /// 诊断压帽的数组形态：`cap` 为 nil 原样返回，否则取前 `cap` 条。
+    /// 只改物化多少行，不动排序 / 分区语义。
+    static func applyingRowCap(
+        _ entries: [ClipboardEntry],
+        cap: Int? = diagnosticRowCap
+    ) -> [ClipboardEntry] {
+        guard let cap else { return entries }
+        return Array(entries.prefix(cap))
+    }
+
+    /// 诊断模式：把剪贴板块的成本拆成可外部逐一切换的候选分量（`NOTCHCENTER_CLIPBOARD_DIAG`）。
+    ///
+    /// 为什么需要它：压帽只能回答"行数与正文体积**合起来**占多少"，而这两者在本机
+    /// 历史里是绑死的——5 条 4–12k 字的 HTML 占了 4 万字中的 3.9 万，且恰好都落在
+    /// 第 10 条之后，于是 `ROW_CAP=10` 会同时把行数和正文一起砍掉，分不清谁重。
+    /// 探针 / 列表内容 / 正文体积三个分量彼此正交、又都发生在视图体内，从外部
+    /// 无法分辨，只能逐个摘掉再用同一份基准复量。
+    ///
+    /// 实测结论（见 `docs/agent-notes/implemented/2026-09-11-drawer-content-warmth.md`）：
+    /// 可见性探针 ±0、正文体积 −6%、行数 −75%、列表内容全摘 −87% —— 成本几乎全在
+    /// **逐行视图本身**（每行一个手势 + `contextMenu` + a11y 标签），与正文长短无关。
+    ///
+    /// 与压帽同族：只读环境变量、不进实例配置、默认 nil 时生产路径逐字节不变。
+    enum DiagnosticMode: String {
+        /// 不装可见性探针（`ClipboardVisibilityProbe`，每块一个 NSViewRepresentable
+        /// + 一次 `probeAttached` → 轮询表重算 → 剪贴板读取）。
+        case probeOff = "probe-off"
+        /// 不渲染列表内容（一律空态）：摘掉行物化、逐行 `blockPopoverTrigger` /
+        /// `contextMenu` / a11y 标签，但保留块壳（BlockCard、搜索行、筛选行）。
+        case contentOff = "content-off"
+        /// 行照常物化，但正文换成固定短串：把"行数"与"正文体积"这两个自变量
+        /// 分开——压帽实验同时动了二者（本机历史里 5 条 HTML 正文占了 4 万字中的
+        /// 3.9 万，且恰好都落在第 10 条之后），单靠压帽分不清谁重。
+        case textOff = "text-off"
+    }
+
+    /// 当前诊断模式；未设置或取值非法 → nil（生产行为）。
+    static var diagnosticMode: DiagnosticMode? {
+        ProcessInfo.processInfo.environment["NOTCHCENTER_CLIPBOARD_DIAG"]
+            .flatMap(DiagnosticMode.init(rawValue:))
+    }
+
+    /// 诊断：`textOff` 时把正文换成定长短串，其余模式原样返回。
+    static func diagnosticText(_ text: String) -> String {
+        diagnosticMode == .textOff ? "文本" : text
+    }
+
+    /// 启动时把生效的剪贴板诊断开关打一行，供基准日志自证"环境变量确实进了进程"
+    /// ——没有这行，量测为"无差异"时无法区分"分量不贵"与"开关根本没生效"。
+    /// 开关全默认时保持静默，不给生产启动留噪音。
+    static func announceDiagnostics() {
+        guard diagnosticRowCap != nil || diagnosticMode != nil else { return }
+        print("[clipboard-diag] rowCap=\(diagnosticRowCap.map(String.init) ?? "off") "
+            + "mode=\(diagnosticMode?.rawValue ?? "off")")
+    }
+
     /// 文本能否入历史：去首尾空白后非空、字节数不超限。
     static func isRecordable(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -63,11 +63,25 @@ struct ClipboardLibraryView: View {
     @State private var selectedKinds: Set<ClipboardEntryKind> = []
     @FocusState private var searchFocused: Bool
 
+    /// 抽屉展开态：库页与抽屉块共享同一份"被观察"登记，收起即注销（幂等）。
+    @Environment(\.isDrawerPresented) private var isDrawerPresented
+
     init(context: BlockContext) {
         self.context = context
     }
 
     private var isPreview: Bool { context.layoutInfo.isPreview }
+
+    /// 登记/注销本页对应放置实例的观察关系；预览副本一律不参与。
+    private func syncLibraryObservation(presented: Bool) {
+        guard !isPreview else { return }
+        let placement = context.placementID
+        if presented {
+            store.viewDidAppear(placementID: placement)
+        } else {
+            store.viewDidDisappear(placementID: placement)
+        }
+    }
 
     /// 筛选 + 搜索后的结果，再切置顶/最近两段。
     private var sections: (pinned: [ClipboardEntry], recent: [ClipboardEntry]) {
@@ -76,7 +90,11 @@ struct ClipboardLibraryView: View {
             query: query,
             kinds: selectedKinds
         )
-        return ClipboardHistoryLogic.librarySections(matched)
+        // 诊断压帽：库页渲染全部条目（不受实例显示条数约束），归因量测要能从
+        // 外部把行数压下来，才能把"行数"与"块面积"两个自变量分开。
+        return ClipboardHistoryLogic.librarySections(
+            ClipboardHistoryLogic.applyingRowCap(matched)
+        )
     }
 
     var body: some View {
@@ -88,13 +106,10 @@ struct ClipboardLibraryView: View {
         .padding(ClipboardLibraryMetrics.padding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background { visibilityProbeLayer }
-        .onAppear {
-            guard !isPreview else { return }
-            ClipboardHistoryStore.shared.viewDidAppear(placementID: context.placementID)
-        }
-        .onDisappear {
-            guard !isPreview else { return }
-            ClipboardHistoryStore.shared.viewDidDisappear(placementID: context.placementID)
+        .onAppear { syncLibraryObservation(presented: isDrawerPresented) }
+        .onDisappear { syncLibraryObservation(presented: false) }
+        .onChange(of: isDrawerPresented) { _, presented in
+            syncLibraryObservation(presented: presented)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L("library.a11y"))
@@ -198,7 +213,10 @@ struct ClipboardLibraryView: View {
 
     @ViewBuilder
     private var content: some View {
-        if store.entries.isEmpty {
+        if ClipboardHistoryLogic.diagnosticMode == .contentOff {
+            // 诊断：摘掉列表/看板物化，只留块壳（见 DiagnosticMode 注释）。
+            emptyState(title: L("library.empty.title"), hint: L("library.empty.hint"), symbol: "clipboard")
+        } else if store.entries.isEmpty {
             emptyState(title: L("library.empty.title"), hint: L("library.empty.hint"), symbol: "clipboard")
         } else if sections.pinned.isEmpty, sections.recent.isEmpty {
             emptyState(title: L("library.noMatch.title"), hint: L("library.noMatch.hint"), symbol: "magnifyingglass")
@@ -252,7 +270,7 @@ struct ClipboardLibraryView: View {
                 .focusEffectDisabled(true)
                 .help(L("drawer.button.unpin"))
             }
-            Text(entry.text)
+            Text(ClipboardHistoryLogic.diagnosticText(entry.text))
                 .font(NotchTokens.Text.system(11))
                 .foregroundStyle(NotchTokens.Foreground.body)
                 .lineLimit(2)
@@ -282,7 +300,7 @@ struct ClipboardLibraryView: View {
             Button(L("drawer.button.delete")) { store.delete(id: entry.id) }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(entry.text))
+        .accessibilityLabel(Text(ClipboardHistoryLogic.diagnosticText(entry.text)))
     }
 
     /// 最近列表：单行截断，行尾置顶/删除；点击写回、长按预览。
@@ -320,7 +338,7 @@ struct ClipboardLibraryView: View {
                             .strokeBorder(NotchTokens.Hairline.thumbnail, lineWidth: 0.5)
                     )
             }
-            Text(entry.text)
+            Text(ClipboardHistoryLogic.diagnosticText(entry.text))
                 .font(NotchTokens.Text.system(11.5))
                 .foregroundStyle(NotchTokens.Foreground.body)
                 .lineLimit(1)
@@ -363,7 +381,7 @@ struct ClipboardLibraryView: View {
             Button(L("drawer.button.delete")) { store.delete(id: entry.id) }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(entry.text))
+        .accessibilityLabel(Text(ClipboardHistoryLogic.diagnosticText(entry.text)))
     }
 
     private func rowIconButton(
@@ -431,16 +449,16 @@ struct ClipboardLibraryView: View {
 
     @ViewBuilder
     private var visibilityProbeLayer: some View {
-        if !isPreview {
+        if !isPreview, ClipboardHistoryLogic.diagnosticMode != .probeOff {
             ClipboardVisibilityProbe(
                 onAttach: { windowID, isVisible in
-                    ClipboardHistoryStore.shared.probeAttached(windowID: windowID, isVisible: isVisible)
+                    store.probeAttached(windowID: windowID, isVisible: isVisible)
                 },
                 onDetach: { windowID in
-                    ClipboardHistoryStore.shared.probeDetached(windowID: windowID)
+                    store.probeDetached(windowID: windowID)
                 },
                 onVisibilityChange: { windowID, isVisible in
-                    ClipboardHistoryStore.shared.probeVisibilityChanged(windowID: windowID, isVisible: isVisible)
+                    store.probeVisibilityChanged(windowID: windowID, isVisible: isVisible)
                 }
             )
             .frame(width: 0, height: 0)

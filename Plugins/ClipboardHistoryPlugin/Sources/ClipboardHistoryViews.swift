@@ -28,6 +28,10 @@ struct ClipboardHistoryBlockView: View {
     @State private var confirmingClear = false
     @FocusState private var searchFocused: Bool
 
+    /// 抽屉是否展开。温存让 `onDisappear` 不再表示"用户看不到了"，而"被观察"
+    /// 语义（决定轮询表起停）必须跟着真实可见性走。
+    @Environment(\.isDrawerPresented) private var isDrawerPresented
+
     init(instance: ClipboardInstanceModel, placementID: String, isPreview: Bool) {
         self.store = ClipboardHistoryStore.shared
         self.instance = instance
@@ -69,13 +73,10 @@ struct ClipboardHistoryBlockView: View {
             }
         }
         .onHover { isHovering = $0 }
-        .onAppear {
-            guard !isPreview else { return }
-            ClipboardHistoryStore.shared.viewDidAppear(placementID: placementID)
-        }
-        .onDisappear {
-            guard !isPreview else { return }
-            ClipboardHistoryStore.shared.viewDidDisappear(placementID: placementID)
+        .onAppear { syncObservation(presented: isDrawerPresented) }
+        .onDisappear { syncObservation(presented: false) }
+        .onChange(of: isDrawerPresented) { _, presented in
+            syncObservation(presented: presented)
         }
         // 焦点移出（点击条目 / 其他区域 / 收起按钮）即收起搜索，输入行不悬空。
         .onChange(of: searchFocused) { _, focused in
@@ -106,7 +107,10 @@ struct ClipboardHistoryBlockView: View {
     /// 列表区三态（空历史 / 搜索无果 / 列表）：抽出独立计算属性，给类型检查器减负。
     @ViewBuilder
     private var listContent: some View {
-        if store.entries.isEmpty {
+        if ClipboardHistoryLogic.diagnosticMode == .contentOff {
+            // 诊断：摘掉行物化，只留块壳（见 DiagnosticMode 注释）。
+            emptyState
+        } else if store.entries.isEmpty {
             emptyState
         } else if displayedEntries.isEmpty {
             searchEmptyState
@@ -118,16 +122,16 @@ struct ClipboardHistoryBlockView: View {
     @ViewBuilder
     private var visibilityProbeLayer: some View {
         // 可见性探针：isPreview 副本不插（预览层随时整层消失，不得认领共享状态）。
-        if !isPreview {
+        if !isPreview, ClipboardHistoryLogic.diagnosticMode != .probeOff {
             ClipboardVisibilityProbe(
                 onAttach: { windowID, isVisible in
-                    ClipboardHistoryStore.shared.probeAttached(windowID: windowID, isVisible: isVisible)
+                    store.probeAttached(windowID: windowID, isVisible: isVisible)
                 },
                 onDetach: { windowID in
-                    ClipboardHistoryStore.shared.probeDetached(windowID: windowID)
+                    store.probeDetached(windowID: windowID)
                 },
                 onVisibilityChange: { windowID, isVisible in
-                    ClipboardHistoryStore.shared.probeVisibilityChanged(windowID: windowID, isVisible: isVisible)
+                    store.probeVisibilityChanged(windowID: windowID, isVisible: isVisible)
                 }
             )
             .frame(width: 0, height: 0)
@@ -144,7 +148,8 @@ struct ClipboardHistoryBlockView: View {
     /// 按置顶 / 最近分区、经搜索过滤、按实例条数截断后的展示节。
     private var displayedSections: [ClipboardSection] {
         let filtered = ClipboardHistoryLogic.filtered(store.entries, query: query)
-        let limit = instance.config.displayCount
+        // 诊断压帽与实例配置取小：只改"物化多少行"，不动分区与排序语义。
+        let limit = ClipboardHistoryLogic.effectiveDisplayCount(instance.config.displayCount)
         let pinned = filtered.filter(\.pinned)
         let plain = filtered.filter { !$0.pinned }
         var sections: [ClipboardSection] = []
@@ -226,6 +231,17 @@ struct ClipboardHistoryBlockView: View {
         isSearchExpanded = false
         query = ""
         searchFocused = false
+    }
+
+    /// 按真实可见性登记/注销本实例（幂等，收起与卸载会各来一次）。
+    private func syncObservation(presented: Bool) {
+        guard !isPreview else { return }
+        let placement = placementID
+        if presented {
+            store.viewDidAppear(placementID: placement)
+        } else {
+            store.viewDidDisappear(placementID: placement)
+        }
     }
 
     private var pausedBanner: some View {
@@ -365,7 +381,7 @@ private struct ClipboardRowView: View {
                         .foregroundStyle(NotchTokens.Semantic.accentGreen)
                         .accessibilityLabel(Text(L("drawer.button.copied")))
                 }
-                Text(entry.text)
+                Text(ClipboardHistoryLogic.diagnosticText(entry.text))
                     .font(NotchTokens.Text.system(11.5))
                     .foregroundStyle(NotchTokens.Foreground.body)
                     .lineLimit(1)
@@ -409,7 +425,7 @@ private struct ClipboardRowView: View {
             Button(L("drawer.button.delete"), action: onDelete)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(entry.text))
+        .accessibilityLabel(Text(ClipboardHistoryLogic.diagnosticText(entry.text)))
     }
 
     /// 长按全文预览：BlockPopover 盖在行上方，长文内嵌滚动、可选中复制；

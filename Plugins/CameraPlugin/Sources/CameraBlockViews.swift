@@ -21,6 +21,10 @@ struct CameraMirrorBlockView: View {
     let context: BlockContext
     @ObservedObject private var store = CameraStore.shared
 
+    /// 抽屉是否展开。温存让 `onDisappear` 不再表示"用户看不到了"，而摄像头
+    /// 会话必须随"看不到"立刻停——否则收起后继续采集、指示灯常亮。
+    @Environment(\.isDrawerPresented) private var isDrawerPresented
+
     var body: some View {
         VStack(alignment: .leading, spacing: CameraBlockMetrics.spacing) {
             header
@@ -30,6 +34,11 @@ struct CameraMirrorBlockView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear { store.refreshAuthorization(hostController: context.hostController) }
         .onDisappear { store.stopSession() }
+        .onChange(of: isDrawerPresented) { _, presented in
+            // 幂等（stopSession 自带 isRunning 闸门）：收起与卸载各会碰到一次。
+            guard !presented else { return }
+            store.stopSession()
+        }
     }
 
     private var header: some View {

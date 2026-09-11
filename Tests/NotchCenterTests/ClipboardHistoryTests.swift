@@ -241,4 +241,81 @@ final class ClipboardHistoryTests: XCTestCase {
         store.clearUnpinned()
         XCTAssertTrue(store.entries.isEmpty)
     }
+
+    // MARK: 诊断压帽（剪贴板行数归因）
+
+    /// 压帽只"压"不"涨"：实例配置 20 遇上 cap 50 仍按 20 走。
+    func testEffectiveDisplayCountTakesSmallerOfConfigAndCap() {
+        XCTAssertEqual(ClipboardHistoryLogic.effectiveDisplayCount(50, cap: nil), 50)
+        XCTAssertEqual(ClipboardHistoryLogic.effectiveDisplayCount(50, cap: 12), 12)
+        XCTAssertEqual(ClipboardHistoryLogic.effectiveDisplayCount(20, cap: 50), 20)
+    }
+
+    /// 压帽取前缀、保序；cap 大于总量或为 nil 时原样返回。
+    func testApplyingRowCapKeepsPrefixAndOrder() {
+        let entries = (1...5).map { ClipboardEntry(text: "e\($0)") }
+        XCTAssertEqual(
+            ClipboardHistoryLogic.applyingRowCap(entries, cap: nil).map(\.text),
+            ["e1", "e2", "e3", "e4", "e5"]
+        )
+        XCTAssertEqual(ClipboardHistoryLogic.applyingRowCap(entries, cap: 2).map(\.text), ["e1", "e2"])
+        XCTAssertEqual(ClipboardHistoryLogic.applyingRowCap(entries, cap: 99).count, 5)
+    }
+
+    /// 环境变量是唯一入口：未设（或无合法值）时必须完全不干预生产展示。
+    func testDiagnosticRowCapReadsEnvOverrideAndRejectsJunk() {
+        XCTAssertNil(ClipboardHistoryLogic.diagnosticRowCap, "套件内默认不得有压帽")
+        setenv("NOTCHCENTER_CLIPBOARD_ROW_CAP", "7", 1)
+        defer { unsetenv("NOTCHCENTER_CLIPBOARD_ROW_CAP") }
+        XCTAssertEqual(ClipboardHistoryLogic.diagnosticRowCap, 7)
+        XCTAssertEqual(ClipboardHistoryLogic.effectiveDisplayCount(50), 7)
+        setenv("NOTCHCENTER_CLIPBOARD_ROW_CAP", "0", 1)
+        XCTAssertNil(ClipboardHistoryLogic.diagnosticRowCap)
+        setenv("NOTCHCENTER_CLIPBOARD_ROW_CAP", "abc", 1)
+        XCTAssertNil(ClipboardHistoryLogic.diagnosticRowCap)
+    }
+
+    // MARK: 诊断分量开关（剪贴板每块固定开销归因）
+
+    /// 取值域只有两个合法值；未设 / 拼错 / 大小写不符都必须回落到"生产行为"，
+    /// 否则一个手误的诊断变量会静默改掉用户看到的块内容。
+    func testDiagnosticModeReadsEnvOverrideAndRejectsJunk() {
+        XCTAssertNil(ClipboardHistoryLogic.diagnosticMode, "套件内默认不得开诊断")
+        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "probe-off", 1)
+        defer { unsetenv("NOTCHCENTER_CLIPBOARD_DIAG") }
+        XCTAssertEqual(ClipboardHistoryLogic.diagnosticMode, .probeOff)
+        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "content-off", 1)
+        XCTAssertEqual(ClipboardHistoryLogic.diagnosticMode, .contentOff)
+        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "text-off", 1)
+        XCTAssertEqual(ClipboardHistoryLogic.diagnosticMode, .textOff)
+        XCTAssertEqual(ClipboardHistoryLogic.diagnosticText("很长很长的正文"), "文本")
+        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "PROBE-OFF", 1)
+        XCTAssertNil(ClipboardHistoryLogic.diagnosticMode)
+        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "no-probe", 1)
+        XCTAssertNil(ClipboardHistoryLogic.diagnosticMode)
+        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "", 1)
+        XCTAssertNil(ClipboardHistoryLogic.diagnosticMode)
+    }
+
+    /// 非 `text-off` 一律原样透传正文——诊断不得改到生产展示内容。
+    func testDiagnosticTextPassesThroughWhenModeUnset() {
+        unsetenv("NOTCHCENTER_CLIPBOARD_DIAG")
+        XCTAssertEqual(ClipboardHistoryLogic.diagnosticText("正文"), "正文")
+        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "content-off", 1)
+        defer { unsetenv("NOTCHCENTER_CLIPBOARD_DIAG") }
+        XCTAssertEqual(ClipboardHistoryLogic.diagnosticText("正文"), "正文")
+    }
+
+    /// 两把开关彼此正交：压帽不该被分量开关影响，反之亦然。
+    func testDiagnosticSwitchesAreIndependent() {
+        setenv("NOTCHCENTER_CLIPBOARD_ROW_CAP", "5", 1)
+        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "probe-off", 1)
+        defer {
+            unsetenv("NOTCHCENTER_CLIPBOARD_ROW_CAP")
+            unsetenv("NOTCHCENTER_CLIPBOARD_DIAG")
+        }
+        XCTAssertEqual(ClipboardHistoryLogic.diagnosticRowCap, 5)
+        XCTAssertEqual(ClipboardHistoryLogic.diagnosticMode, .probeOff)
+        XCTAssertEqual(ClipboardHistoryLogic.effectiveDisplayCount(50), 5)
+    }
 }

@@ -105,4 +105,35 @@ final class DrawerBenchLayoutTests: XCTestCase {
             "没有可用块型时必须返回 nil（调用方据此提示退出），而不是造一份空基准"
         )
     }
+
+    /// 重开对照必须与 N 曲线**同布局**：两者比的是"同一份内容的冷开 vs 重开"，
+    /// 布局一旦分叉，数字就不可比。
+    func testReopenModeSharesNCurveLayout() throws {
+        let nCurve = try XCTUnwrap(
+            DrawerBenchLayout.makeSynthetic(shapes: twoShapes, template: template, mode: .nCurve)
+        )
+        let reopen = try XCTUnwrap(
+            DrawerBenchLayout.makeSynthetic(shapes: twoShapes, template: template, mode: .reopen)
+        )
+        XCTAssertEqual(reopen.drawerPages, nCurve.drawerPages)
+        // 元组数组不满足 Equatable（Swift 只对 <= 6 元的**同构**元组给 ==，
+        // 数组仍不成），摊平成字符串再比——placementID 是每次新建的 UUID，
+        // 本来就不该进这条断言。
+        XCTAssertEqual(
+            reopen.drawerBlocks.map(Self.shapeSignature),
+            nCurve.drawerBlocks.map(Self.shapeSignature)
+        )
+    }
+
+    /// 块的可比指纹：只含"布局长相"，不含每次新建的 placementID。
+    private static func shapeSignature(_ block: PlacedBlock) -> String {
+        "\(block.page)|\(block.blockID)|\(block.widthColumns)x\(block.heightRows)"
+    }
+
+    /// 步骤序只有重开对照走"逐页连续开合"，其余模式是逐页逐轮各采一遍。
+    func testOnlyReopenModeReopensSamePage() {
+        XCTAssertTrue(DrawerBenchLayout.Mode.reopen.reopensSamePage)
+        XCTAssertFalse(DrawerBenchLayout.Mode.nCurve.reopensSamePage)
+        XCTAssertFalse(DrawerBenchLayout.Mode.uniform.reopensSamePage)
+    }
 }

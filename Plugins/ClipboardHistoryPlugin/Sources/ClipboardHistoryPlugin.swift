@@ -133,6 +133,7 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
     public func attachServices(stateStore: StateStore, hostController: any HostController) {
         self.stateStore = stateStore
         self.hostController = hostController
+        ClipboardHistoryLogic.announceDiagnostics()
         ClipboardHistoryStore.shared.attach(stateStore: stateStore)
     }
 

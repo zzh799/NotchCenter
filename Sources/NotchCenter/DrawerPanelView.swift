@@ -71,6 +71,15 @@ struct DrawerPanelView: View {
     /// 展开后段淡入、收起时先淡出再缩形）。
     @State private var contentVisible = false
 
+    /// 内容温存状态：收起后不立即卸载，窗口内再展开省掉整棵内容树的首次渲染。
+    /// 状态判定本身是纯值（`DrawerContentWarmth`），这里只做接线。
+    @State private var warmth = DrawerContentWarmth()
+
+    /// 展开态最后一次的可见面板尺寸。收起温存期容器已被收成紧凑带，内容必须
+    /// 按这个尺寸定 frame——否则会被压扁、逐行重排，温存就白做了。只在展开中
+    /// 取样：收起过程 height 一路归 0，取到的是中间帧。
+    @State private var warmPanelSize: CGSize = .zero
+
     /// 指针是否悬停在顶栏上：分页加号按钮的显示条件之一。
     @State private var isTopBarHovering = false
 
@@ -119,10 +128,20 @@ struct DrawerPanelView: View {
                 )
                 .frame(maxWidth: .infinity)
 
-            if ui.isDrawerExpanded {
+            if ui.isDrawerExpanded || warmth.keepsContentMounted {
                 content
                     .opacity(contentVisible ? 1 : 0)
-                    .frame(maxWidth: .infinity, alignment: .top)
+                    .frame(
+                        width: contentFrameSize.width,
+                        height: contentFrameSize.height,
+                        alignment: .top
+                    )
+                    // 收起温存期内容仍在树里但已不可见：不让它接事件（窗口此时
+                    // 已被 orderOut，命中测试另有可见矩形闸门，这里是第二道）。
+                    .allowsHitTesting(ui.isDrawerExpanded)
+                    // 块可见性信号：温存让 onDisappear 不再等于"用户看不到了"，
+                    // 需要收尾的块读它，契约见 Kit 的 DrawerPresentation.swift。
+                    .environment(\.isDrawerPresented, ui.isDrawerExpanded)
             }
         }
         .frame(
@@ -163,6 +182,27 @@ struct DrawerPanelView: View {
         .onAppear {
             syncInteractionActive()
         }
+        // 温存接线：展开即常驻；收起起算窗口、到期回收。窗口内再展开会重启本
+        // 任务（`.task(id:)` 语义）从而取消回收，无需自管定时器。
+        .task(id: ui.isDrawerExpanded) {
+            let warmWindow = DrawerContentWarmth.effectiveWindow
+            guard ui.isDrawerExpanded else {
+                warmth.collapsed(now: Date(), window: warmWindow)
+                guard warmth.keepsContentMounted, warmWindow > 0 else {
+                    _ = warmth.prune(now: Date())
+                    return
+                }
+                try? await Task.sleep(for: .seconds(warmWindow))
+                guard !Task.isCancelled else { return }
+                _ = warmth.prune(now: Date())
+                return
+            }
+            warmth.expanded()
+        }
+        .onChange(of: ui.drawerWindowSize) { _, size in
+            guard ui.isDrawerExpanded else { return }
+            warmPanelSize = size
+        }
         .onChange(of: interaction.phase) { _, _ in
             syncInteractionActive()
         }
@@ -201,6 +241,12 @@ struct DrawerPanelView: View {
                 isTopBarHovering = false
             }
         }
+    }
+
+    /// 内容自身的 frame 尺寸：展开时跟随可见面板尺寸（与无温存时内容从容器
+    /// 拿到的提案完全一致），收起温存期钉在最后一次展开尺寸上（`warmPanelSize`）。
+    private var contentFrameSize: CGSize {
+        ui.isDrawerExpanded ? ui.drawerWindowSize : warmPanelSize
     }
 
     private var content: some View {

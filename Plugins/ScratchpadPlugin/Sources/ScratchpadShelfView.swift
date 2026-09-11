@@ -15,6 +15,9 @@ struct FileShelfView: View {
 
     private let selectionCoordinateSpace = "file-shelf-selection"
 
+    /// 抽屉展开态：框选与预览浮窗都属于"看得见"才有意义的临时态。
+    @Environment(\.isDrawerPresented) private var isDrawerPresented
+
     var body: some View {
         // 卡片壳（含拖入高亮态）统一走 Kit 的 BlockCard；阴影与高亮 spring
         // 动画留在本文件——它们是暂存区拖放交互的一部分。
@@ -48,9 +51,10 @@ struct FileShelfView: View {
                     cancelMarqueeSelection()
                 }
             }
-            .onDisappear {
-                cancelMarqueeSelection()
-                previewController.close()
+            .onDisappear { dismissShelfTransients() }
+            .onChange(of: isDrawerPresented) { _, presented in
+                guard !presented else { return }
+                dismissShelfTransients()
             }
             .contextMenu {
                 removeAllMenuButton
@@ -345,6 +349,13 @@ struct FileShelfView: View {
     private func cancelMarqueeSelection() {
         selectionRect = nil
         selectionAtDragStart = []
+    }
+
+    /// 收掉只属于"看得见"的临时态：框选与预览浮窗都是独立窗口，不会随抽屉
+    /// 收起自行消失。收起与卸载各会调用一次，两步都幂等。
+    private func dismissShelfTransients() {
+        cancelMarqueeSelection()
+        previewController.close()
     }
 }
 

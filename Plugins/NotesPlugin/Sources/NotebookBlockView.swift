@@ -19,6 +19,10 @@ struct NotesBlockView: View {
     /// 只读预览副本：为真时本实例不写任何跨实例共享状态（契约见 `BlockLayoutInfo.isPreview`）。
     let isPreview: Bool
 
+    /// 抽屉展开态。温存让 `onDisappear` 不再代表"用户看不到了"，而"最上方实例"
+    /// 登记若在收起后残留，紧凑图标新建入口会去聚焦一个看不见的编辑器。
+    @Environment(\.isDrawerPresented) private var isDrawerPresented
+
     @State private var activeTabID: UUID
 
     private let contentHorizontalPadding: CGFloat = 10
@@ -100,17 +104,10 @@ struct NotesBlockView: View {
             // 水平与垂直内边距一致（均为 10），保证块内下方空间与侧边空间视觉
             // 一致；视图本身已通过外层 GeometryReader 撑满容器分配的全部宽高。
             .frame(width: proxy.size.width, height: proxy.size.height)
-            .onAppear {
-                // 预览副本：以下每一项都写跨实例共享状态，一律不参与。
-                guard !isPreview else { return }
-                editorInteractionState.onSelectionChange = { [weak store] range in
-                    guard let store else { return }
-                    store.updateSelection(for: activeTabID, range: range)
-                }
-                // 登记网格位置：紧凑图标“新建笔记”据此定位最上方实例。
-                NotesModel.shared.registerPlacement(placementID, row: gridRow, heightRows: gridHeightRows)
-                editorInteractionState.restoreSelection(store.selectionRange(for: activeTabID))
-                NotesModel.shared.rememberActiveTab(activeTabID, for: placementID)
+            .onAppear { syncPlacementPresence(presented: isDrawerPresented) }
+            .onDisappear { syncPlacementPresence(presented: false) }
+            .onChange(of: isDrawerPresented) { _, presented in
+                syncPlacementPresence(presented: presented)
             }
             .onChange(of: activeTabID) { _, newTabID in
                 guard !isPreview else { return }
@@ -138,12 +135,26 @@ struct NotesBlockView: View {
                     editorInteractionState.requestFocus(searchingIn: nil)
                 }
             }
-            .onDisappear {
-                guard !isPreview else { return }
-                editorInteractionState.resetDragState()
-                NotesModel.shared.unregisterPlacement(placementID)
-            }
         }
+    }
+
+    /// 按真实可见性登记/注销"最上方实例"。幂等：收起与卸载会各触发一次卸载分支，
+    /// 重新展开则整份登记重放（与无温存时"每次展开重新 onAppear"的语义一致）。
+    private func syncPlacementPresence(presented: Bool) {
+        guard !isPreview else { return }
+        guard presented else {
+            editorInteractionState.resetDragState()
+            NotesModel.shared.unregisterPlacement(placementID)
+            return
+        }
+        editorInteractionState.onSelectionChange = { [weak store] range in
+            guard let store else { return }
+            store.updateSelection(for: activeTabID, range: range)
+        }
+        // 登记网格位置：紧凑图标“新建笔记”据此定位最上方实例。
+        NotesModel.shared.registerPlacement(placementID, row: gridRow, heightRows: gridHeightRows)
+        editorInteractionState.restoreSelection(store.selectionRange(for: activeTabID))
+        NotesModel.shared.rememberActiveTab(activeTabID, for: placementID)
     }
 
     private func editorSize(_ total: CGSize) -> CGSize {

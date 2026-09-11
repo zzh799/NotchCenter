@@ -300,8 +300,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         var steps: [(round: Int, page: Int)] = []
-        for round in 1...max(rounds, 1) {
-            for page in pages { steps.append((round, page)) }
+        if synthetic?.reopensSamePage == true {
+            // 重开对照：同一页连续开合。每页第一次是冷开（页面刚切过来，内容
+            // 身份全变），其后几次才是温存后的重开——汇总表的 min 即重开读数。
+            for page in pages {
+                for round in 1...max(rounds, 1) { steps.append((round, page)) }
+            }
+        } else {
+            for round in 1...max(rounds, 1) {
+                for page in pages { steps.append((round, page)) }
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             self.runDrawerBenchStep(0, steps: steps)

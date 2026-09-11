@@ -326,15 +326,21 @@ final class DrawerOpenPerfCollector {
 ///    经 `LayoutEngine.modelForTesting` 换模型并重建内容。
 enum DrawerBenchLayout {
     /// 基准模式：`nCurve` = 逐页递增块数（量"块数 → 耗时"），
-    /// `uniform` = 每页 12 枚同型块（量"哪个块型贵"）。
-    enum Mode {
+    /// `uniform` = 每页 12 枚同型块（量"哪个块型贵"），
+    /// `reopen` = 每页连续展开多次（量"同内容冷开 vs 温存后重开"）。
+    enum Mode: Equatable {
         case nCurve
         case uniform
+        case reopen
+
+        /// 每页连续开合（重开对照），而不是逐页逐轮各采一遍。
+        var reopensSamePage: Bool { self == .reopen }
 
         var pageLabel: String {
             switch self {
             case .nCurve: return "N曲线"
             case .uniform: return "同型对照"
+            case .reopen: return "重开对照"
             }
         }
     }
@@ -355,6 +361,7 @@ enum DrawerBenchLayout {
         switch ProcessInfo.processInfo.environment["NOTCHCENTER_DRAWER_BENCH"] {
         case "synthetic", "ncurve": return .nCurve
         case "uniform": return .uniform
+        case "reopen", "warm": return .reopen
         default: return nil
         }
     }
@@ -408,8 +415,10 @@ enum DrawerBenchLayout {
         // 页 = (块型序列, 每页块数)：N 曲线是"全部块型循环"的递增页，
         // 同型对照是"每个块型铺满一页"。
         let pages: [(label: String, shapes: [PlacedBlock], count: Int)] = switch mode {
-        case .nCurve:
-            pageBlockCounts.enumerated().map { index, count in
+        case .nCurve, .reopen:
+            // 重开对照复用 N 曲线的逐页块数：同一页反复开合，才能把"冷开"与
+            // "温存后重开"配成一对（换页会让内容身份全变，量不出温存收益）。
+            pageBlockCounts.map { count in
                 ("N=\(count)", shapes, count)
             }
         case .uniform:
