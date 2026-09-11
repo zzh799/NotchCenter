@@ -57,7 +57,9 @@ public final class CameraPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginS
 
     public func attachServices(stateStore: StateStore, hostController: any HostController) {
         self.stateStore = stateStore
-        CameraStore.shared.configureIfNeeded()
+        // 刻意不在这里配置采集会话：建 `AVCaptureDeviceInput` 就会拉起系统摄像头
+        // 授权窗，装载期调用等于每次启动 App 都弹一次（配置改在用户点开始时做）。
+        // 决策见 Agent Note 2026-09-11-permission-lazy-trigger。
     }
 
     public func pluginWasDisabled() {

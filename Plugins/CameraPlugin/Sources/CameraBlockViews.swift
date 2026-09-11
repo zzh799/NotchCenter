@@ -151,12 +151,9 @@ struct CameraPermissionGateView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    /// 只弹宿主的「权限管理」弹窗；系统设置由用户在弹窗内逐行点开，插件不代开。
     private func openGuide() {
-        if let hostController {
-            hostController.presentPermissions([permission])
-        } else {
-            NSWorkspace.shared.open(SystemSettingsURL.url(for: permission))
-        }
+        hostController?.presentPermissions([permission])
     }
 }
 
@@ -238,10 +235,23 @@ final class CameraStore: ObservableObject {
     /// 会话实例（跨视图副本共享同一个）。
     let session = AVCaptureSession()
 
-    private var isConfigured = false
+    /// 采集输入是否已建。只读暴露给回归测试：装载期不得为 true。
+    private(set) var isConfigured = false
     private weak var hostController: (any HostController)?
+    /// 激活观察（单例全程存活，无需摘除）。
+    private var activationObserver: NSObjectProtocol?
 
-    private init() {}
+    private init() {
+        // 用户去授权（系统窗或「权限管理」弹窗）后切回来时重取状态，否则块会一直
+        // 停在引导态，等于权限把功能多锁了一会儿。查询无副作用，安全。
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                CameraStore.shared.authorization = Self.currentAuthorization()
+            }
+        }
+    }
 
     // MARK: 授权
 
@@ -272,6 +282,9 @@ final class CameraStore: ObservableObject {
 
     func startSession() {
         guard authorization == .authorized else { return }
+        // 采集输入到这一刻才建：`AVCaptureDeviceInput(device:)` 会碰 TCC，提前到
+        // 装载期就等于每次启动 App 弹一次系统授权窗。
+        configureIfNeeded()
         // `startRunning()` 是阻塞调用，必须离开主线程。`AVCaptureSession` 未标
         // `Sendable`，但 Apple 明确它可在任意线程安全地启停；用 `SessionBox`
         // 的 `@unchecked Sendable` 承载（与 NotesImageStore 同族的显式豁免）。
@@ -295,7 +308,7 @@ final class CameraStore: ObservableObject {
         isPaused = true
     }
 
-    /// 首次启动时配置输入（只需一次）。
+    /// 首次真的要采集时配置输入（只需一次）。只在已授权后调用。
     func configureIfNeeded() {
         guard !isConfigured else { return }
         isConfigured = true
