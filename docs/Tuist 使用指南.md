@@ -49,7 +49,7 @@ tuist edit               # 在 Xcode 里编辑 Project.swift 等清单（带补�
 ## 5. 新增插件
 
 1. 建目录 `Plugins/<Name>/`，写 `Plugin.plist`（必填 PluginID / Version / DisplayName / Description）与 `Sources/`、`Resources/`（en + zh-Hans 的 Localizable.strings）。
-2. 不改任何清单或脚本，直接 `./scripts/build.sh dev`：build.sh 会 touch `Project.swift` 强制 Tuist 重扫清单，新 target 自动出现。
+2. 不改任何清单或脚本，直接 `./scripts/build.sh dev`：build.sh 每次生成前会清掉 Tuist 的 manifests 缓存再重算清单，新 target 自动出现。
 3. 需要额外依赖（默认只隐式注入 NotchCenterKit）时，在 Project.swift 的 `knownExtraDependencies` 白名单登记，并在 `extraDependency(_:)` 补映射。
 
 ## 6. Target 与产物布局速查
@@ -79,7 +79,7 @@ APP_VERSION=1.2.0 SIGN_IDENTITY="Developer ID Application: ..." \
 
 ## 8. 常见问题
 
-- **新增插件没被识别**：Tuist 按内容哈希缓存清单求值。build.sh 每次会 touch Project.swift；手工调 `tuist generate` 前请 `touch Project.swift`。
+- **新增插件没被识别**：Tuist 的清单缓存键只含 Project.swift 的内容哈希，不含 Plugins/ 目录的扫描结果。build.sh 每次生成前会清 manifests 缓存；手工调 `tuist generate` 前请先 `tuist clean manifests`。
 - **改了 Project.swift 报 target 冲突/找不到**：`rm -rf Derived/ *.xcodeproj *.xcworkspace` 后重新 `tuist generate`（全部是再生制品）。
 - **为什么关闭了 debug dylib**：Xcode 16 默认在 Debug 态把代码编进 `<App>.debug.dylib`、主二进制只留壳，会破坏测试符号解析（BUNDLE_LOADER）与打包脚本的单二进制假设，Project.swift 里已显式 `ENABLE_DEBUG_DYLIB=NO`。
 - **测试失败提示发现 12+ 个意外插件**：PluginManager 相关测试必须用 `makeEmptyBuiltIn()` 显式隔离内置插件目录——测试宿主是真实 .app，缺省路径会看到 build.sh 组装的真实插件。

@@ -10,8 +10,8 @@
 // 注意两点：
 // - 用 #filePath 定位项目根，不依赖清单执行时的 CWD。
 // - 清单阶段报错只能用 fatalError（Tuist 会原样打印消息），所以这里给出尽量可操作的错误文案。
-// - Tuist 按内容哈希缓存清单求值结果，新增插件目录不会自动触发重扫；
-//   scripts/build.sh 在构建前 touch 本文件强制重算（与原 SPM 流程同一纪律）。
+// - Tuist 的清单缓存键只含本文件的内容哈希，**目录扫描结果不在键内**，所以新增或删除
+//   插件目录不会自动触发重扫；scripts/build.sh 构建前清掉 manifests 缓存再生成（见 run_generate）。
 //
 // 例外：Plugins/LidAngleKit 不含 Plugin.plist，它不是插件而是**可复用动态库**
 // （盖角传感器，见 docs/agent-notes/implemented/2026-09-11-lid-angle-depth-effect.md）。

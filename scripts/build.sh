@@ -72,9 +72,11 @@ fi
 # tuist generate：产出 NotchCenter.xcworkspace / NotchCenter.xcodeproj（均已被 gitignore）。
 # 脚本场景必须 --no-open，否则每次构建都会拉起 Xcode。
 run_generate() {
-  # Tuist 按内容哈希缓存清单求值结果，新建插件目录不会触发重扫；
-  # touch Project.swift 强制每次重算，保证新插件立刻被发现（清单求值开销在亚秒级）。
-  touch "$ROOT_DIR/Project.swift"
+  # 清单在求值阶段扫描 Plugins/ 目录动态生成 target，但 Tuist 的清单缓存键只由
+  # Project.swift 的内容哈希决定（实测 4.207.0：清缓存前后 manifestHash 同值），
+  # 目录扫描结果不在键内，因此新增/删除插件目录必须清 manifests 类目才会重扫。
+  # 旧实现靠 `touch Project.swift`，只改 mtime 不改内容哈希，对缓存完全无效。
+  tuist_cmd clean manifests
   tuist_cmd generate --no-open
 }
 
