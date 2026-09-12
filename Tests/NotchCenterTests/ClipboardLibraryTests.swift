@@ -194,6 +194,68 @@ final class ClipboardLibraryTests: XCTestCase {
         XCTAssertEqual(again.count, 1)
     }
 
+    // MARK: 扁平列表项（列表惰性化的契约）
+
+    /// 行身份 = 条目 id，**不含分区**：置顶/解顶时身份不变，视图才始终落在同一个
+    /// `ForEach` 里复用并随值重刷（旧结构让同 id 在两个 `ForEach` 容器间搬家）。
+    func testListItemIdentityIgnoresSection() {
+        let moved = entry("moves")
+        let asRecent = ClipboardHistoryLogic.listItems(pinned: [], recent: [moved])
+        let asPinned = ClipboardHistoryLogic.listItems(pinned: [moved], recent: [])
+        XCTAssertEqual(asRecent.map(\.id), ["entry.\(moved.id.uuidString)"])
+        XCTAssertEqual(asPinned.map(\.id), ["entry.\(moved.id.uuidString)"])
+        XCTAssertEqual(asRecent.first?.id, asPinned.first?.id, "跨分区移动不得改变行身份")
+        XCTAssertEqual(asRecent.first?.entry, asPinned.first?.entry)
+        // 身份不变、但分组载荷随值变化——`Equatable` 把 section 计入正是为了让内容重刷。
+        XCTAssertNotEqual(asRecent.first, asPinned.first)
+    }
+
+    /// 保序：置顶段在前、最近段在后，组界**只在两段之间**出现（首节上方仍无线）。
+    func testListItemsKeepsOrderWithSingleBreakBetweenGroups() {
+        let items = ClipboardHistoryLogic.listItems(
+            pinned: [entry("p1", pinned: true), entry("p2", pinned: true)],
+            recent: [entry("n1"), entry("n2")]
+        )
+        XCTAssertEqual(items.count, 5)
+        XCTAssertEqual(items[0].entry?.text, "p1")
+        XCTAssertEqual(items[1].entry?.text, "p2")
+        XCTAssertEqual(items[2], .sectionBreak(.recent))
+        XCTAssertEqual(items[3].entry?.text, "n1")
+        XCTAssertEqual(items[4].entry?.text, "n2")
+        XCTAssertEqual(items[0].entry?.pinned, true)
+    }
+
+    /// 某一段为空时不产生组界——否则列表顶部/尾部会多一条孤立发丝线。
+    func testListItemsOmitsBreakWhenEitherGroupEmpty() {
+        let recentOnly = ClipboardHistoryLogic.listItems(pinned: [], recent: [entry("n")])
+        XCTAssertEqual(recentOnly.count, 1)
+        XCTAssertEqual(recentOnly.first?.entry?.text, "n")
+        let pinnedOnly = ClipboardHistoryLogic.listItems(pinned: [entry("p", pinned: true)], recent: [])
+        XCTAssertEqual(pinnedOnly.count, 1)
+        XCTAssertEqual(pinnedOnly.first?.entry?.text, "p")
+        XCTAssertTrue(ClipboardHistoryLogic.listItems(pinned: [], recent: []).isEmpty)
+    }
+
+    /// 两个 id 空间不混用：组界走 `break.` 前缀、条目走 `entry.` 前缀，扁平后仍全局唯一。
+    func testListItemsIdSpacesAreDisjointAndUnique() {
+        let items = ClipboardHistoryLogic.listItems(
+            pinned: [entry("p", pinned: true)],
+            recent: [entry("n")]
+        )
+        let ids = items.map(\.id)
+        XCTAssertEqual(Set(ids).count, ids.count, "扁平列表 id 必须全局唯一")
+        XCTAssertEqual(items.first { $0.entry == nil }?.id, "break.recent")
+        let entryIDs = items.filter { $0.entry != nil }.map(\.id)
+        XCTAssertEqual(entryIDs.count, 2)
+        XCTAssertTrue(entryIDs.allSatisfy { $0.hasPrefix("entry.") }, "行 id 不得落进组界 id 空间")
+    }
+
+    /// 分区文案键：抽屉块借它拼行无障碍标签、库页借它做小节标题，两个键不得写反。
+    func testSectionKindTitleKeys() {
+        XCTAssertEqual(ClipboardSectionKind.pinned.titleKey, "drawer.section.pinned")
+        XCTAssertEqual(ClipboardSectionKind.recent.titleKey, "drawer.section.recent")
+    }
+
     // MARK: 块声明
 
     func testClipboardLibraryBlockDeclaration() {

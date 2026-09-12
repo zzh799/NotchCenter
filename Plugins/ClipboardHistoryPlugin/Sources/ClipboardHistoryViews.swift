@@ -12,8 +12,9 @@ import SwiftUI
 // 角标同一外观）默认隐藏、鼠标悬浮组件才显示，左搜索、右清空对称镜像编辑
 // 模式的左上齿轮 / 右上移除；不占整行输入框——纵向空间全让给剪贴条目。
 // 点搜索角标才展开输入行（行首同款搜索钮兼任收起，收起时清空查询）。
-// 置顶 / 最近分组不设文字标题：组界画细线表达，条目置顶态由行尾按钮选中态表达，
-// 分组语义走节容器 accessibilityLabel。
+// 置顶 / 最近分组不设文字标题：组界画细线表达，条目置顶态由行尾按钮选中态表达；
+// 分组语义走行的 accessibilityLabel 前缀——列表已扁平进 LazyVStack，节容器不复存在
+// （为什么必须扁平见 `ClipboardListItem` 的类型注释）。
 // 历史来自共享单例，显示偏好（条数）来自本 placement 的实例模型。
 
 struct ClipboardHistoryBlockView: View {
@@ -112,10 +113,14 @@ struct ClipboardHistoryBlockView: View {
             emptyState
         } else if store.entries.isEmpty {
             emptyState
-        } else if displayedEntries.isEmpty {
-            searchEmptyState
         } else {
-            historyList
+            // 只算一次：扁平结果既是"搜索无果"的判据，也直接就是列表内容。
+            let items = displayedItems
+            if items.isEmpty {
+                searchEmptyState
+            } else {
+                historyList(items)
+            }
         }
     }
 
@@ -138,30 +143,21 @@ struct ClipboardHistoryBlockView: View {
         }
     }
 
-    /// 拍平后的展示条目（分组仅由 historyList 用细线与节容器 a11y 标签表达）。
-    private var displayedEntries: [ClipboardEntry] {
-        displayedSections.flatMap(\.entries)
-    }
-
     // MARK: 派生数据
 
-    /// 按置顶 / 最近分区、经搜索过滤、按实例条数截断后的展示节。
-    private var displayedSections: [ClipboardSection] {
+    /// 扁平后的展示项（分组、搜索过滤、按实例条数截断在此一次算完）。
+    private var displayedItems: [ClipboardListItem] {
         let filtered = ClipboardHistoryLogic.filtered(store.entries, query: query)
         // 诊断压帽与实例配置取小：只改"物化多少行"，不动分区与排序语义。
         let limit = ClipboardHistoryLogic.effectiveDisplayCount(instance.config.displayCount)
         let pinned = filtered.filter(\.pinned)
         let plain = filtered.filter { !$0.pinned }
-        var sections: [ClipboardSection] = []
-        if !pinned.isEmpty {
-            sections.append(ClipboardSection(kind: .pinned, entries: Array(pinned.prefix(limit))))
-        }
         // 置顶已占去 k 位时，最近区补 (limit - k) 位，避免超长。
         let remaining = max(limit - min(pinned.count, limit), 0)
-        if !plain.isEmpty, remaining > 0 {
-            sections.append(ClipboardSection(kind: .recent, entries: Array(plain.prefix(remaining))))
-        }
-        return sections
+        return ClipboardHistoryLogic.listItems(
+            pinned: Array(pinned.prefix(limit)),
+            recent: remaining > 0 ? Array(plain.prefix(remaining)) : []
+        )
     }
 
     // MARK: 顶部工具行（角标按钮 + 搜索输入行）
@@ -289,77 +285,42 @@ struct ClipboardHistoryBlockView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var historyList: some View {
+    /// 列表本体：`LazyVStack` + 单一 `ForEach`——行是惰性容器的**直接子项**（组界占一项），
+    /// 因此只物化视口内的十来行。置顶/解顶时条目的 id 始终落在同一个 `ForEach` 里、
+    /// 不再跨容器搬家，视图身份稳定、内容随值重刷（旧写法拿不到行级惰性，见
+    /// `ClipboardListItem` 的类型注释）。
+    private func historyList(_ items: [ClipboardListItem]) -> some View {
         ScrollView(.vertical) {
-            // 普通 VStack 而非 LazyVStack:置顶/解顶会让同一 id 在两个分区
-            // ForEach 容器间移动,LazyVStack 复用已物化的同 id 视图但不重刷
-            // 内容(按钮停在旧态,重开抽屉才纠正);列表至多 50 条,惰性无收益。
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(displayedSections.enumerated()), id: \.element.id) { index, section in
-                    ClipboardSectionView(
-                        section: section,
-                        showsTopDivider: index > 0,
-                        justCopiedID: store.justCopiedID,
-                        onCopy: { store.copyBack($0) },
-                        onTogglePin: { store.togglePin(id: $0.id) },
-                        onDelete: { store.delete(id: $0.id) }
-                    )
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(items) { item in
+                    listItemView(item)
                 }
             }
             .padding(.vertical, 8)
         }
     }
-}
 
-/// 展示分区（具名 Identifiable，避免匿名元组拖慢类型检查）。
-private enum ClipboardSectionKind: Hashable {
-    case pinned
-    case recent
-
-    /// 视觉上已不用文字标题，仅供节容器 accessibilityLabel 复用。
-    var titleKey: String {
-        self == .pinned ? "drawer.section.pinned" : "drawer.section.recent"
-    }
-}
-
-private struct ClipboardSection: Identifiable {
-    var id: ClipboardSectionKind { kind }
-    let kind: ClipboardSectionKind
-    let entries: [ClipboardEntry]
-}
-
-/// 单节渲染（组间细线 + 行列表），从 historyList 抽出给类型检查器减负。
-private struct ClipboardSectionView: View {
-    let section: ClipboardSection
-    let showsTopDivider: Bool
-    let justCopiedID: UUID?
-    let onCopy: (ClipboardEntry) -> Void
-    let onTogglePin: (ClipboardEntry) -> Void
-    let onDelete: (ClipboardEntry) -> Void
-
-    var body: some View {
-        Group {
-            if showsTopDivider {
-                // 置顶组与最近组的组界发丝线（DESIGN.md §2.3 分隔线基准）。
-                Rectangle()
-                    .fill(NotchTokens.Hairline.divider)
-                    .frame(height: 1)
-                    .padding(.horizontal, 12)
-                    .accessibilityHidden(true)
-            }
-            ForEach(section.entries) { entry in
-                ClipboardRowView(
-                    entry: entry,
-                    justCopied: justCopiedID == entry.id,
-                    onCopy: { onCopy(entry) },
-                    onTogglePin: { onTogglePin(entry) },
-                    onDelete: { onDelete(entry) }
-                )
-                .padding(.horizontal, 8)
-            }
+    @ViewBuilder
+    private func listItemView(_ item: ClipboardListItem) -> some View {
+        switch item {
+        case .sectionBreak:
+            // 置顶组与最近组的组界发丝线（DESIGN.md §2.3 分隔线基准），纯装饰。
+            Rectangle()
+                .fill(NotchTokens.Hairline.divider)
+                .frame(height: 1)
+                .padding(.horizontal, 12)
+                .accessibilityHidden(true)
+        case .entry(let entry, let section):
+            ClipboardRowView(
+                entry: entry,
+                section: section,
+                justCopied: store.justCopiedID == entry.id,
+                onCopy: { store.copyBack(entry) },
+                onTogglePin: { store.togglePin(id: entry.id) },
+                onDelete: { store.delete(id: entry.id) }
+            )
+            .padding(.horizontal, 8)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(L(section.kind.titleKey)))
     }
 }
 
@@ -367,6 +328,8 @@ private struct ClipboardSectionView: View {
 
 private struct ClipboardRowView: View {
     let entry: ClipboardEntry
+    /// 所属分组：容器已扁平化，分组语义只能由行自己带上（见下方 accessibilityLabel）。
+    let section: ClipboardSectionKind
     let justCopied: Bool
     let onCopy: () -> Void
     let onTogglePin: () -> Void
@@ -425,7 +388,11 @@ private struct ClipboardRowView: View {
             Button(L("drawer.button.delete"), action: onDelete)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(ClipboardHistoryLogic.diagnosticText(entry.text)))
+        .accessibilityLabel(Text(LF(
+            "drawer.row.a11y",
+            L(section.titleKey),
+            ClipboardHistoryLogic.diagnosticText(entry.text)
+        )))
     }
 
     /// 长按全文预览：BlockPopover 盖在行上方，长文内嵌滚动、可选中复制；

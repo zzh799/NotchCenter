@@ -26,6 +26,8 @@
 "drawer.search.placeholder" = "Search history";
 "drawer.section.pinned" = "Pinned";
 "drawer.section.recent" = "Recent";
+/* Row a11y label (group semantics moved onto the row after flattening the list): group + text */
+"drawer.row.a11y" = "%1$@, %2$@";
 "drawer.empty.title" = "No Clipboard History Yet";
 "drawer.empty.hint" = "Copy some text and it will appear here. Click an entry to copy it back.";
 "drawer.paused.banner" = "Recording paused";

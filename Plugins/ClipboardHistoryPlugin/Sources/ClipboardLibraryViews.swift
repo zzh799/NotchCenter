@@ -98,10 +98,13 @@ struct ClipboardLibraryView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ClipboardLibraryMetrics.sectionGap) {
+        // 派生结果只算一次：`sections` 是计算属性，在 body 里多次访问会让一次渲染
+        // 重复跑多轮「类型筛选 + 大小写不敏感全库扫描」。
+        let sections = self.sections
+        return VStack(alignment: .leading, spacing: ClipboardLibraryMetrics.sectionGap) {
             searchRow
             filterRow
-            content
+            content(sections)
         }
         .padding(ClipboardLibraryMetrics.padding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -212,7 +215,7 @@ struct ClipboardLibraryView: View {
     // MARK: 内容（置顶看板 + 最近列表）
 
     @ViewBuilder
-    private var content: some View {
+    private func content(_ sections: (pinned: [ClipboardEntry], recent: [ClipboardEntry])) -> some View {
         if ClipboardHistoryLogic.diagnosticMode == .contentOff {
             // 诊断：摘掉列表/看板物化，只留块壳（见 DiagnosticMode 注释）。
             emptyState(title: L("library.empty.title"), hint: L("library.empty.hint"), symbol: "clipboard")
@@ -222,9 +225,10 @@ struct ClipboardLibraryView: View {
             emptyState(title: L("library.noMatch.title"), hint: L("library.noMatch.hint"), symbol: "magnifyingglass")
         } else {
             // 列表自管滚动（纵向内容可能超过页高）；页自身不被宿主以外的
-            // ScrollView 包裹，这里是唯一一层。
+            // ScrollView 包裹，这里是唯一一层。区块也扁平进 `LazyVStack`
+            // （`ForEach` 对容器透明），滚动到页底时才物化下方区块。
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: ClipboardLibraryMetrics.sectionGap) {
+                LazyVStack(alignment: .leading, spacing: ClipboardLibraryMetrics.sectionGap) {
                     if !sections.pinned.isEmpty {
                         pinnedBoard(sections.pinned)
                     }
@@ -236,11 +240,12 @@ struct ClipboardLibraryView: View {
     }
 
     /// 置顶看板：横向卡片行（标题 + 两行摘要），点击写回、长按预览全文。
+    /// 卡宽卡高固定，`LazyHStack` 因此只物化横向视口内的卡片。
     private func pinnedBoard(_ entries: [ClipboardEntry]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             sectionTitle(L("library.section.pinned"))
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                LazyHStack(spacing: 8) {
                     ForEach(entries) { entry in
                         pinnedCard(entry)
                     }
@@ -304,11 +309,12 @@ struct ClipboardLibraryView: View {
     }
 
     /// 最近列表：单行截断，行尾置顶/删除；点击写回、长按预览。
+    /// 行高固定（`rowHeight`）——`LazyVStack` 无需测量全部行即可排布，只物化视口内的行。
     private func recentList(_ entries: [ClipboardEntry]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if !entries.isEmpty {
                 sectionTitle(L("library.section.recent"))
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0) {
                     ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                         recentRow(entry)
                         if index < entries.count - 1 {

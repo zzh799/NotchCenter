@@ -108,6 +108,48 @@ struct ClipboardEntry: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// 列表分区。视觉上不用文字标题（抽屉块走组界发丝线），只承载分组语义。
+enum ClipboardSectionKind: String, Hashable, Sendable {
+    case pinned
+    case recent
+
+    /// 分组文案键（抽屉块的行无障碍标签与库页的可见小节标题各自取用）。
+    var titleKey: String {
+        self == .pinned ? "drawer.section.pinned" : "drawer.section.recent"
+    }
+}
+
+/// 列表的**扁平**元素：行与组界同属一个序列。
+///
+/// 为什么必须扁平：`LazyVStack` 只对**直接子项**延迟物化，而 `ForEach` 对容器透明。
+/// 旧写法「`LazyVStack` → `ForEach`(节) → 节容器 → `ForEach`(行)」里 `LazyVStack` 的
+/// 直接子项只有两个节，行藏在节容器内部、从未进入惰性作用范围（物化行数恒等于总行数）；
+/// 同时置顶/解顶会让同一 id 在两个 `ForEach` 容器之间"搬家"，视图身份含混——旧注释
+/// 记的"复用但不重刷"正是这个嵌套结构自己造的。扁平成一个序列后，行与组界共享唯一
+/// 容器，身份稳定、惰性也真正落到行级。
+///
+/// 隔离验证见 `Experiments/ClipboardListProbe/`（A/B 台账逐字段断言跨分区移动零冲突）。
+enum ClipboardListItem: Equatable, Identifiable, Sendable {
+    /// 两组之间的发丝线：纯装饰（`accessibilityHidden`）。只在两节之间出现。
+    case sectionBreak(ClipboardSectionKind)
+    case entry(ClipboardEntry, section: ClipboardSectionKind)
+
+    /// 全局唯一的行身份：组界走 `break.` 前缀、条目走 `entry.` 前缀。
+    /// **条目 id 不含分区**——这是"跨分区移动不换身份"的前提，两个 id 空间也不得混用。
+    var id: String {
+        switch self {
+        case .sectionBreak(let kind): return "break.\(kind.rawValue)"
+        case .entry(let entry, _): return "entry.\(entry.id.uuidString)"
+        }
+    }
+
+    /// 条目项解出的条目；组界为 nil。
+    var entry: ClipboardEntry? {
+        if case .entry(let entry, _) = self { return entry }
+        return nil
+    }
+}
+
 /// 历史变换纯函数集（共识 Q4/Q7/Q9）。
 enum ClipboardHistoryLogic {
     /// 总容量（含置顶）。
@@ -314,6 +356,22 @@ enum ClipboardHistoryLogic {
         _ entries: [ClipboardEntry]
     ) -> (pinned: [ClipboardEntry], recent: [ClipboardEntry]) {
         (entries.filter(\.pinned), entries.filter { !$0.pinned })
+    }
+
+    // MARK: 列表项模型（两个列表共用的扁平化契约）
+
+    /// 把分区后的条目拍成扁平列表：置顶段在前、最近段在后，组界只在两段之间。
+    /// 某一区为空时不产生组界（与旧视图 `showsTopDivider: index > 0` 的呈现一致）。
+    static func listItems(
+        pinned: [ClipboardEntry],
+        recent: [ClipboardEntry]
+    ) -> [ClipboardListItem] {
+        var items = pinned.map { ClipboardListItem.entry($0, section: .pinned) }
+        if !pinned.isEmpty, !recent.isEmpty {
+            items.append(.sectionBreak(.recent))
+        }
+        items.append(contentsOf: recent.map { ClipboardListItem.entry($0, section: .recent) })
+        return items
     }
 
     /// 显示条数档位净化：非法值回最近档。
