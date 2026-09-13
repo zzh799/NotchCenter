@@ -459,7 +459,9 @@ private struct DrawerPagePill: View {
         DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onChanged { value in
                 // 滑动进行中不接管胶囊拖动：条带位移由控制器独占，胶囊让位预览
-                // 若同时跟手会与高光进度抢同一份水平位移。
+                // 若同时跟手会与高光进度抢同一份水平位移。**点击不受此限**——
+                // 会话期点击由控制器即时打断在飞弹簧并跳页（2026-09-13 起不再
+                // 在这里丢弃，见 onEnded）。
                 guard !isSwipeActive else { return }
                 if !isDragging {
                     guard isEditing,
@@ -487,8 +489,10 @@ private struct DrawerPagePill: View {
                     onDragCommit(target)
                     return
                 }
-                // 已进入滑动会话的点击忽略：松手时胶囊下的位移可能被 swipe 截断。
-                guard !isSwipeActive else { return }
+                // 滑动会话期的点击**不再丢弃**（旧守卫在弹簧全程留下 0.4–0.6s
+                // 的点击死窗：轻扫后立刻点胶囊无响应，须等散场再点）：交给控制
+                // 器即时打断在飞会话并跳页。拖动排序仍由 onChanged 的守卫拦住，
+                // 与会话互斥不变。
                 // 未进拖动且位移没越阈才算点击：按下后拖一把再松手不该切页。
                 guard hypot(value.translation.width, value.translation.height)
                         <= DrawerPagePillLayout.dragPickupDistance else { return }

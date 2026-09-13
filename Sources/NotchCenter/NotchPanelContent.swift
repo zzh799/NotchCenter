@@ -647,11 +647,35 @@ extension NotchPanelController {
     }
 
     /// 切换激活页（带 spring 重建，面板尺寸随新页内容自适应）。
+    /// 在飞滑动会话期间被胶囊点击调用时走打断路径：胶囊点击是新输入，
+    /// 即时接管而不是被丢弃（旧"会话期丢弃点击"在弹簧全程留下 0.4–0.6s
+    /// 的点击死窗，见领域文档与 2026-09-13 决策记录）。
     func selectDrawerPage(_ page: Int) {
+        guard layoutEngine.drawerPages.contains(page) else { return }
+        if uiState.drawerSwipe != nil {
+            interruptDrawerSwipe(selecting: page)
+            return
+        }
         guard canSwitchDrawerPage,
-              page != uiState.drawerActivePage,
-              layoutEngine.drawerPages.contains(page) else { return }
+              page != uiState.drawerActivePage else { return }
         uiState.drawerActivePage = page
+        rebuildContentAfterPageChange()
+    }
+
+    /// 胶囊点击打断在飞会话：取消驱动器、清会话、跳/停到所点页（点原点页
+    /// = 取消飞行停在原页）。绕过 `canSwitchDrawerPage`——会话只在展开态
+    /// 存在，菜单跟踪/落点预览/块拖拽与在飞弹簧不共存，那条守卫防的错页
+    /// 写入在这里没有载体。驱动器必须先停表，避免残余 `onFrame` 与随后的
+    /// 重建互写同一份状态；tracker 复位同 `yieldDrawerSwipeToBlock` 先例。
+    /// 不走 `endDrawerSwipe` 的回弹驱动：回弹是把位移弹回原点的动画语义，
+    /// 点击要的是立即定局——页带层随会话清除卸载、新页经常规重建 spring
+    /// 交叉过渡，视觉与普通胶囊点击一致（独立输入，不触"松手帧撤层 +
+    /// selectDrawerPage"红线——那条管的是手势释放通路）。
+    private func interruptDrawerSwipe(selecting page: Int) {
+        swipeSpringDriver.cancel()
+        drawerScrollTracker.reset()
+        uiState.drawerActivePage = page
+        uiState.drawerSwipe = nil
         rebuildContentAfterPageChange()
     }
 
