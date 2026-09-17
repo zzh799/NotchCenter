@@ -19,16 +19,10 @@ struct GridMetrics: Equatable, Sendable {
     /// 免得调用点再回头去查 `NotchGridMetrics.drawerTopBarHeight`。
     var topBarHeight: CGFloat
 
+    static let drawerTopBarHeight: CGFloat = 36
+
     /// 当前指标快照。
-    static var current: GridMetrics {
-        GridMetrics(
-            cellWidth: NotchGridMetrics.cellWidth,
-            cellHeight: NotchGridMetrics.cellHeight,
-            spacing: NotchGridMetrics.spacing,
-            contentPadding: NotchGridMetrics.contentPadding,
-            topBarHeight: NotchGridMetrics.drawerTopBarHeight
-        )
-    }
+    static var current: GridMetrics { GridMetricsStore.shared.snapshot() }
 
     /// 格步长（单元格 + 间距）：全项目唯一一份定义。
     var stepWidth: CGFloat { cellWidth + spacing }

@@ -90,6 +90,19 @@ final class GridMetricsStore: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// 与写入共用锁，一次读取全部指标，避免快照混入两个更新时刻的值。
+    func snapshot() -> GridMetrics {
+        lock.withLock {
+            GridMetrics(
+                cellWidth: cellWidth,
+                cellHeight: cellHeight,
+                spacing: spacing,
+                contentPadding: contentPadding,
+                topBarHeight: GridMetrics.drawerTopBarHeight
+            )
+        }
+    }
+
     // MARK: 写入
 
     /// 设置单项指标（主线程）：值被钳制到合法区间；无变化时直接返回

@@ -40,9 +40,9 @@ final class ScreenSnapshotter {
     func beginPrewarm(interval: TimeInterval = 0.2) {
         // 没权限就没有 filter 可建,开了定时器也只是空转。
         guard timer == nil, hasPermission else { return }
-        capture()
+        startCapture()
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.capture() }
+            MainActor.assumeIsolated { _ = self?.startCapture() }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
@@ -77,10 +77,6 @@ final class ScreenSnapshotter {
     func invalidateFilter() {
         filter = nil
         filterDisplayID = nil
-    }
-
-    private func capture() {
-        startCapture()
     }
 
     @discardableResult

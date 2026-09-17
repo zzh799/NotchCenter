@@ -27,6 +27,34 @@ final class GridMetricsStoreTests: XCTestCase {
         XCTAssertTrue(store.isDefault)
     }
 
+    func testSnapshotKeepsValuesWhileNewReadsFollowChanges() {
+        let (store, defaults, suite) = makeStore()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        store.set(.cellWidth, to: 180)
+        store.set(.cellHeight, to: 90)
+        store.set(.spacing, to: 8)
+        store.set(.contentPadding, to: 20)
+        let before = store.snapshot()
+        XCTAssertEqual(before, GridMetrics(
+            cellWidth: 180, cellHeight: 90, spacing: 8,
+            contentPadding: 20, topBarHeight: 36
+        ))
+        XCTAssertEqual(before.size(columns: 2, rows: 3), CGSize(width: 368, height: 286))
+
+        store.set(.cellWidth, to: 220)
+        store.set(.cellHeight, to: 100)
+        store.set(.spacing, to: 10)
+        store.set(.contentPadding, to: 24)
+        XCTAssertEqual(before.cellWidth, 180)
+        XCTAssertEqual(before.cellHeight, 90)
+        XCTAssertEqual(before.spacing, 8)
+        XCTAssertEqual(before.contentPadding, 20)
+        XCTAssertEqual(store.snapshot(), GridMetrics(
+            cellWidth: 220, cellHeight: 100, spacing: 10,
+            contentPadding: 24, topBarHeight: 36
+        ))
+    }
+
     func testSetClampsIntoDeclaredRange() {
         let (store, defaults, suite) = makeStore()
         defer { defaults.removeSuite(named: suite) }

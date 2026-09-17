@@ -150,15 +150,16 @@ final class CalibreServiceMonitor: ObservableObject {
         isBusy = true
         message = nil
         let control = control
-        Task.detached(priority: .userInitiated) {
-            let error = action(control)
+        Task(priority: .userInitiated) { [weak self] in
+            let error = await Task.detached(priority: .userInitiated) {
+                action(control)
+            }.value
             // launchctl 状态落定需要一点时间，稍候再探测。
             try? await Task.sleep(for: .milliseconds(600))
-            await MainActor.run { [weak self] in
-                self?.isBusy = false
-                self?.message = error ?? busyMessage
-                Task { await self?.refreshOnce() }
-            }
+            guard let self else { return }
+            self.isBusy = false
+            self.message = error ?? busyMessage
+            await self.refreshOnce()
         }
     }
 }

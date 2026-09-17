@@ -58,11 +58,9 @@ extension LayoutEngine {
 
     /// 网格内容尺寸（行列都随内容自适应）。
     func drawerContentSize(page: Int = 0) -> CGSize {
+        let metrics = GridMetrics.current
         let rows = drawerContentRows(page: page)
-        return CGSize(
-            width: NotchGridMetrics.contentWidth(columns: occupiedColumns(page: page)),
-            height: NotchGridMetrics.contentHeight(rows: rows)
-        )
+        return metrics.size(columns: occupiedColumns(page: page), rows: rows)
     }
 
     /// 抽屉窗口尺寸：宽度按实际占用列数收缩（换行上限仍受屏幕约束）；
@@ -79,12 +77,10 @@ extension LayoutEngine {
             max(contentColumns ?? occupiedColumns(page: page), minimumColumnCount()),
             effectiveMaxColumns()
         )
+        let metrics = GridMetrics.current
         return CGSize(
-            width: NotchGridMetrics.contentWidth(columns: columns)
-                + NotchGridMetrics.contentPadding * 2,
-            height: NotchGridMetrics.drawerTopBarHeight
-                + NotchGridMetrics.contentHeight(rows: rows)
-                + NotchGridMetrics.contentPadding
+            width: metrics.width(columns: columns) + metrics.contentPadding * 2,
+            height: metrics.topBarHeight + metrics.height(rows: rows) + metrics.contentPadding
         )
     }
 
