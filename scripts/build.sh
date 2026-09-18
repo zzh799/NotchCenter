@@ -3,6 +3,7 @@
 # Plugins/<Name>/Plugin.plist，本脚本与 Project.swift 都从 Plugins/ 目录自动发现插件，
 # 新增插件不需要改任何列表或 case 分支。
 #
+# >>> usage
 # 用法:
 #   build.sh dev [debug|release]   tuist generate + xcodebuild 构建，把插件 dylib 组装成
 #                                  .bundle 放进产物 .app 的 Contents/PlugIns/（开发态 .app 与
@@ -16,6 +17,9 @@
 #                                  <filter> 定向复验（套件名或 套件/用例，映射 -only-testing）
 #   build.sh verify-sizes          官方插件「最小尺寸遮挡校验」定向门禁（几何判定 +
 #                                  插件探针声明，等价 test 里对应套件的子集，快速反馈用）
+#   build.sh doctor                构建增量门禁自检：验证「清单文件或文件路径集合变化必须
+#                                  触发工程重生成」「仅改源码内容必须不重生成」等语义边界，
+#                                  并打印当前各阶段门禁状态（只读，不改工作区源码）
 #   build.sh package [-i|--install] [-g|--github] [--no-dmg] [--skip-size-check]
 #                                  发布打包：通用架构 .app + 内置插件 bundle + 共享框架
 #                                  + zip + dmg + 各自 sha256（可选公证），产物在 dist.noindex/；
@@ -28,8 +32,17 @@
 #   build.sh clean                 删除 .build 与 dist.noindex（均为纯可再生制品）
 #
 # 环境变量（仅 package）：APP_VERSION、BUILD_NUMBER、SIGN_IDENTITY、NOTARY_PROFILE。
+# <<< usage
 #
-# 发布产物结构（文档 §2.2 / §2.3）：
+# ---- 增量门禁（三段独立，任一段失效只影响自己）--------------------------------
+#   1) 工程重生成：只在「清单文件内容」或「进入工程的文件路径集合」变化时才 tuist generate
+#      （见 manifests_fingerprint）。Tuist 每次生成都会重写 Derived/Sources 的派生源，逼
+#      xcodebuild 判全部 target 签名失效（实测紧跟 generate 后构建 15 次 CodeSign，不跟则
+#      0 次），所以这一步绝不能每次构建都跑。改源码内容不需要重生成，改文件路径集合必须。
+#   2) 构建输入指纹：dev/run 级别的整体跳过，见 build_inputs_hash。
+#   3) 插件组装：逐插件比对 bundle_fingerprint，只重建/重签变化的 bundle。
+#
+# ---- 参考：发布产物结构（文档 §2.2 / §2.3）------------------------------------
 #   NotchCenter.app/
 #     Contents/MacOS/NotchCenter
 #     Contents/Frameworks/libNotchCenterKit.dylib（Xcode 按依赖自动嵌入）
@@ -43,7 +56,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# 脚本自身绝对路径：usage() 与门禁指纹都要读本文件，而多个子命令会先 cd 到 ROOT_DIR，
+# 直接用相对调用路径（如 ./scripts/build.sh）会失效。
+SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 PLUGINS_SRC_DIR="$ROOT_DIR/Plugins"
+
+# 本机架构：dev/run/test 只编它，见 run_xcodebuild。
+NATIVE_ARCH="$(uname -m)"
 
 # Plugins/ 下的可复用动态库目录（不是插件，不参与发现与打包）。
 # 与 Project.swift 的 sharedLibraryDirNames 必须保持一致。
@@ -56,8 +75,12 @@ API_RANGE_XML="${API_RANGE//</&lt;}"   # XML 转义（解析后仍是 1.0..<2.0�
 die() { echo "错误：$*" >&2; exit 1; }
 
 usage() {
-  sed -n '6,41p' "$0" | sed 's/^# \{0,1\}//'
+  # 标记区间而非硬编码行号：后者在改头部注释时会静默截断帮助文本。
+  sed -n '/^# >>> usage$/,/^# <<< usage$/p' "$SCRIPT_PATH" | sed '1d;$d' | sed 's/^# \{0,1\}//'
 }
+
+# 增量门禁状态目录。全部落在 .build 内，clean 时随 .build 一并清除（首次构建走全量路径）。
+DEV_STATE_DIR="$ROOT_DIR/.build/dev-state"
 
 # ---- Tuist 定位 --------------------------------------------------------------
 # 优先用 PATH 上的 tuist（mise shim / brew），否则借 mise 临时执行。
@@ -69,19 +92,92 @@ else
   tuist_cmd() { die "未找到 tuist：请在项目内执行 mise use tuist@<版本> 或 brew install tuist"; }
 fi
 
+# ---- 工程重生成门禁 ----------------------------------------------------------
+# tuist generate 是构建链里最贵的一步（约 3 s），而且它每次都会重写 Derived/Sources 下的
+# 派生源（TuistBundle+NotchCenter / TuistStrings+NotchCenter 等）。派生源一变，xcodebuild
+# 就判相关 target 的产物失效：实测紧跟 generate 之后构建是 6 s / 15 次 CodeSign，不跑
+# generate 直接构建是 2 s / 0 次 CodeSign。所以生成必须按需触发，不能每次构建都跑。
+#
+# 触发条件只取「决定 target 集合」的输入：Project.swift（含 sharedLibraryDirNames）、
+# mise.toml（Tuist 版本）、本脚本（与 Project.swift 共同维护复用库白名单，两处必须一致）、
+# 以及 Plugins/ 一级子目录名集合（插件发现结果）。
+#
+# 刻意不纳入各插件 Plugin.plist 的内容：它只影响本脚本组装出的 Info.plist，不改变 target
+# 结构，纳入会让「改个版本号」也白白触发 3 s 重生成。Plugin.plist 变化由插件组装指纹
+# （bundle_fingerprint）负责，那才是它该触发的地方。
+MANIFEST_STATE_FILE="$DEV_STATE_DIR/manifests.sha"
+
+# 决定 target 集合的清单文件内容。用数组而非硬编码路径，doctor 子命令可替换成临时样本自检。
+MANIFEST_INPUT_FILES=("$ROOT_DIR/Project.swift" "$ROOT_DIR/mise.toml" "$SCRIPT_PATH")
+
+# 会进入工程文件清单的路径根。同样可在 doctor 里被替换。
+#
+# 为什么需要这一层：Tuist 把 `sources: ["Plugins/X/Sources/**/*.swift"]` 这类 glob 在清单
+# 求值阶段展开成 pbxproj 里的显式文件列表。因此**新增、删除、改名任何源文件都必须重新生成**：
+# 少了这一步，pbxproj 会指向不存在的文件，构建直接报
+# `error: Build input file cannot be found: .../Sources/Foo.swift`（实测踩过）。
+#
+# 所以这里哈希的是「文件路径集合」而不是文件内容：改内容不重生成（xcodebuild 自己按内容
+# 增量），改路径集合才重生成。两者分工明确，这也是本门禁能省下 3 s 的前提。
+MANIFEST_PATH_ROOTS=(
+  "$ROOT_DIR/Sources"
+  "$ROOT_DIR/Plugins"
+  "$ROOT_DIR/Tests"
+  "$ROOT_DIR/Resources"
+)
+
+manifests_fingerprint() {
+  local file
+  {
+    printf 'manifests\n'
+    for file in "${MANIFEST_INPUT_FILES[@]}"; do
+      shasum -a 256 "$file"
+    done
+    printf 'paths\n'
+    find "${MANIFEST_PATH_ROOTS[@]}" \
+      \( -name '.DS_Store' -o -name '.build' -o -name '.swiftpm' \) -prune -o \
+      -type f -print 2>/dev/null | LC_ALL=C sort
+  } | shasum -a 256 | awk '{print $1}'
+}
+
+# 返回 0 = 需要重新生成；1 = 可安全跳过。
+# 保守失败：stamp 缺失、指纹不匹配、工程目录缺失，任一成立都返回 0（宁可多花 3 s，
+# 不可让构建对着陈旧工程跑）。
+needs_generate() {
+  local fingerprint
+  fingerprint="$(manifests_fingerprint)"
+  [[ -f "$MANIFEST_STATE_FILE" ]] || return 0
+  [[ "$(cat "$MANIFEST_STATE_FILE")" == "$fingerprint" ]] || return 0
+  [[ -d "$ROOT_DIR/NotchCenter.xcworkspace" ]] || return 0
+  [[ -d "$ROOT_DIR/NotchCenter.xcodeproj" ]] || return 0
+  return 1
+}
+
 # tuist generate：产出 NotchCenter.xcworkspace / NotchCenter.xcodeproj（均已被 gitignore）。
 # 脚本场景必须 --no-open，否则每次构建都会拉起 Xcode。
-run_generate() {
+run_generate() { # $1=1 强制重新生成（供 --full 使用）；其余值按门禁判断
+  if (( ! ${1:-0} )) && ! needs_generate; then
+    echo "工程结构与上次一致，跳过 tuist generate"
+    return 0
+  fi
   # 清单在求值阶段扫描 Plugins/ 目录动态生成 target，但 Tuist 的清单缓存键只由
   # Project.swift 的内容哈希决定（实测 4.207.0：清缓存前后 manifestHash 同值），
   # 目录扫描结果不在键内，因此新增/删除插件目录必须清 manifests 类目才会重扫。
   # 旧实现靠 `touch Project.swift`，只改 mtime 不改内容哈希，对缓存完全无效。
   tuist_cmd clean manifests
   tuist_cmd generate --no-open
+  # 生成成功后才落 stamp：失败时 set -e 已在此前中止，不会留下假的「门禁已通过」状态。
+  mkdir -p "$DEV_STATE_DIR"
+  manifests_fingerprint > "$MANIFEST_STATE_FILE"
 }
 
 # xcodebuild 封装：产物落在 <derivedDataPath>/Build/Products/<config>/。
 # build 用 generic 目的地；test 必须用具体 platform 目的地。
+#
+# 只编本机架构：generic 目的地 + 未设 ONLY_ACTIVE_ARCH 时，`-showBuildSettings` 会报
+# ARCHS = arm64 x86_64 / ONLY_ACTIVE_ARCH = NO（实测产物就是 fat 二进制），编译量直接翻倍。
+# 开发与测试都在本机跑，通用架构没有意义。发布态的通用架构由 cmd_package 显式指定，
+# 不经过这里。
 run_xcodebuild() { # $1=Debug|Release $2=derivedDataPath $3=build|test，其余原样透传
   local config="$1" derived="$2" action="$3" destination
   shift 3
@@ -95,6 +191,8 @@ run_xcodebuild() { # $1=Debug|Release $2=derivedDataPath $3=build|test，其余�
     -configuration "$config" \
     -destination "$destination" \
     -derivedDataPath "$derived" \
+    ARCHS="$NATIVE_ARCH" \
+    ONLY_ACTIVE_ARCH=YES \
     "$@" \
     "$action"
 }
@@ -102,11 +200,19 @@ run_xcodebuild() { # $1=Debug|Release $2=derivedDataPath $3=build|test，其余�
 # ---- 增量构建状态 --------------------------------------------------------------
 # dev/run 默认增量：对全部构建输入做内容指纹，与上次成功构建后落盘的记录比对；
 # 内容未变化且产物在位时跳过 tuist generate + xcodebuild + 组装，直接复用。--full/-f
-# 强制全量构建。状态文件在 .build 内，clean 时随 .build 一并清除。
-DEV_STATE_DIR="$ROOT_DIR/.build/dev-state"
+# 强制全量构建。状态文件在 .build 内，clean 时随 .build 一并清除（见 DEV_STATE_DIR）。
 
-# 构建输入内容指纹：清单、源码、插件、资源、vendored 依赖全部逐文件 hash 后汇总。
-# Tests/ 不纳入：dev 产物不含测试 target，避免只改测试也触发宿主重构建。
+# 构建输入内容指纹：清单、源码、插件、资源、vendored 依赖、以及本脚本自身，逐文件 hash 后汇总。
+# Tests/ 不纳入：dev 产物不含测试 target，避免只改测试也触发宿主机重构建。
+# 本脚本自身必须纳入：API_RANGE、复用库目录名等常量直接决定插件 bundle 的组装结果，
+# 不纳入的话改了常量会因为「指纹没变」被整体跳过，产物悄悄停留在旧约定上。
+#
+# 必须排除构建产物与系统垃圾，否则指纹会被与源码无关的操作污染（未排除时 4640 个文件，
+# 排除后 363 个）：
+#   - Vendor/**/.build：4265 个 SPM 产物，SPM 重解析会改 workspace-state.json；
+#   - .DS_Store：12 个，Finder 浏览一次目录就变，会让下一次构建平白全量重来；
+#   - .swiftpm：本地 SPM 元数据。
+# 指纹计算随之从 1.43 s 降到 0.05 s。
 # 输出仅受文件路径集合与内容影响（排序后 hash），同一份代码必然得到同一指纹。
 build_inputs_hash() {
   local inputs=(
@@ -117,11 +223,14 @@ build_inputs_hash() {
     "$ROOT_DIR/Resources"
     "$ROOT_DIR/Vendor"
   )
-  find "${inputs[@]}" -type f -print0 2>/dev/null \
-    | sort -z \
-    | xargs -0 shasum -a 256 2>/dev/null \
-    | shasum -a 256 \
-    | awk '{print $1}'
+  {
+    shasum -a 256 "$SCRIPT_PATH"
+    find "${inputs[@]}" \
+      \( -name '.DS_Store' -o -name '.build' -o -name '.swiftpm' \) -prune -o \
+      -type f -print0 2>/dev/null \
+      | sort -z \
+      | xargs -0 shasum -a 256 2>/dev/null
+  } | shasum -a 256 | awk '{print $1}'
 }
 
 # ---- 插件自动发现 ------------------------------------------------------------
@@ -219,9 +328,30 @@ discover_plugins() {
   (( ${#PLUGIN_NAMES[@]} > 0 )) || die "$PLUGINS_SRC_DIR 下没有发现任何插件目录"
 }
 
+# 单个插件 bundle 的组装指纹。以下任一项变化都必须重建该 bundle：
+#   - dylib 内容（插件代码改了）
+#   - Plugin.plist 内容（版本 / DisplayName / Description / NSPrincipalClass /
+#     APIVersionRange / 中文元数据，全部直接决定组装出的 Info.plist 与 InfoPlist.strings）
+#   - Resources/**（本地化 .strings 改了但代码没动，同样要重建）
+#   - README.md（设置面板「插件」分区读它渲染使用说明）
+#   - API_RANGE 全局默认值（本脚本常量；改动影响未显式声明 APIVersionRange 的插件）
+bundle_fingerprint() { # $1=插件名 $2=dylib路径
+  local name="$1" dylib="$2" lproj_src="$PLUGINS_SRC_DIR/$name/Resources"
+  {
+    printf 'api-default:%s\n' "$API_RANGE"
+    shasum -a 256 "$dylib" "$PLUGINS_SRC_DIR/$name/Plugin.plist"
+    find "$lproj_src" -type f -print0 2>/dev/null | sort -z | xargs -0 shasum -a 256
+    if [[ -f "$PLUGINS_SRC_DIR/$name/README.md" ]]; then
+      shasum -a 256 "$PLUGINS_SRC_DIR/$name/README.md"
+    fi
+  } 2>/dev/null | shasum -a 256 | awk '{print $1}'
+}
+
 # 组装单个插件 bundle 并生成 Info.plist（模板结构见架构文档 §3.2）。
 # 本地化资源直接取自插件源目录（Plugins/<Name>/Resources/*.lproj）：
 # Tuist 体系下插件 target 不声明资源，文本格式的 .strings Bundle 可直接读取。
+# 先整目录重建再铺内容：增量门禁只保证「指纹变了才调到这里」，而源目录里被删掉的
+# 资源必须在 bundle 里同步消失，不能留在旧目录上。
 assemble_bundle() { # $1=目标PlugIns目录 $2=索引 $3=dylib路径
   local dest_root="$1" i="$2"
   local name="${PLUGIN_NAMES[$i]}" dylib="$3"
@@ -234,6 +364,7 @@ assemble_bundle() { # $1=目标PlugIns目录 $2=索引 $3=dylib路径
   bundle_dir="$dest_root/$name.bundle"
   contents_dir="$bundle_dir/Contents"
   resources_dir="$contents_dir/Resources"
+  rm -rf "$bundle_dir"
   mkdir -p "$contents_dir/MacOS" "$resources_dir"
   cp "$dylib" "$contents_dir/MacOS/$name"
 
@@ -311,31 +442,82 @@ assemble_app() { # $1=products_dir
   local plugins_out="$app_dir/Contents/PlugIns"
   [[ -d "$app_dir" ]] || die "找不到构建产物：$app_dir"
 
+  mkdir -p "$plugins_out"
+  local shared_lib entry name i dylib bundle_dir stamp fingerprint
+  local changed_frameworks=() changed_bundles=() app_dirty=0
+
   # 宿主不直接链接的共享库：Xcode 只嵌入宿主链接到的，其余在这里补齐。
-  local shared_lib
+  # 内容相同就跳过复制与重签——cmp 比 cp + codesign 便宜，且避免无谓刷新签名。
   for shared_lib in LaunchdControlKit LidAngleKit; do
-    local dylib="$products_dir/lib${shared_lib}.dylib"
-    [[ -f "$dylib" ]] || die "找不到框架产物：$dylib"
-    cp "$dylib" "$frameworks_dir/lib${shared_lib}.dylib"
+    local src="$products_dir/lib${shared_lib}.dylib"
+    local dst="$frameworks_dir/lib${shared_lib}.dylib"
+    [[ -f "$src" ]] || die "找不到框架产物：$src"
+    if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+      continue
+    fi
+    cp "$src" "$dst"
+    changed_frameworks+=("$dst")
   done
 
-  rm -rf "$plugins_out"
-  mkdir -p "$plugins_out"
-  local i
+  # 插件 bundle：逐插件比对组装指纹，只重建指纹变了的那个。
+  local assembled_state_dir="$DEV_STATE_DIR/assembled"
+  mkdir -p "$assembled_state_dir"
+  local known_bundles=" "
   for i in "${!PLUGIN_NAMES[@]}"; do
-    assemble_bundle "$plugins_out" "$i" "$products_dir/lib${PLUGIN_NAMES[$i]}.dylib"
-    echo "Prepared $plugins_out/${PLUGIN_NAMES[$i]}.bundle"
+    name="${PLUGIN_NAMES[$i]}"
+    dylib="$products_dir/lib$name.dylib"
+    [[ -f "$dylib" ]] || die "找不到插件产物：$dylib"
+    known_bundles+="$name.bundle "
+    stamp="$assembled_state_dir/$name.sha"
+    bundle_dir="$plugins_out/$name.bundle"
+    fingerprint="$(bundle_fingerprint "$name" "$dylib")"
+    if [[ -f "$stamp" ]] \
+       && [[ "$(cat "$stamp")" == "$fingerprint" ]] \
+       && [[ -f "$bundle_dir/Contents/MacOS/$name" ]]; then
+      continue
+    fi
+    assemble_bundle "$plugins_out" "$i" "$dylib"
+    printf '%s\n' "$fingerprint" > "$stamp"
+    echo "Prepared $bundle_dir"
+    changed_bundles+=("$bundle_dir")
+    app_dirty=1
+  done
+
+  # 孤儿清理：插件目录被删除或改名后残留的 bundle 必须移除，否则宿主仍会加载旧插件。
+  for entry in "$plugins_out"/*.bundle; do
+    [[ -e "$entry" ]] || continue
+    name="$(basename "$entry")"
+    case "$known_bundles" in
+      *" $name "*) ;;
+      *) rm -rf "$entry"; echo "Removed stale $entry"; app_dirty=1 ;;
+    esac
+  done
+  # 同步清理已消失插件的组装指纹，避免目录名被复用后误判成「已组装」。
+  for entry in "$assembled_state_dir"/*.sha; do
+    [[ -e "$entry" ]] || continue
+    name="$(basename "$entry" .sha)"
+    case "$known_bundles" in
+      *" $name.bundle "*) ;;
+      *) rm -f "$entry" ;;
+    esac
   done
 
   # 组装改动过 .app 内容，ad-hoc 重签（幂等）：arm64 对无效签名零容忍，
-  # 不重签会导致插件加载失败。
-  codesign --force --sign - "$frameworks_dir/libLaunchdControlKit.dylib"
-  codesign --force --sign - "$frameworks_dir/libLidAngleKit.dylib"
-  local bundle
-  for bundle in "$plugins_out"/*.bundle; do
-    codesign --force --sign - "$bundle"
-  done
-  codesign --force --sign - "$app_dir"
+  # 不重签会导致插件加载失败。只重签本次真正改动过的嵌套项，最后按需重签宿主 .app
+  # ——全量重签会把签名每次刷新一遍，是无谓开销。
+  if (( app_dirty )); then
+    if (( ${#changed_frameworks[@]} > 0 )); then
+      for entry in "${changed_frameworks[@]}"; do
+        codesign --force --sign - "$entry"
+      done
+    fi
+    if (( ${#changed_bundles[@]} > 0 )); then
+      for entry in "${changed_bundles[@]}"; do
+        codesign --force --sign - "$entry"
+      done
+    fi
+    codesign --force --sign - "$app_dir"
+  fi
 }
 
 config_to_xcconfig() { # debug|release -> Debug|Release
@@ -359,6 +541,44 @@ parse_dev_args() {
   done
 }
 
+# 跳过构建的前置检查：产物 .app、PlugIns 目录、每个已发现插件的 bundle 都必须在位，
+# 且 PlugIns 下不能有不在发现结果里的残留 bundle。缺任一项就走构建路径——组装门禁会
+# 补齐缺失的、清掉多余的，不会因为「指纹没变」交出残缺或带脏产物的 .app。
+dev_products_complete() { # $1=products_dir
+  local products_dir="$1"
+  local plugins_out="$products_dir/NotchCenter.app/Contents/PlugIns"
+  [[ -d "$products_dir/NotchCenter.app" ]] || return 1
+  [[ -d "$plugins_out" ]] || return 1
+  local known=" " i name entry
+  for i in "${!PLUGIN_NAMES[@]}"; do
+    name="${PLUGIN_NAMES[$i]}"
+    known+="$name.bundle "
+    [[ -f "$plugins_out/$name.bundle/Contents/MacOS/$name" ]] || return 1
+  done
+  for entry in "$plugins_out"/*.bundle; do
+    [[ -e "$entry" ]] || continue
+    [[ "$known" == *" $(basename "$entry") "* ]] || return 1
+  done
+  return 0
+}
+
+# 能否整体跳过 dev/run 构建。三个条件必须全部满足：
+#   1) 构建输入内容指纹与上次成功构建落盘的记录一致；
+#   2) 工程结构与当前文件路径集合一致（needs_generate 为假）；
+#   3) 产物完整（.app、全部插件 bundle 在位，且没有不在发现结果里的残留 bundle）。
+#
+# 条件 2 不能省。少了它就会出现「产物完整、输入指纹也匹配，但工程还停在另一套 target
+# 集合上」的窗口——实测踩过：插件目录被删过一次又恢复后，输入指纹回到了旧值、工程却还
+# 是删除后的 pbxproj，于是整体跳过，交付一个与源真相不符的产物。
+dev_can_skip() { # $1=products_dir $2=输入指纹 $3=状态文件
+  local products_dir="$1" input_hash="$2" state_file="$3"
+  [[ -f "$state_file" ]] || return 1
+  [[ "$(cat "$state_file")" == "$input_hash" ]] || return 1
+  needs_generate && return 1
+  dev_products_complete "$products_dir" || return 1
+  return 0
+}
+
 # dev/run 公共构建流程：指纹比对增量跳过，或全量构建后落盘指纹。
 run_dev_build() {
   local config="$BUILD_CONFIG" full="$FULL_BUILD"
@@ -372,10 +592,7 @@ run_dev_build() {
   if (( ! full )); then
     input_hash="$(build_inputs_hash)"
     state_file="$DEV_STATE_DIR/$xcconfig.sha"
-    if [[ -f "$state_file" ]] \
-       && [[ "$(cat "$state_file")" == "$input_hash" ]] \
-       && [[ -d "$products_dir/NotchCenter.app" ]] \
-       && [[ -d "$products_dir/NotchCenter.app/Contents/PlugIns" ]]; then
+    if dev_can_skip "$products_dir" "$input_hash" "$state_file"; then
       echo "内容未变化（${config}），跳过构建，直接复用上次产物"
       echo "如需强制重新构建：./scripts/build.sh dev|run --full"
       echo "Dev app ready at $products_dir/NotchCenter.app"
@@ -384,9 +601,12 @@ run_dev_build() {
     echo "检测到输入变化，重新构建（${config}）..."
   else
     echo "强制全量构建（${config}）..."
+    # --full 语义是「不信任何脚本层门禁」：连带清掉插件组装指纹，让 11 个 bundle 全量重建。
+    rm -rf "$DEV_STATE_DIR/assembled"
   fi
 
-  run_generate
+  # 传 1/0 而不是空串判断：full 恒为非空字符串（0 也是非空），用 ${var:+force} 会永远为真。
+  run_generate "$full"
   echo "Building (${config})..."
   run_xcodebuild "$xcconfig" "$ROOT_DIR/.build/xcode" build
   assemble_app "$products_dir"
@@ -442,6 +662,157 @@ cmd_verify_sizes() {
     -only-testing NotchCenterTests/BlockMinSizeVerificationTests
 }
 
+# ---- doctor：增量门禁自检 ------------------------------------------------------
+# 门禁写错的代价是「静默不重新生成」——构建照跑，产物却是陈旧的，极难发现。所以
+# 语义边界必须有可复跑的回归入口。
+# 全程只读真实工作区：把门禁的输入路径临时指向 mktemp 样本目录，绝不碰 Sources/ 与
+# Plugins/ 的实际文件，也不触发任何构建。
+DOCTOR_TMP=""
+DOCTOR_FAILURES=0
+
+doctor_assert_same() { # $1=描述 $2=期望指纹 $3=实际指纹
+  if [[ "$2" == "$3" ]]; then
+    printf 'PASS  %s\n' "$1"
+  else
+    printf 'FAIL  %s（期望不变，实际变了）\n' "$1"
+    DOCTOR_FAILURES=$((DOCTOR_FAILURES + 1))
+  fi
+}
+
+doctor_assert_changed() { # $1=描述 $2=旧指纹 $3=新指纹
+  if [[ "$2" != "$3" ]]; then
+    printf 'PASS  %s\n' "$1"
+  else
+    printf 'FAIL  %s（期望变化，实际没变）\n' "$1"
+    DOCTOR_FAILURES=$((DOCTOR_FAILURES + 1))
+  fi
+}
+
+doctor_assert_skip() { # $1=描述 $2=期望(0 允许跳过 / 1 否决) $3=products_dir $4=状态文件
+  local actual
+  if dev_can_skip "$3" "matching-input-hash" "$4"; then actual=0; else actual=1; fi
+  if [[ "$2" == "$actual" ]]; then
+    printf 'PASS  %s\n' "$1"
+  else
+    printf 'FAIL  %s（期望 %s，实际 %s）\n' "$1" "$2" "$actual"
+    DOCTOR_FAILURES=$((DOCTOR_FAILURES + 1))
+  fi
+}
+
+cmd_doctor() {
+  cd "$ROOT_DIR"
+  DOCTOR_TMP="$(mktemp -d)"
+  trap '[[ -n "${DOCTOR_TMP:-}" ]] && rm -rf "$DOCTOR_TMP"' EXIT
+
+  echo "== 当前工作区门禁状态（只读）=="
+  discover_plugins
+  local live_manifest live_input
+  live_manifest="$(manifests_fingerprint)"
+  live_input="$(build_inputs_hash)"
+  echo "  已发现插件：${#PLUGIN_NAMES[@]} 个"
+  if [[ -f "$MANIFEST_STATE_FILE" && "$(cat "$MANIFEST_STATE_FILE")" == "$live_manifest" ]]; then
+    echo "  工程重生成：stamp 匹配 → 下次构建跳过 tuist generate"
+  else
+    echo "  工程重生成：stamp 缺失或不匹配 → 下次构建会跑 tuist generate"
+  fi
+  if [[ -f "$DEV_STATE_DIR/Debug.sha" && "$(cat "$DEV_STATE_DIR/Debug.sha")" == "$live_input" ]]; then
+    echo "  构建输入：Debug stamp 匹配 → 无改动时 dev 整体跳过"
+  else
+    echo "  构建输入：Debug stamp 缺失或不匹配 → 下次 dev 会构建"
+  fi
+
+  echo
+  echo "== 门禁语义边界（在临时样本目录上验证）=="
+  mkdir -p "$DOCTOR_TMP/Plugins/AlphaPlugin/Sources" "$DOCTOR_TMP/Plugins/BetaPlugin/Sources"
+  printf 'struct Alpha {}\n' > "$DOCTOR_TMP/Plugins/AlphaPlugin/Sources/Alpha.swift"
+  printf 'struct Beta {}\n' > "$DOCTOR_TMP/Plugins/BetaPlugin/Sources/Beta.swift"
+  printf 'let manifestVersion = 1\n' > "$DOCTOR_TMP/Project.swift"
+  printf '[tools]\ntuist = "1"\n' > "$DOCTOR_TMP/mise.toml"
+
+  PLUGINS_SRC_DIR="$DOCTOR_TMP/Plugins"
+  MANIFEST_STATE_FILE="$DOCTOR_TMP/manifests.sha"
+  MANIFEST_INPUT_FILES=("$DOCTOR_TMP/Project.swift" "$DOCTOR_TMP/mise.toml")
+  MANIFEST_PATH_ROOTS=("$DOCTOR_TMP/Plugins")
+
+  local base after
+
+  base="$(manifests_fingerprint)"
+
+  # 边界 1：只改插件源码内容。指纹只取路径集合，因此绝不能变——
+  # 变了就意味着「改一行插件代码也要重跑 3 s 的 tuist generate」。
+  printf 'struct Alpha { var value = 1 }\n' > "$DOCTOR_TMP/Plugins/AlphaPlugin/Sources/Alpha.swift"
+  doctor_assert_same "仅改插件源码内容 → 不触发工程重生成" "$base" "$(manifests_fingerprint)"
+
+  # 边界 2：新增源文件。Tuist 把来源 glob 展开成 pbxproj 显式文件列表，新增文件不重新
+  # 生成就会漏编；这里正是曾经踩过的坑（漏了这条，删除文件后构建报 Build input file
+  # cannot be found）。
+  printf 'struct Extra {}\n' > "$DOCTOR_TMP/Plugins/AlphaPlugin/Sources/Extra.swift"
+  after="$(manifests_fingerprint)"
+  doctor_assert_changed "新增源文件 → 触发工程重生成" "$base" "$after"
+  base="$after"
+  rm -f "$DOCTOR_TMP/Plugins/AlphaPlugin/Sources/Extra.swift"
+
+  # 边界 3：删除源文件。不重新生成会让 pbxproj 指向已不存在的文件，构建直接失败。
+  after="$(manifests_fingerprint)"
+  doctor_assert_changed "删除源文件 → 触发工程重生成" "$base" "$after"
+  base="$after"
+
+  # 边界 4：新增插件目录。target 集合变了，必须重新生成。
+  mkdir -p "$DOCTOR_TMP/Plugins/GammaPlugin/Sources"
+  printf 'struct Gamma {}\n' > "$DOCTOR_TMP/Plugins/GammaPlugin/Sources/Gamma.swift"
+  after="$(manifests_fingerprint)"
+  doctor_assert_changed "新增插件目录 → 触发工程重生成" "$base" "$after"
+  base="$after"
+  rm -rf "$DOCTOR_TMP/Plugins/GammaPlugin"
+
+  # 边界 5：删除插件目录。必须重新生成，否则被删插件的 target 会残留在工程里。
+  rm -rf "$DOCTOR_TMP/Plugins/BetaPlugin"
+  after="$(manifests_fingerprint)"
+  doctor_assert_changed "删除插件目录 → 触发工程重生成" "$base" "$after"
+  base="$after"
+
+  # 边界 6：清单文件内容变化。必须重新生成。
+  printf 'let manifestVersion = 2\n' > "$DOCTOR_TMP/Project.swift"
+  doctor_assert_changed "清单文件内容变化 → 触发工程重生成" "$base" "$(manifests_fingerprint)"
+
+  # 边界 7/8：整体跳过必须同时满足「输入指纹匹配」与「工程结构不过期」。
+  # 构造产物完整（每个已发现插件都有 bundle）+ 输入指纹匹配的局面，只切换清单 stamp：
+  # 清单 stamp 缺失时不得跳过（否则会拿陈旧 target 集合的产物交付），在位时才允许跳过。
+  local fake_products="$DOCTOR_TMP/products"
+  mkdir -p "$fake_products/NotchCenter.app/Contents/PlugIns"
+  local i
+  for i in "${!PLUGIN_NAMES[@]}"; do
+    local name="${PLUGIN_NAMES[$i]}"
+    mkdir -p "$fake_products/NotchCenter.app/Contents/PlugIns/$name.bundle/Contents/MacOS"
+    : > "$fake_products/NotchCenter.app/Contents/PlugIns/$name.bundle/Contents/MacOS/$name"
+  done
+  printf 'matching-input-hash\n' > "$DOCTOR_TMP/Debug.sha"
+
+  rm -f "$MANIFEST_STATE_FILE"
+  doctor_assert_skip "工程结构过期（清单 stamp 缺失）→ 否决整体跳过" 1 \
+    "$fake_products" "$DOCTOR_TMP/Debug.sha"
+
+  manifests_fingerprint > "$MANIFEST_STATE_FILE"
+  doctor_assert_skip "输入与工程结构均一致且产物完整 → 允许整体跳过" 0 \
+    "$fake_products" "$DOCTOR_TMP/Debug.sha"
+
+  mkdir -p "$fake_products/NotchCenter.app/Contents/PlugIns/GhostPlugin.bundle/Contents/MacOS"
+  doctor_assert_skip "产物残留多余 bundle → 否决整体跳过" 1 \
+    "$fake_products" "$DOCTOR_TMP/Debug.sha"
+  rm -rf "$fake_products/NotchCenter.app/Contents/PlugIns/GhostPlugin.bundle"
+
+  rm -rf "$fake_products/NotchCenter.app/Contents/PlugIns/${PLUGIN_NAMES[0]}.bundle"
+  doctor_assert_skip "产物缺一个插件 bundle → 否决整体跳过" 1 \
+    "$fake_products" "$DOCTOR_TMP/Debug.sha"
+
+  echo
+  if (( DOCTOR_FAILURES > 0 )); then
+    echo "doctor：$DOCTOR_FAILURES 项失败"
+    exit 1
+  fi
+  echo "doctor：全部通过"
+}
+
 cmd_package() {
   local install_to_applications=0 publish_github=0 make_dmg=1 skip_size_check=0
   while (( $# > 0 )); do
@@ -482,6 +853,8 @@ cmd_package() {
   local notary_profile="${NOTARY_PROFILE:-}"
 
   echo "Building universal (release)..."
+  # 这里刻意不复用 run_xcodebuild：发布要 clean build（两段动作形式，run_xcodebuild 只接
+  # 单个 action），并要显式覆写 ARCHS / ONLY_ACTIVE_ARCH 关掉「只编当前架构」。
   # 通用架构：关闭 only-active-arch 并显式指定双架构。
   # 发布要求可复现：clean build 让 xcodebuild 原生清理 scheme 覆盖的全部 target
   # 后再全量构建（避免直接 rm 整个衍生数据目录）。
@@ -717,6 +1090,7 @@ main() {
     run)     cmd_run "$@" ;;
     test)    cmd_test "$@" ;;
     verify-sizes) cmd_verify_sizes ;;
+    doctor)  cmd_doctor ;;
     package) cmd_package "$@" ;;
     clean)   cmd_clean ;;
     help|-h|--help) usage ;;
