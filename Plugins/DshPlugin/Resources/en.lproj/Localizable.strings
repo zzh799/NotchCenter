@@ -28,6 +28,7 @@
 "dsh.error.createPlist" = "Failed to create plist at %@";
 "dsh.error.bootstrap" = "launchctl bootstrap failed.";
 "dsh.error.restart" = "launchctl restart failed.";
+"dsh.error.actionTimeout" = "Action sent, but the service state did not settle in time.";
 
 /* 浮窗行标签与控件（PID / Port 为通用缩写，保留英文） */
 "dsh.label.status" = "Status";

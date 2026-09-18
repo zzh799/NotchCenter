@@ -27,6 +27,9 @@ final class CalibreServiceMonitor: ObservableObject {
     )
     @Published private(set) var autostartOn = false
     @Published private(set) var isBusy = false
+    /// 在飞动作的文案（busy 期间非 nil）：块副标题与浮窗状态行都改报它，
+    /// 否则动作期间 UI 仍显示动作前的真实状态（重启/开自启时尤其离谱）。
+    @Published private(set) var busyLabel: String?
     /// 操作失败等一次性提示文案；nil 表示无提示。
     @Published var message: String?
 
@@ -94,27 +97,42 @@ final class CalibreServiceMonitor: ObservableObject {
         guard !isBusy else { return }
         // 开关语义是 launchd 服务：off（含 loadedNotRunning / 野进程占用）→ 启动。
         let shouldStart = !isServiceOn
-        runAction(shouldStart ? L("calibre.action.starting") : L("calibre.action.stopping")) { control in
-            if shouldStart {
-                _ = control.start()
-            } else {
+        // 已加载但没在跑（进程崩过 / bootout 残留）：bootstrap 对已加载的任务必然
+        // 报 already loaded，正确的动作是 kickstart。旧代码吞掉这个失败，动作结果
+        // 可见化之后不改会把「其实起来了但没在跑」误报成 bootstrap 失败。
+        let needsKickstart = shouldStart && status.isLoaded
+        runAction(
+            shouldStart ? L("calibre.action.starting") : L("calibre.action.stopping"),
+            goal: shouldStart ? .running : .stopped
+        ) { control in
+            if !shouldStart {
                 _ = control.stop()
+                return nil
             }
-            return nil
+            if needsKickstart { return control.restart() ? nil : L("calibre.error.restart") }
+            return control.start() ? nil : L("calibre.error.bootstrap")
         }
     }
 
     func restart() {
         guard !isBusy else { return }
-        runAction(L("calibre.action.restarting")) { control in
-            _ = control.restart()
-            return nil
+        // 传动作前的 PID：kickstart -k 之后片刻仍可能探到旧 PID，只看「在不在跑」会误判收敛。
+        let previousLaunchdPID = status.launchdPID
+        runAction(
+            L("calibre.action.restarting"),
+            goal: .restarted(previousLaunchdPID: previousLaunchdPID)
+        ) { control in
+            return control.restart() ? nil : L("calibre.error.restart")
         }
     }
 
     func setAutostart(_ on: Bool) {
         guard !isBusy else { return }
-        runAction(on ? L("calibre.action.enableAutostart") : L("calibre.action.disableAutostart")) { control in
+        // plist 缺失等失败由 goal（读回值 == 目标）兜住，不在动作里另做判定。
+        runAction(
+            on ? L("calibre.action.enableAutostart") : L("calibre.action.disableAutostart"),
+            goal: .autostart(expected: on)
+        ) { control in
             _ = control.setAutostart(on)
             return nil
         }
@@ -123,7 +141,10 @@ final class CalibreServiceMonitor: ObservableObject {
     /// 确保 plist 存在（缺失时按固定模板创建），成功后尝试启动。
     func ensurePlistAndStart() {
         guard !isBusy else { return }
-        runAction(L("calibre.action.creatingPlist")) { [plistPath = CalibreServiceConfig.plistPath] control in
+        runAction(
+            L("calibre.action.creatingPlist"),
+            goal: .running
+        ) { [plistPath = CalibreServiceConfig.plistPath] control in
             let plist = LaunchdPlist(plistPath: plistPath)
             guard plist.createIfMissing(contents: CalibreServiceConfig.plistContents) else {
                 return LF("calibre.error.createPlist", plistPath)
@@ -144,21 +165,41 @@ final class CalibreServiceMonitor: ObservableObject {
 
     // MARK: 内部
 
-    /// 把副作用动作丢到后台执行，期间置 busy，结束后立即刷新一次状态。
-    /// 返回 nil 表示成功；返回字符串为错误提示。
-    private func runAction(_ busyMessage: String, _ action: @escaping @Sendable (LaunchdControl) -> String?) {
+    /// 把副作用动作丢到后台执行，期间置 busy（并在 `busyLabel` 挂上在飞动作文案）。
+    /// busy 何时结束由 `goal` 的真实收敛决定，不是固定时长（见 `ServiceActionGoal`）。
+    /// 返回 nil 表示动作已发出；返回字符串为错误提示。
+    private func runAction(
+        _ busyMessage: String,
+        goal: ServiceActionGoal,
+        _ action: @escaping @Sendable (LaunchdControl) -> String?
+    ) {
         isBusy = true
+        busyLabel = busyMessage
         message = nil
         let control = control
         Task(priority: .userInitiated) { [weak self] in
             let error = await Task.detached(priority: .userInitiated) {
                 action(control)
             }.value
-            // launchctl 状态落定需要一点时间，稍候再探测。
-            try? await Task.sleep(for: .milliseconds(600))
             guard let self else { return }
+            var outcome = ServiceActionWatcher.Outcome.settled
+            // 动作自己报了失败：结果已经知道，不再等 goal——否则一个注定不达标的
+            // 动作会把旋转指示空转满整个超时。
+            if error == nil {
+                outcome = await ServiceActionWatcher.wait(goal: goal) {
+                    await self.refreshOnce()
+                    let status = await self.status
+                    let autostartOn = await self.autostartOn
+                    return ServiceProbeSnapshot(status: status, autostartOn: autostartOn)
+                }
+            }
             self.isBusy = false
-            self.message = error ?? busyMessage
+            self.busyLabel = nil
+            if let error {
+                self.message = error
+            } else {
+                self.message = outcome == .timedOut ? L("calibre.error.actionTimeout") : busyMessage
+            }
             await self.refreshOnce()
         }
     }

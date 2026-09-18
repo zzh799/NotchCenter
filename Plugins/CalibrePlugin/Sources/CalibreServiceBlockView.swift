@@ -48,8 +48,9 @@ struct CalibreServiceBlockView: View {
     }
 
     private var statusText: String {
-        // busy 时直接把 Starting… / Stopping… 显示在状态位上，不单独占一行。
-        if monitor.isBusy { return busyText }
+        // busy 时直接把在飞动作文案（正在启动… / 正在重启…）显示在副标题位上，
+        // 不单独占一行；窄块没有状态行，由 Kit 的图标位旋转指示兜底。
+        if let busyLabel = monitor.busyLabel { return busyLabel }
         switch monitor.status.state {
         case .managed: return L("calibre.subtitle.runningShort")
         case .starting: return L("calibre.state.starting")
@@ -65,9 +66,5 @@ struct CalibreServiceBlockView: View {
         guard case .managed = monitor.status.state,
               let port = monitor.status.port else { return nil }
         return LF("calibre.subtitle.port", String(port))
-    }
-
-    private var busyText: String {
-        monitor.isServiceOn ? L("calibre.action.stopping") : L("calibre.action.starting")
     }
 }

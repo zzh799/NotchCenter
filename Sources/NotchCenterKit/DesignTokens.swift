@@ -197,6 +197,9 @@ public enum NotchTokens {
         public static let tabSwitch = Animation.spring(response: 0.26, dampingFraction: 0.82)
         /// 悬停/选中/按压等微反馈（spec 带 0.10–0.13s，取 0.12）。
         public static let hover = Animation.easeOut(duration: 0.12)
+        /// 启停进行中的循环旋转指示（匀速无回弹，周期 0.9s；动画类循环
+        /// 装饰动效，`accessibilityReduceMotion` 时调用方不启动）。
+        public static let spin = Animation.linear(duration: 0.9).repeatForever(autoreverses: false)
         /// 鼠标离开停留区后延时收起。
         public static let collapseDelay: TimeInterval = 0.22
         /// 展开后异步激活编辑器的延时。

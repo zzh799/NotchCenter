@@ -8,9 +8,10 @@ import SwiftUI
 // - `blockPopoverTrigger(onTap:onLongPress:)`：按需叠加的交互层——长按弹浮窗 +
 //   可选点击动作；不挂载则完全不参与。
 //
-// 所有外观常量集中在本文件。按压增亮由触发器的 overlay 叠加实现（卡片壳自身
-// 不感知按压态）：叠加值已配平到单层绘制时的观感——描边 0.09 + 0.12 ≈ 0.20、
-// 填充 +0.03 ≈ 0.055。
+// 所有外观常量集中在本文件。按压反馈由触发器的 overlay 叠加实现（卡片壳自身
+// 不感知按压态），按底色分三档：`standard` 配平到单层绘制时的观感（描边
+// 0.09 + 0.12 ≈ 0.20、填充 +0.03 ≈ 0.055）；`emphasized` 供按压落在整卡上的
+// 「整卡即唯一按钮」卡片加强；`dimmed` 供自带浅底的卡片（白叠加在浅底上零对比）。
 
 /// 卡片外观常量（DESIGN.md §2.1 近白半透明层级 / §2.3 发丝描边）。
 /// 数值以 `NotchTokens` 为唯一事实源，此处仅做组件级别名。
@@ -19,6 +20,15 @@ enum BlockCardMetrics {
     static let cornerRadius: CGFloat = NotchTokens.Radius.card
     /// 悬停反馈时长（DESIGN.md §4：悬停态 easeOut 0.10–0.13s）。
     static let hoverAnimation = NotchTokens.Motion.hover
+    /// `standard` 档叠加增量：与卡片常态合成后 ≈ 强调态（填充 0.055 / 描边 0.20）。
+    static let standardPressFillOpacity: CGFloat = 0.03
+    static let standardPressStrokeOpacity: CGFloat = 0.12
+    /// `emphasized` 档叠加增量：合成后 0.085 / 0.29，明显强于强调态——
+    /// 按压必须是白 alpha 阶梯里最强的一档（按下 > 强调 > 悬停 > 常态）。
+    static let emphasizedPressFillOpacity: CGFloat = 0.06
+    static let emphasizedPressStrokeOpacity: CGFloat = 0.20
+    /// `dimmed` 档（浅底）：黑叠加压暗，不叠描边——描边在浅底上同样不可见。
+    static let dimmedPressFillOpacity: CGFloat = 0.14
 }
 
 // MARK: - 卡片壳
@@ -80,6 +90,19 @@ public struct BlockCard<Content: View>: View {
 
 // MARK: - 长按浮窗触发器
 
+/// 按压反馈档位（`blockPopoverTrigger` 的 `pressFeedback` 参数）。
+/// 底色深浅决定叠加方向：深底提亮看得见，浅底（如开启态紧凑服务卡的白底）
+/// 只有压暗看得见——白叠加在浅底上零对比。
+public enum BlockPressFeedback: Sendable, Equatable {
+    /// spec 配平档：叠加后 ≈ 强调态（填充 0.055 / 描边 0.20），与 `highlighted` 同值。
+    case standard
+    /// 加强档（深底）：叠加后 0.085 / 0.29，用于「整卡即唯一按钮」的卡片——
+    /// 这类卡片没有开关等子控件，按压是唯一的即时反馈。
+    case emphasized
+    /// 浅底档：黑叠加压暗（无描边），用于卡片自身画了浅色底的场合。
+    case dimmed
+}
+
 /// 触发器的按压分类参数（独立纯值，`BlockCardTriggerTests` 覆盖）。
 public enum BlockTapClassifier {
     /// 长按浮窗的最短按压时长。
@@ -116,6 +139,9 @@ public extension View {
     /// （`BlockCardMetrics.cornerRadius` = 10；公开签名处只能用字面值）；
     /// 复用到非 BlockCard 的圆角子元素（如列表行圆角 7）时传入自身圆角。
     ///
+    /// `pressFeedback` 选按压反馈档位（见 `BlockPressFeedback`）：默认 `standard`
+    /// 与既有观感一致；卡片自带浅色底的场合必须传 `.dimmed`。
+    ///
     /// 实现说明：整条交互由单个 `DragGesture(minimumDistance: 0)` 驱动，
     /// 不用 `TapGesture`——它与 simultaneous 失败长按并存时在真机上不触发
     /// （DSH/Calibre「点击开网页」失效的根因），而 DragGesture 管线与
@@ -123,12 +149,14 @@ public extension View {
     func blockPopoverTrigger(
         onTap: ((_ frameInWindow: CGRect) -> Void)? = nil,
         onLongPress: @escaping (_ frameInWindow: CGRect) -> Void,
-        cornerRadius: CGFloat = 10
+        cornerRadius: CGFloat = 10,
+        pressFeedback: BlockPressFeedback = .standard
     ) -> some View {
         modifier(BlockPopoverTriggerModifier(
             onTap: onTap,
             onLongPress: onLongPress,
-            cornerRadius: cornerRadius
+            cornerRadius: cornerRadius,
+            pressFeedback: pressFeedback
         ))
     }
 }
@@ -138,6 +166,8 @@ private struct BlockPopoverTriggerModifier: ViewModifier {
     let onLongPress: (CGRect) -> Void
     /// 按压增亮覆盖的圆角（对齐挂载对象自身圆角；见 View 扩展文档）。
     let cornerRadius: CGFloat
+    /// 按压反馈档位（叠加方向与强度；见 `BlockPressFeedback`）。
+    let pressFeedback: BlockPressFeedback
 
     /// 块在宿主窗口坐标系中的 frame（GeometryReader 实时捕获），用于浮窗定位。
     @State private var frameInWindow: CGRect?
@@ -163,7 +193,7 @@ private struct BlockPopoverTriggerModifier: ViewModifier {
                         }
                 }
             )
-            // 按压增亮覆盖（有意叠层而非改写卡片壳常量，见文件头注释）。
+            // 按压反馈覆盖（有意叠层而非改写卡片壳常量，见文件头注释）。
             .overlay {
                 if isPressing {
                     pressOverlay
@@ -191,16 +221,44 @@ private struct BlockPopoverTriggerModifier: ViewModifier {
             .simultaneousGesture(pressGesture)
     }
 
-    /// 配平后的按压覆盖：填充 0.025+0.03≈0.055、描边 0.09+0.12≈0.20；
-    /// 不参与命中测试，避免遮挡卡片内子控件的点击。
+    /// 按压覆盖：叠加在卡片壳之上，合成后即「按下态」的观感（各档取值见
+    /// `BlockCardMetrics` 与 `BlockPressFeedback`）；不参与命中测试，避免
+    /// 遮挡卡片内子控件的点击。
     private var pressOverlay: some View {
         ZStack {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color.white.opacity(0.03))
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                .fill(fillColor.opacity(fillOpacity))
+            if let strokeOpacity {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(strokeOpacity), lineWidth: 1)
+            }
         }
         .allowsHitTesting(false)
+    }
+
+    /// 按压覆盖的填充色：深底档提亮，浅底档压暗。
+    private var fillColor: Color {
+        switch pressFeedback {
+        case .standard, .emphasized: return .white
+        case .dimmed: return .black
+        }
+    }
+
+    private var fillOpacity: Double {
+        switch pressFeedback {
+        case .standard: return BlockCardMetrics.standardPressFillOpacity
+        case .emphasized: return BlockCardMetrics.emphasizedPressFillOpacity
+        case .dimmed: return BlockCardMetrics.dimmedPressFillOpacity
+        }
+    }
+
+    /// 浅底档不叠描边（浅底上不可见，只会让边缘发白）。
+    private var strokeOpacity: Double? {
+        switch pressFeedback {
+        case .standard: return BlockCardMetrics.standardPressStrokeOpacity
+        case .emphasized: return BlockCardMetrics.emphasizedPressStrokeOpacity
+        case .dimmed: return nil
+        }
     }
 
     /// 单手势驱动整条交互：

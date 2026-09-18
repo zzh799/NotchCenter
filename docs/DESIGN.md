@@ -148,6 +148,8 @@
 | 标签页切换 | `spring(response: 0.26, dampingFraction: 0.82)` |
 | 移除暂存项 | `spring(response: 0.28, dampingFraction: 0.84)` |
 | 悬停背景/前景变化 | `easeOut(duration: 0.10–0.13)` |
+| 按压反馈（卡片） | 同上 `easeOut(0.12)`；叠加量见 §9 |
+| 启停进行中指示（旋转） | `linear(duration: 0.9)` 匀速循环；不确定型指示，循环多久由动作真实收敛决定（见[服务控制类插件开发指南 §3](服务控制类插件开发指南.md)）；`accessibilityReduceMotion` 时静止 |
 | 收起延迟 | 鼠标离开停留区后 `0.22s` 再收起（`scheduleCollapse`） |
 | 编辑器激活时机 | 展开后 `0.30s` 异步激活 |
 
@@ -189,7 +191,8 @@
 抽屉块的表面与交互统一由 NotchCenterKit 提供，插件不再自绘背景描边或手写长按手势：
 
 - **`BlockCard`**（纯视觉、零手势）：圆角 10 `.continuous`，撑满宿主分配的网格区域；填充常态 `white.opacity(0.025)` / 悬停 `0.04`（`hoverEffect: true` 才启用） / 强调态 `0.055`；发丝描边常态 `white.opacity(0.09)` / 强调态 `0.16`。官方采用方：DSH / Calibre 服务卡、OpenCode 用量卡、文件暂存区（拖入高亮 = `highlighted: true`）、笔记本块。
-- **`.blockPopoverTrigger(onTap:onLongPress:)`**（按需叠加的交互层）：长按 0.2s 即弹浮窗（不等松手），内置 frameInWindow 追踪、按压增亮覆盖与「长按期间抑制点击」；浮窗本体统一走 `BlockPopover`。
+- **`.blockPopoverTrigger(onTap:onLongPress:pressFeedback:)`**（按需叠加的交互层）：长按 0.2s 即弹浮窗（不等松手），内置 frameInWindow 追踪、按压反馈覆盖与「长按期间抑制点击」；浮窗本体统一走 `BlockPopover`。按压反馈按底色分三档（`BlockPressFeedback`）：`standard` 合成后 ≈ 强调态 `0.055 / 0.20`（默认档，既有块观感不变）；`emphasized` 合成 `0.085 / 0.29`——确立「按下 > 强调 > 悬停 > 常态」的白色阶梯，用于按压落在整卡上的卡片；`dimmed` 黑叠加 `0.14` 且不叠描边，用于卡片自带浅底的场合（白叠加在浅底上零对比）。
+- **服务控制块（Kit `ServiceBlockView`）**：DSH / Calibre 同源卡片。宽度 < 110pt 切紧凑排布（只留图标 + 名称，整卡点击是唯一启停入口），≥ 110pt 走完整排布（指示灯 + 名称 + 状态 + 端口 + 迷你开关）。启停进行中（`isBusy`）的表达按排布分流：完整排布用状态行文案（在飞动作），紧凑排布没有状态行，在图标位显示旋转弧（周期见 §7）。紧凑开启态是浅底，其按压反馈由 `ServiceBlockView.pressFeedback(isCompact:isOn:)` 自动判定为 `dimmed`。
 
 ### 组件默认圆形按钮（Kit `IconCircleButton` / `IconCircleBadge`）
 

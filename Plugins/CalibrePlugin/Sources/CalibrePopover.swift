@@ -14,7 +14,8 @@ struct CalibrePopoverContentView: View {
                 .font(NotchTokens.Text.system(13, weight: .semibold, design: .rounded))
                 .foregroundStyle(NotchTokens.Foreground.body)
 
-            row(L("calibre.popover.status"), text: statusText, warning: isWarning)
+            // 状态行：busy 期间改报在飞动作（否则重启/开自启时还写着「由 launchd 管理」）。
+            row(L("calibre.popover.status"), text: monitor.busyLabel ?? statusText, warning: isWarning)
             row(L("calibre.popover.pid"), text: monitor.status.pid.map(String.init) ?? "—", warning: false)
             row(L("calibre.popover.port"), text: monitor.status.port.map(String.init) ?? "—", warning: false)
 

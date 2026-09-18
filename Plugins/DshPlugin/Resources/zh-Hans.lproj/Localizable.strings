@@ -28,6 +28,7 @@
 "dsh.error.createPlist" = "无法在 %@ 创建 plist 文件";
 "dsh.error.bootstrap" = "launchctl bootstrap 失败。";
 "dsh.error.restart" = "launchctl 重启失败。";
+"dsh.error.actionTimeout" = "动作已发出，但服务状态未在预期时间内落定。";
 
 /* 浮窗行标签与控件（PID / Port 为通用缩写，保留英文） */
 "dsh.label.status" = "状态";

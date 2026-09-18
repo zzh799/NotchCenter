@@ -40,6 +40,8 @@
 /* 动作失败的错误提示 */
 "calibre.error.createPlist" = "Failed to create plist at %@";
 "calibre.error.bootstrap" = "launchctl bootstrap failed.";
+"calibre.error.restart" = "launchctl restart failed.";
+"calibre.error.actionTimeout" = "Action sent, but the service state did not settle in time.";
 
 /* 快捷动作 */
 "quick.toggle.name" = "Toggle Calibre Service";
