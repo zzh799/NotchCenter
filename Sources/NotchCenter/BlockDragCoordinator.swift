@@ -164,6 +164,9 @@ final class BlockDragCoordinator: ObservableObject {
         positionPreview(at: location)
         controller?.updateDropPreview(payload: payload, zone: zone, pointer: location)
         updateCapsuleDwell(at: location, payload: payload)
+        // 顶栏胶囊行滚动区的边缘自动滚：同一条指针上报（拖到行端点时行自己
+        // 滚起来，视野外的胶囊才够得着）。
+        controller?.updateCapsuleDragPointer(location)
     }
 
     /// 松手：有效落点即落位；无效落点静默取消。
@@ -239,6 +242,8 @@ final class BlockDragCoordinator: ObservableObject {
             self.monitor = nil
         }
         cancelCapsuleDwell()
+        // 自动滚同理必须停表：会话收尾未必经一次位于边带外的指针上报。
+        controller?.updateCapsuleDragPointer(nil)
         hidePreview()
         payload = nil
         zone = nil

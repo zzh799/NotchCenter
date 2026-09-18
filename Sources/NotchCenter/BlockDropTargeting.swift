@@ -393,17 +393,39 @@ extension NotchPanelController {
             return nil
         }
         let pages = uiState.drawerPages
-        let rowWidth = DrawerPagePillLayout.rowWidth(pageCount: pages.count)
+        let regionWidth = uiState.drawerCapsuleRegionWidth
         let centerX = mapper.visibleFrame.midX
             + DrawerPagePillLayout.rowCenterOffset(isEditing: uiState.isEditing)
+        let rowLeft: CGFloat
+        if regionWidth > 0 {
+            // 滚动区内才命中：行溢出时行坐标会盖到两侧按钮组上，不挡住就是
+            // 把"拖块到齿轮上"也算成驻留某颗胶囊。
+            let regionLeft = centerX - regionWidth / 2
+            guard point.x >= regionLeft, point.x <= regionLeft + regionWidth else {
+                if BlockDragCoordinator.dragProbeLogEnabled {
+                    print("[drag-probe] capsuleHit outside-region: point=\(point) region=[\(regionLeft), +\(regionWidth)]")
+                }
+                return nil
+            }
+            // 行左缘 = 区内自然位置（放得下居中 / 溢出左对齐）− 滚动偏移：
+            // 行被滚走时胶囊的屏幕位置随之平移，命中必须跟同一份偏移。
+            rowLeft = regionLeft + DrawerPagePillLayout.rowLeftInRegion(
+                regionWidth: regionWidth,
+                pageCount: pages.count,
+                offset: uiState.drawerCapsuleScrollOffset
+            )
+        } else {
+            // 宽度尚未发布（视图还没量到）：退回居中口径，行为与加滚动前一致。
+            rowLeft = centerX - DrawerPagePillLayout.rowWidth(pageCount: pages.count) / 2
+        }
         let slot = DrawerPagePillLayout.hoveredSlot(
             x: point.x,
-            rowLeft: centerX - rowWidth / 2,
+            rowLeft: rowLeft,
             pageCount: pages.count
         )
         let page = slot.flatMap { pages[$0] }
         if BlockDragCoordinator.dragProbeLogEnabled {
-            print("[drag-probe] capsuleHit: point=\(point) row=[\(centerX - rowWidth / 2), +\(rowWidth)] center=\(centerX) pages=\(pages) editing=\(uiState.isEditing) slot=\(slot.map(String.init) ?? "nil") page=\(page.map(String.init) ?? "nil")")
+            print("[drag-probe] capsuleHit: point=\(point) row=[\(rowLeft), +\(DrawerPagePillLayout.rowWidth(pageCount: pages.count))] center=\(centerX) region=\(regionWidth) offset=\(uiState.drawerCapsuleScrollOffset) pages=\(pages) editing=\(uiState.isEditing) slot=\(slot.map(String.init) ?? "nil") page=\(page.map(String.init) ?? "nil")")
         }
         return page
     }

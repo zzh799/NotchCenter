@@ -604,6 +604,12 @@ extension NotchPanelController {
             onRemovePage: { [weak self] page, anchorFrame in
                 self?.removeDrawerPage(page, anchorFrame: anchorFrame)
             },
+            onCapsuleRegionWidth: { [weak self] width in
+                self?.setDrawerCapsuleRegionWidth(width)
+            },
+            onCapsuleDragPointer: { [weak self] point in
+                self?.updateCapsuleDragPointer(point)
+            },
             blockScreenRect: { [weak self] placementID in
                 // 脱离容器拖动的浮窗基准：复用「格 → 屏幕」的唯一换算桥。
                 guard let self,
@@ -629,6 +635,139 @@ extension NotchPanelController {
                 )
             }
         )
+    }
+
+    // MARK: 顶栏胶囊行滚动区
+
+    /// 滚动区实测宽度（视图发布）：行偏移夹紧、横扫让路与驻留切页命中都读它。
+    /// 宽度变化只**夹紧**存量偏移，不做"强制回中"——自由滚过去的行不该因为
+    /// 用户去调了格宽就被拽回激活胶囊。
+    func setDrawerCapsuleRegionWidth(_ width: CGFloat) {
+        uiState.drawerCapsuleRegionWidth = width
+        uiState.drawerCapsuleScrollOffset = DrawerPagePillLayout.clampedOffset(
+            uiState.drawerCapsuleScrollOffset,
+            regionWidth: width,
+            pageCount: uiState.drawerPages.count
+        )
+    }
+
+    /// 顶栏滚动区的屏幕几何（左缘 / 宽）。区域中线 = 面板中线 +
+    /// `rowCenterOffset(isEditing:)`——与胶囊行自身的定位同源（两侧按钮组宽度差）。
+    private func capsuleRegionFrame() -> (left: CGFloat, width: CGFloat)? {
+        guard uiState.drawerCapsuleRegionWidth > 0,
+              let pair = activePair else { return nil }
+        let mapper = drawerScreenMapper(for: pair)
+        let width = uiState.drawerCapsuleRegionWidth
+        let centerX = mapper.visibleFrame.midX
+            + DrawerPagePillLayout.rowCenterOffset(isEditing: uiState.isEditing)
+        return (centerX - width / 2, width)
+    }
+
+    /// 顶栏**滚动区内**的横向滚动是否被胶囊行消费（消费即吞掉本次切页）。
+    /// 只在行确实溢出、指针落在滚动区内、且横向分量压过纵向时成立——其余
+    /// 情形照旧走切页通路，顶栏不留"横扫无反应"的死区。
+    private func consumeCapsuleRowScroll(_ event: NSEvent) -> Bool {
+        guard isExpanded,
+              uiState.drawerSwipe == nil,
+              let frame = capsuleRegionFrame(),
+              let pair = activePair,
+              DrawerPagePillLayout.scrollExtent(
+                  regionWidth: frame.width,
+                  pageCount: uiState.drawerPages.count
+              ) > 0,
+              abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY),
+              let window = event.window else { return false }
+        let mapper = drawerScreenMapper(for: pair)
+        let point = window.convertPoint(toScreen: event.locationInWindow)
+        let bandTop = mapper.visibleFrame.maxY - pair.layout.compactHeight
+        guard point.y >= mapper.gridTopEdgeY, point.y <= bandTop,
+              point.x >= frame.left, point.x <= frame.left + frame.width else { return false }
+        // 内容跟手：手指往右扫（deltaX > 0）→ 行右移 → 偏移减小（0 = 行心对齐区心）。
+        uiState.drawerCapsuleScrollOffset = DrawerPagePillLayout.clampedOffset(
+            uiState.drawerCapsuleScrollOffset - event.scrollingDeltaX,
+            regionWidth: frame.width,
+            pageCount: uiState.drawerPages.count
+        )
+        return true
+    }
+
+    /// 拖动期指针上报（屏幕坐标）：指针进**顶栏带**即起滚表（横向不设区间
+    /// ——拖到行端点外侧仍要按满速滚，这正是"目标在视野外"时的用法），出带
+    /// 或松手即停。三条拖动通路共用（胶囊排序 / 抽屉内重排 / 设置面板拖入）。
+    func updateCapsuleDragPointer(_ screenPoint: CGPoint?) {
+        guard let screenPoint,
+              isExpanded,
+              uiState.drawerSwipe == nil,
+              let pair = activePair,
+              let frame = capsuleRegionFrame(),
+              DrawerPagePillLayout.scrollExtent(
+                  regionWidth: frame.width,
+                  pageCount: uiState.drawerPages.count
+              ) > 0 else {
+            capsuleScrollDriver.stop()
+            return
+        }
+        // 纵向必须落在顶栏带内：行就在那儿，块拖到网格里不该把行滚跑。
+        let mapper = drawerScreenMapper(for: pair)
+        let bandTop = mapper.visibleFrame.maxY - pair.layout.compactHeight
+        guard screenPoint.y >= mapper.gridTopEdgeY, screenPoint.y <= bandTop else {
+            capsuleScrollDriver.stop()
+            return
+        }
+        capsuleScrollDriver.update(
+            DrawerCapsuleScrollDriver.Environment(
+                pointerX: screenPoint.x,
+                regionLeft: frame.left,
+                regionWidth: frame.width,
+                pageCount: uiState.drawerPages.count,
+                offset: { [weak self] in self?.uiState.drawerCapsuleScrollOffset ?? 0 },
+                apply: { [weak self] value in self?.uiState.drawerCapsuleScrollOffset = value }
+            )
+        )
+    }
+
+    /// 把行偏移夹到"激活胶囊（会话期连带目标页）看得见"的**最小调整量**。
+    /// 槽位已可见时原样返回——自由滚过去的行不会被无谓拽动。
+    private func revealActiveCapsule() {
+        guard uiState.drawerCapsuleRegionWidth > 0 else { return }
+        var slots = [uiState.drawerPages.firstIndex(of: uiState.drawerActivePage) ?? 0]
+        if let swipe = uiState.drawerSwipe,
+           let target = uiState.drawerPages.firstIndex(of: swipe.targetPage) {
+            slots.append(target)
+        }
+        uiState.drawerCapsuleScrollOffset = DrawerPagePillLayout.offsetRevealing(
+            slots: slots,
+            offset: uiState.drawerCapsuleScrollOffset,
+            regionWidth: uiState.drawerCapsuleRegionWidth,
+            pageCount: uiState.drawerPages.count
+        )
+    }
+
+    /// 会话期的行偏移：以会话起点冻结的**基座**，在"露出激活"与"露出目标"
+    /// 两个夹紧值之间按同一份 `progress` 插值——与胶囊高光同一条进度源，
+    /// 逐帧直渲不加动画（跟手不加动画）。基座不随换绑更新（与原点锚同规），
+    /// 覆盖点前进那一帧重冻结。
+    private func syncCapsuleScrollForSwipe(_ session: PanelUIState.DrawerSwipe) {
+        let regionWidth = uiState.drawerCapsuleRegionWidth
+        guard regionWidth > 0 else { return }
+        let pages = uiState.drawerPages
+        guard let activeSlot = pages.firstIndex(of: session.originPage),
+              let targetSlot = pages.firstIndex(of: session.targetPage) else { return }
+        let base = session.capsuleScrollBase
+        let from = DrawerPagePillLayout.offsetRevealing(
+            slot: activeSlot,
+            offset: base,
+            regionWidth: regionWidth,
+            pageCount: pages.count
+        )
+        let to = DrawerPagePillLayout.offsetRevealing(
+            slot: targetSlot,
+            offset: base,
+            regionWidth: regionWidth,
+            pageCount: pages.count
+        )
+        let p = min(max(session.progress, 0), 1)
+        uiState.drawerCapsuleScrollOffset = from + (to - from) * p
     }
 
     // MARK: 抽屉页面
@@ -659,6 +798,7 @@ extension NotchPanelController {
         guard canSwitchDrawerPage,
               page != uiState.drawerActivePage else { return }
         uiState.drawerActivePage = page
+        revealActiveCapsule()
         rebuildContentAfterPageChange()
     }
 
@@ -676,6 +816,7 @@ extension NotchPanelController {
         drawerScrollTracker.reset()
         uiState.drawerActivePage = page
         uiState.drawerSwipe = nil
+        revealActiveCapsule()
         rebuildContentAfterPageChange()
     }
 
@@ -706,6 +847,7 @@ extension NotchPanelController {
         if BlockDragCoordinator.dragProbeLogEnabled {
             print("[drag-probe] switch done: active=\(page)")
         }
+        revealActiveCapsule()
         rebuildContentAfterPageChange()
     }
 
@@ -744,6 +886,15 @@ extension NotchPanelController {
 
     func handleDrawerScroll(_ event: NSEvent) {
         let phase = event.phase
+        // 顶栏滚动区优先（切页通路的过滤之前）：指针在滚动区内且胶囊行确实
+        // 溢出时，横向滚动归行——滚行、不切页，否则同一份位移被两条通路各
+        // 消费一次（行滚一下、页也翻一页）。**惯性尾巴照常喂它**：这是真正的
+        // 滚动，与下面"惯性尾巴足以再翻一页"那条切页禁令不同源。未溢出或
+        // 指针在区外一律落到切页通路，顶栏不留"横扫无反应"的死区。
+        if event.hasPreciseScrollingDeltas,
+           !phase.contains(.mayBegin),
+           consumeCapsuleRowScroll(event) { return }
+
         // 过滤：非精确增量是鼠标滚轮（只有纵向）；惯性尾巴足以再翻一页；
         // `.mayBegin` 试探事件不喂（随后的 `.began` 会重置，喂了能一次翻两页）。
         // 坑：`momentumPhase.isEmpty` 不能写成 `== .none`——`NSEvent.MomentumPhase`
@@ -945,7 +1096,10 @@ extension NotchPanelController {
             startWindowSize: uiState.drawerWindowSize,
             // 位移上限 = 屏幕总行程（平均页宽 + 留白），保证手指移动距离 = 页面在屏幕上的总滑动距离（网格位移 + 面板居中偏移），1:1 跟手。
             limit: total,
-            offset: 0
+            offset: 0,
+            // 胶囊行偏移的基座钉在会话起点（会话期行随同一份进度在
+            // "露出激活"与"露出目标"之间插值，见 syncCapsuleScrollForSwipe）。
+            capsuleScrollBase: uiState.drawerCapsuleScrollOffset
         )
         // 进入滑动「驻留期」：滑动中面板随目标页尺寸收缩，光标可能被甩到
         // 抽屉外——此时若不设防，收起任务会在落位前就挂起（0.25s 后把刚
@@ -1033,6 +1187,7 @@ extension NotchPanelController {
             progress: p
         )
         uiState.drawerSwipe = swipe
+        syncCapsuleScrollForSwipe(swipe)
     }
 
     /// 结束会话。**提交门 = 位移 × 方向双重校验**：`commit`（输入通路的判据）
@@ -1130,6 +1285,7 @@ extension NotchPanelController {
             progress: p
         )
         uiState.drawerSwipe = swipe
+        syncCapsuleScrollForSwipe(swipe)
     }
 
     /// 动画中接管（grab）：取消驱动器，以当前表现值为种子、当前输入位为锚
@@ -1194,8 +1350,13 @@ extension NotchPanelController {
         advanced.gestureSeed = carry
         if let inputPosition { advanced.gestureAnchor = inputPosition }
         advanced.offset = carry
+        // 胶囊行偏移基座**就地重冻结**：与原点锚同一动因——前进帧条带正好
+        // 停在目标页全覆盖（p=1），此刻起点与插值终点重合，整值换锚自洽；
+        // 反手换绑仍绝不得重冻结（中途值当起点会让回弹终点变中间值）。
+        advanced.capsuleScrollBase = uiState.drawerCapsuleScrollOffset
         drawerScrollTracker.reanchor()
         uiState.drawerSwipe = advanced
+        syncCapsuleScrollForSwipe(advanced)
         return advanced
     }
 
@@ -1227,6 +1388,9 @@ extension NotchPanelController {
     private func dissolveDrawerSwipe(matching token: UUID) {
         guard uiState.drawerSwipe?.id == token else { return }
         uiState.drawerSwipe = nil
+        // 会话散场后把行偏移夹回"看得见激活胶囊"（会话期它跟着插值跑，
+        // 落位后不再有"目标页"可跟）。
+        revealActiveCapsule()
         rebuildContentAfterPageChange()
     }
 
@@ -1235,6 +1399,8 @@ extension NotchPanelController {
         guard layoutEngine.canAddDrawerPage() else { return }
         let page = layoutEngine.addDrawerPage(side)
         uiState.drawerActivePage = page
+        // 新页在行端点：溢出时得先把它滚进视野。
+        revealActiveCapsule()
         rebuildContentAfterPageChange()
     }
 
@@ -1242,6 +1408,8 @@ extension NotchPanelController {
     /// 提交与预览同帧瞬移，避免基座 spring 与让位 spring 叠加成二次排序交换动画（见 DrawerPageCapsule.onDragCommit）。
     func moveDrawerPage(from page: Int, to targetIndex: Int) {
         guard layoutEngine.moveDrawerPage(from: page, to: targetIndex) else { return }
+        // 激活胶囊的槽位随排序变化，行偏移跟着夹紧（提交后它在视野外的情形）。
+        revealActiveCapsule()
         rebuildContent(animated: false)
     }
 
@@ -1341,6 +1509,7 @@ extension NotchPanelController {
         if uiState.drawerActivePage == page {
             uiState.drawerActivePage = fallback
         }
+        revealActiveCapsule()
         rebuildContent(animated: true)
     }
 

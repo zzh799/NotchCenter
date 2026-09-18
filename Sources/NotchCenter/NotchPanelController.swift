@@ -71,6 +71,9 @@ final class NotchPanelController: NSObject {
     /// 在 AppKit 事件上下文不保证触发，兜底时钟方案已随本驱动器删除。
     /// 状态值 ≡ 表现值也让"动画中接管"成为零成本操作（取消即接管）。
     let swipeSpringDriver = DrawerSwipeSpringDriver()
+    /// 顶栏胶囊行的**边缘自动滚**：拖动期指针压进滚动区两侧边带时逐帧滚行
+    /// （视野外的胶囊与加号才够得着）。偏移本体在 `uiState`，驱动器只做步进。
+    let capsuleScrollDriver = DrawerCapsuleScrollDriver()
     var collapseTask: DispatchWorkItem?
     /// 网格指标变化的重建合并任务（滑杆拖动逐格通知 → 停顿后重建一次）。
     var metricsRebuildTask: Task<Void, Never>?

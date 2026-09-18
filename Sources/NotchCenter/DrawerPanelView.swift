@@ -41,6 +41,11 @@ struct DrawerActions {
     let onShowPageSettings: (Int, CGRect) -> Void
     /// (page, 胶囊全局 frame)：非空页删除需二次确认，确认浮窗锚定在该 frame。
     let onRemovePage: (Int, CGRect) -> Void
+    /// 顶栏胶囊行**滚动区**实测宽度（视图是唯一量得到它的地方）：行偏移夹紧、
+    /// 顶栏横扫让路与驻留切页命中数学都读它。
+    let onCapsuleRegionWidth: (CGFloat) -> Void
+    /// 拖动中的指针屏幕坐标（nil = 拖动结束）：驱动滚动区边缘自动滚。
+    let onCapsuleDragPointer: (CGPoint?) -> Void
     /// 某个已放置块在屏幕上的矩形（Cocoa，左下原点）：脱离容器拖动时
     /// 浮窗的基准位置。由控制器经 `DrawerScreenMapper` 提供 —— 视图层不
     /// 重复实现「格 → 屏幕」换算（那是 `DrawerScreenMapper` 的唯一职责）。
@@ -177,7 +182,11 @@ struct DrawerPanelView: View {
         .onChange(of: ui.isEditing) { _, editing in
             // 退出编辑 = 拖拽手势的挂载条件消失（`.gesture` 为 nil），
             // 不会再有 onEnded，必须主动收场，否则浮窗残留。
-            if !editing { endDetachedDrag() }
+            if !editing {
+                endDetachedDrag()
+                // 同上：自动滚的指针上报也等不到 onDragEnded。
+                actions.onCapsuleDragPointer(nil)
+            }
         }
         .onAppear {
             syncInteractionActive()
@@ -239,6 +248,9 @@ struct DrawerPanelView: View {
                 // 顶栏悬停同理：收起那一刻指针可能还在顶栏内，视图直接退出
                 // 层级收不到 hover 结束事件，残留的 true 会让加号凭空挂着。
                 isTopBarHovering = false
+                // 自动滚同理：收起时拖动通路可能还在表上，停掉它（松手回调
+                // 未必送达）。
+                actions.onCapsuleDragPointer(nil)
             }
         }
     }
@@ -291,31 +303,12 @@ struct DrawerPanelView: View {
                 .transition(.opacity)
             }
 
-            Spacer(minLength: 0)
+            // 胶囊行滚动区：顶栏三段结构的中间一段。两侧按钮组各自固定占宽、
+            // 永不参与压缩，行再宽也只在区内裁切（旧版整条顶栏一个 HStack，
+            // 刚性胶囊行溢出时把齿轮/钉住顶出可视区）。
+            capsuleRowRegion
 
-            // 分页胶囊行：顶栏居中，每页一颗独立胶囊、加号在胶囊外（详见 DrawerPageCapsule）。
-            // 高亮层常驻标记选中页：静止钉在激活胶囊，滑动会话期随进度平移。
-            DrawerPageCapsule(
-                pages: ui.drawerPages,
-                titles: ui.drawerPageTitles,
-                icons: ui.drawerPageIcons,
-                activePage: ui.drawerActivePage,
-                isEditing: ui.isEditing,
-                // 拖动胶囊排序进行中隐藏加号：指针必然压在顶栏上，加号常亮会
-                // 干扰拖动预览；隐藏只是 opacity 0，槽位占位不变、行宽恒定。
-                showsAddButtons: ui.isEditing && isTopBarHovering && !isCapsuleDragging,
-                swipe: ui.drawerSwipe,
-                onSelect: actions.onSelectPage,
-                onAdd: actions.onAddPage,
-                onMove: actions.onMovePage,
-                onShowSettings: actions.onShowPageSettings,
-                onRemove: actions.onRemovePage,
-                onDraggingChanged: { isCapsuleDragging = $0 }
-            )
-
-            Spacer(minLength: 0)
-
-            // 编辑模式隐藏钉住按钮，退出编辑后恢复显示——槽位固定，按钮不跳动。
+            // 钉住按钮：槽位固定，编辑模式也常驻（侧按钮一律不许被挤走）。
             topBarButton(
                 systemImage: ui.isPinned ? "pin.fill" : "pin",
                 help: ui.isPinned ? L("panel.help.unpin") : L("panel.help.pin"),
@@ -327,6 +320,39 @@ struct DrawerPanelView: View {
             .transition(.opacity)
         }
         .padding(.horizontal, 4)
+    }
+
+    /// 顶栏中间滚动区：行在这里定位、裁切、滚（几何全在 `DrawerPagePillLayout`）。
+    /// 宽度**本地实测**下发（不是读上一帧的发布值）：首帧就要摆对位置，否则
+    /// 行会先左对齐再跳到居中；同一份宽度另经 action 发布给控制器（让路判据
+    /// 与驻留切页命中要用）。
+    private var capsuleRowRegion: some View {
+        GeometryReader { proxy in
+            DrawerPageCapsule(
+                pages: ui.drawerPages,
+                titles: ui.drawerPageTitles,
+                icons: ui.drawerPageIcons,
+                activePage: ui.drawerActivePage,
+                isEditing: ui.isEditing,
+                // 拖动胶囊排序进行中隐藏加号：指针必然压在顶栏上，加号常亮会
+                // 干扰拖动预览；隐藏只是 opacity 0，槽位占位不变、行宽恒定。
+                showsAddButtons: ui.isEditing && isTopBarHovering && !isCapsuleDragging,
+                // 高亮层常驻标记选中页：静止钉在激活胶囊，滑动会话期随进度平移。
+                swipe: ui.drawerSwipe,
+                regionSize: proxy.size,
+                scrollOffset: ui.drawerCapsuleScrollOffset,
+                onSelect: actions.onSelectPage,
+                onAdd: actions.onAddPage,
+                onMove: actions.onMovePage,
+                onShowSettings: actions.onShowPageSettings,
+                onRemove: actions.onRemovePage,
+                onDraggingChanged: { isCapsuleDragging = $0 },
+                onDragPointer: actions.onCapsuleDragPointer
+            )
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            actions.onCapsuleRegionWidth(width)
+        }
     }
 
     /// 独立结构体而非视图方法：悬停高亮需要 `@State`，方法无法持有。
@@ -618,6 +644,9 @@ struct DrawerPanelView: View {
                     at: NSEvent.mouseLocation,
                     activePage: ui.drawerActivePage
                 )
+                // 顶栏胶囊行滚动区的边缘自动滚：同一份屏幕点（拖到行端点时
+                // 行自己滚起来，视野外的胶囊与加号才够得着）。
+                actions.onCapsuleDragPointer(NSEvent.mouseLocation)
             },
             onDragEnded: { translation in
                 let target = dragTarget(for: element, translation: translation)
@@ -629,6 +658,7 @@ struct DrawerPanelView: View {
                 // DrawerAnimation 必须唯一的原因。
                 interaction.endDrag(element.id, column: target.0, row: target.1)
                 endDetachedDrag()
+                actions.onCapsuleDragPointer(nil)
             }
         )
         .frame(width: blockFrame.width, height: blockFrame.height)

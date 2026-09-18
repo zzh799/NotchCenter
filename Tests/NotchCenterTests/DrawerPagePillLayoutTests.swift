@@ -226,4 +226,186 @@ final class DrawerPagePillLayoutTests: XCTestCase {
             DrawerPagePillLayout.hoveredSlot(x: rowLeft, rowLeft: rowLeft, pageCount: 0)
         )
     }
+
+    // MARK: 顶栏滚动区（偏移 / 可见性 / 露出 / 自动滚）
+
+    /// 三页、区宽 116（行宽 216）是本节全部用例的参照系：槽位 0/1/2 的行内区间
+    /// 分别是 [26,78] / [82,134] / [138,190]，加号 [0,20] 与 [196,216]；行心相对
+    /// 区心的偏移余量 = (216 − 116)/2 = 50。偏移 0 = 行心对齐区心（两端各裁 50）。
+    private let tightRegion: CGFloat = 116
+
+    func testScrollExtentIsZeroWhenRowFits() {
+        // 放得下就是不可滚（行居中，偏移恒 0）。
+        XCTAssertEqual(DrawerPagePillLayout.scrollExtent(regionWidth: 300, pageCount: 3), 0)
+        XCTAssertEqual(DrawerPagePillLayout.scrollExtent(regionWidth: 216, pageCount: 3), 0)
+        XCTAssertEqual(DrawerPagePillLayout.scrollExtent(regionWidth: 116, pageCount: 3), 50)
+    }
+
+    func testClampedOffsetKeepsSymmetricDomain() {
+        XCTAssertEqual(DrawerPagePillLayout.clampedOffset(-999, regionWidth: tightRegion, pageCount: 3), -50)
+        XCTAssertEqual(DrawerPagePillLayout.clampedOffset(-30, regionWidth: tightRegion, pageCount: 3), -30)
+        XCTAssertEqual(DrawerPagePillLayout.clampedOffset(30, regionWidth: tightRegion, pageCount: 3), 30)
+        XCTAssertEqual(DrawerPagePillLayout.clampedOffset(999, regionWidth: tightRegion, pageCount: 3), 50)
+        // 放得下时任何存量偏移都归 0（指标/页数变化后越界值的兜底）。
+        XCTAssertEqual(DrawerPagePillLayout.clampedOffset(30, regionWidth: 400, pageCount: 3), 0)
+        XCTAssertEqual(DrawerPagePillLayout.clampedOffset(-30, regionWidth: 400, pageCount: 3), 0)
+    }
+
+    func testRowLeftInRegionKeepsRowHeartOnRegionHeart() {
+        // 放得下：居中（300 − 216）/2 = 42。
+        XCTAssertEqual(
+            DrawerPagePillLayout.rowLeftInRegion(regionWidth: 300, pageCount: 3, offset: 0), 42
+        )
+        // 溢出：偏移 0 仍是**居中**（行心对齐区心，两端各裁 50）——这是"面板宽度
+        // 变化时胶囊不平移"的根据（行左缘不再绑在随宽度移动的区左缘上）。
+        XCTAssertEqual(
+            DrawerPagePillLayout.rowLeftInRegion(regionWidth: tightRegion, pageCount: 3, offset: 0), -50
+        )
+        // 偏移把行整体左移/右移，两端极值恰好让行首/行尾进视野。
+        XCTAssertEqual(
+            DrawerPagePillLayout.rowLeftInRegion(regionWidth: tightRegion, pageCount: 3, offset: 30), -80
+        )
+        XCTAssertEqual(
+            DrawerPagePillLayout.rowLeftInRegion(regionWidth: tightRegion, pageCount: 3, offset: -50), 0
+        )
+        XCTAssertEqual(
+            DrawerPagePillLayout.rowLeftInRegion(regionWidth: tightRegion, pageCount: 3, offset: 50), -100
+        )
+    }
+
+    func testAddButtonRangesSitOutsideSlotMath() {
+        XCTAssertEqual(DrawerPagePillLayout.leadingAddRange, 0...20)
+        XCTAssertEqual(DrawerPagePillLayout.trailingAddRange(pageCount: 3), 196...216)
+    }
+
+    func testVisibilityFullPartialHidden() {
+        let visibility = { (slot: Int, offset: CGFloat) in
+            DrawerPagePillLayout.visibility(
+                of: DrawerPagePillLayout.pillRange(slot: slot),
+                regionWidth: self.tightRegion,
+                pageCount: 3,
+                offset: offset
+            )
+        }
+        // 居中（窗口 = [50, 166]）：中间的槽位 1 整颗在内，两端各被裁 24pt。
+        XCTAssertEqual(visibility(0, 0), .partial(offset: 24, width: 28))
+        XCTAssertEqual(visibility(1, 0), .full)
+        XCTAssertEqual(visibility(2, 0), .partial(offset: 0, width: 28))
+        // 滚到左端（窗口 = [0, 116]）：槽位 0 整颗在内、槽位 2 出视野。
+        XCTAssertEqual(visibility(0, -50), .full)
+        XCTAssertEqual(visibility(1, -50), .partial(offset: 0, width: 34))
+        XCTAssertEqual(visibility(2, -50), .hidden)
+        // 滚到右端（窗口 = [100, 216]）：槽位 0 出视野、槽位 2 整颗在内。
+        XCTAssertEqual(visibility(0, 50), .hidden)
+        XCTAssertEqual(visibility(1, 50), .partial(offset: 18, width: 34))
+        XCTAssertEqual(visibility(2, 50), .full)
+    }
+
+    func testVisibilityTreatsUnknownRegionAsUnclipped() {
+        // 宽度还没量到（0）时不许误判"全在视野外"——那会让整行不可点。
+        XCTAssertEqual(
+            DrawerPagePillLayout.visibility(
+                of: DrawerPagePillLayout.pillRange(slot: 5),
+                regionWidth: 0,
+                pageCount: 6,
+                offset: 0
+            ),
+            .full
+        )
+    }
+
+    func testOffsetRevealingMovesOnlyWhenSlotIsClipped() {
+        // 放得下：偏移恒 0，谁也不动。
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(slot: 2, offset: 0, regionWidth: 300, pageCount: 3), 0
+        )
+        // 居中时中间那颗本来就整颗可见 → 切页到它纹丝不动（"尽量留在原位"）。
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(slot: 1, offset: 0, regionWidth: tightRegion, pageCount: 3), 0
+        )
+        // 两端被裁 → 最小位移到刚好整颗露出（槽位 0 往右 24；槽位 2 往左 24）。
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(slot: 0, offset: 0, regionWidth: tightRegion, pageCount: 3), -24
+        )
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(slot: 2, offset: 0, regionWidth: tightRegion, pageCount: 3), 24
+        )
+        // 已完整可见的槽位不回滚多余偏移（就近夹紧：自由滚过去的行不被拽动）。
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(slot: 2, offset: 50, regionWidth: tightRegion, pageCount: 3), 50
+        )
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(slot: 0, offset: -50, regionWidth: tightRegion, pageCount: 3), -50
+        )
+        // 被推出视野时往回拉。
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(slot: 0, offset: 50, regionWidth: tightRegion, pageCount: 3), -24
+        )
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(slot: 2, offset: -50, regionWidth: tightRegion, pageCount: 3), 24
+        )
+    }
+
+    func testOffsetRevealingFallsBackToLastSlotWhenUnionCannotFit() {
+        // 并集装得下（[82,190] 宽 108 ≤ 116）→ 就近取一个能同时露出两者的偏移。
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(
+                slots: [1, 2], offset: 0, regionWidth: tightRegion, pageCount: 3
+            ),
+            24
+        )
+        // 并集装不下（[26,190] 宽 164）→ 只保证最后一个（切页里目标页比起点重要）。
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(
+                slots: [0, 2], offset: 0, regionWidth: tightRegion, pageCount: 3
+            ),
+            24
+        )
+        // 空集合不崩、原样夹紧。
+        XCTAssertEqual(
+            DrawerPagePillLayout.offsetRevealing(
+                slots: [], offset: 200, regionWidth: tightRegion, pageCount: 3
+            ),
+            50
+        )
+    }
+
+    func testAutoScrollVelocityZeroOutsideEdgeBands() {
+        let edge = DrawerPagePillLayout.autoScrollEdge
+        XCTAssertEqual(
+            DrawerPagePillLayout.autoScrollVelocity(pointerX: 200, regionLeft: 100, regionWidth: 200), 0,
+            "区中间不滚"
+        )
+        XCTAssertEqual(
+            DrawerPagePillLayout.autoScrollVelocity(
+                pointerX: 100 + edge + 1, regionLeft: 100, regionWidth: 200
+            ),
+            0,
+            "边带外一丁点不滚"
+        )
+    }
+
+    func testAutoScrollVelocitySignAndSaturation() {
+        let edge = DrawerPagePillLayout.autoScrollEdge
+        let maxSpeed = DrawerPagePillLayout.autoScrollMaxSpeed
+        // 右带 → 正速率（行左移、露出右侧内容）；压到区右缘 = 满速。
+        XCTAssertEqual(
+            DrawerPagePillLayout.autoScrollVelocity(pointerX: 300, regionLeft: 100, regionWidth: 200),
+            maxSpeed
+        )
+        // 左带 → 负速率。
+        XCTAssertEqual(
+            DrawerPagePillLayout.autoScrollVelocity(pointerX: 100, regionLeft: 100, regionWidth: 200),
+            -maxSpeed
+        )
+        // 带内线性：压入一半 = 半速。
+        XCTAssertEqual(
+            DrawerPagePillLayout.autoScrollVelocity(pointerX: 288, regionLeft: 100, regionWidth: 200),
+            maxSpeed / 2
+        )
+        // 宽还没量到时不滚。
+        XCTAssertEqual(
+            DrawerPagePillLayout.autoScrollVelocity(pointerX: 100, regionLeft: 100, regionWidth: 0), 0
+        )
+    }
 }

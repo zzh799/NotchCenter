@@ -62,6 +62,19 @@ final class PanelUIState: ObservableObject {
     /// 位移上限都在会话里冻结，`rebuildContent` 仍是提交后尺寸的唯一出口。
     @Published var drawerSwipe: DrawerSwipe?
 
+    /// 顶栏胶囊行**滚动区**的宽度（视图实测发布）：行偏移的夹紧、顶栏横扫的
+    /// 让路判据与驻留切页的命中数学共用它——控制器不重推顶栏内边距与两侧
+    /// 按钮组宽度（那会让"滚动区有多宽"出现第二份定义）。
+    @Published var drawerCapsuleRegionWidth: CGFloat = 0
+
+    /// 顶栏胶囊行的滚动偏移（运行时状态，不落盘）：域 = 对称的
+    /// `[-余量, +余量]`（余量 = (行宽 − 区宽)/2），`0` 恒等于"行心对齐区心"，
+    /// 放得下时恒 0。**锚在区心**：面板宽度随切页/格宽变化时行心钉在面板中线上，
+    /// 整排胶囊不平移（旧"溢出即左对齐"把行左缘绑在随面板宽度移动的区左缘上，
+    /// 胶囊会跟着平移 Δ/2）。**自由滚动**（允许把激活胶囊滚出视野），切页 /
+    /// 增删页 / 排序提交 / 滑动落位后夹紧到"露出激活胶囊"的最小调整量。
+    @Published var drawerCapsuleScrollOffset: CGFloat = 0
+
     /// 滑动会话快照：`elements` 是目标页的**真实例**（`isPreview: false`，走
     /// 正常缓存键并回写视图缓存），前进/落位时直接转正为 `drawerElements`。
     /// 条带模型：一次会话 = 原点页 + 一侧邻居构成的"两层页带"在视口里跟手移动，
@@ -112,6 +125,10 @@ final class PanelUIState: ObservableObject {
         /// .anchor`）。跟手位移 = 种子 + 锚后增量 × 屏幕换算比。建会时双零。
         var gestureSeed: CGFloat = 0
         var gestureAnchor: CGFloat = 0
+        /// 会话起点的胶囊行滚动偏移（**基座**）：会话期的行偏移由它在"露出激活"
+        /// 与"露出目标"两个夹紧值之间按 `progress` 插值——与高光同一条进度源。
+        /// 基座不随反手换绑更新（与原点锚同规），覆盖点前进那一帧重冻结。
+        var capsuleScrollBase: CGFloat = 0
 
         /// 滑动进度 p ∈ [0,1]（位移 / 落位全程）：面板尺寸插值与胶囊高亮层
         /// 都从这一份进度派生——跟手、落位 spring 与回弹天然同曲线。
