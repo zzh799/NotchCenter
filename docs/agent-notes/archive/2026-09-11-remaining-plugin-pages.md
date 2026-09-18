@@ -1,6 +1,6 @@
 # Agent Note:剩余 P0/P1 插件页面（日历待办 / AI 监控 / 天气 / 摄像头 / 截图 OCR / 会议 / 效率与运维）
 
-status: proposed
+status: archived
 date: 2026-09-11
 deciders: 用户（勾选「继续实现 P0/P1 剩余全部项」）+ 实现代理
 replaces: <无>
@@ -88,3 +88,5 @@ superseded-by: <无>
 ## Changelog
 
 - v1.0.0:初稿（插件切分、各页面取舍与明确不做的部分、probes 纪律、多实例状态）。
+
+- v1.1.0:归档（2026-09-19）。本规划对应的插件批次已由 `b980ae1` 回退（CalendarPlugin / MeetingPlugin / AgentMonitorPlugin 等目录均不存在），规划本身仍有效但暂不排期，故从 `proposed/` 移出归档，避免滞留门禁长期常红；重新排期时移回 `proposed/` 并更新 date。
