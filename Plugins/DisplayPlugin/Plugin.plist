@@ -9,7 +9,7 @@
   <key>DisplayName</key>
   <string>Display Brightness</string>
   <key>Description</key>
-  <string>Adjust external display brightness per screen over DDC/CI (Apple Silicon via IOAVService, Intel via IOKit IOI2C).</string>
+  <string>Adjust brightness per screen: the built-in display over the system brightness channel, external displays over DDC/CI (Apple Silicon via IOAVService, Intel via IOKit IOI2C).</string>
   <!-- 元数据本地化：build.sh 按语言键生成 bundle 内的 InfoPlist.strings（en 基准用上面两个字段） -->
   <key>DisplayNameLocales</key>
   <dict>
@@ -19,7 +19,7 @@
   <key>DescriptionLocales</key>
   <dict>
     <key>zh-Hans</key>
-    <string>经 DDC/CI 按显示器调节外接屏幕亮度（Apple Silicon 走 IOAVService，Intel 走 IOKit IOI2C）。</string>
+    <string>按显示器调节亮度：内建屏走系统亮度通道，外接屏走 DDC/CI（Apple Silicon 走 IOAVService，Intel 走 IOKit IOI2C）。</string>
   </dict>
 </dict>
 </plist>

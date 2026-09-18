@@ -49,13 +49,13 @@ enum DDCPacketCodec {
 
     /// 解码 Get VCP 回复；源地址 / 命令 / 特征码 / 校验和任一不符即抛错。
     static func decodeReply(_ bytes: [UInt8], vcp: UInt8) throws -> LuminanceReading {
-        guard bytes.count >= 11 else { throw DDCError.shortReply(count: bytes.count) }
-        guard bytes[0] == 0x6E else { throw DDCError.badReplySource(bytes[0]) }
-        guard bytes[2] == 0x02 else { throw DDCError.badReplyCommand(bytes[2]) }
-        guard bytes[4] == vcp else { throw DDCError.badReplyVCP(bytes[4]) }
+        guard bytes.count >= 11 else { throw BrightnessError.shortReply(count: bytes.count) }
+        guard bytes[0] == 0x6E else { throw BrightnessError.badReplySource(bytes[0]) }
+        guard bytes[2] == 0x02 else { throw BrightnessError.badReplyCommand(bytes[2]) }
+        guard bytes[4] == vcp else { throw BrightnessError.badReplyVCP(bytes[4]) }
         var expected: UInt8 = 0x6F ^ 0x51
         for byte in bytes[1...9] { expected ^= byte }
-        guard bytes[10] == expected else { throw DDCError.badReplyChecksum }
+        guard bytes[10] == expected else { throw BrightnessError.badReplyChecksum }
         let max = (UInt16(bytes[6]) << 8) | UInt16(bytes[7])
         let current = (UInt16(bytes[8]) << 8) | UInt16(bytes[9])
         return LuminanceReading(value: Int(current), max: Int(max))

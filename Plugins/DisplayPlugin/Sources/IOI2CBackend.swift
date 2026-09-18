@@ -22,7 +22,7 @@ import IOKit.i2c
 // 与 MIT 许可的 m1ddc 一致）。Intel 真机验证条件暂缺（开发机为 Apple
 // Silicon），帧编解码与映射逻辑由 DisplayPluginTests 覆盖。
 
-final class IOI2CBackend: DisplayDDCBackend, @unchecked Sendable {
+final class IOI2CBackend: DisplayBrightnessBackend, @unchecked Sendable {
     private static let errorRecoveryWait: UInt32 = 40_000 // µs，VESA 错误恢复间隔
     private static let writeSettleWait: UInt32 = 20_000 // µs，纯写请求后的间隔
 
@@ -43,7 +43,7 @@ final class IOI2CBackend: DisplayDDCBackend, @unchecked Sendable {
 
     // MARK: 枚举
 
-    func listDisplays() async -> [ExternalDisplay] {
+    func listDisplays() async -> [BrightnessDisplay] {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
                 if framebuffers.isEmpty { probeReplyTransactionType() }
@@ -52,19 +52,8 @@ final class IOI2CBackend: DisplayDDCBackend, @unchecked Sendable {
         }
     }
 
-    private func enumerate() -> [ExternalDisplay] {
-        var ids = [CGDirectDisplayID](repeating: 0, count: 16)
-        var count: UInt32 = 0
-        guard CGGetOnlineDisplayList(UInt32(ids.count), &ids, &count) == .success else { return [] }
-
-        var remaining = DisplayListFilter.externalCandidates(
-            ids.prefix(Int(count)).map { id in
-                (id: id,
-                 isBuiltin: CGDisplayIsBuiltin(id) != 0,
-                 isMirrored: CGDisplayIsInMirrorSet(id) != 0,
-                 isMain: id == CGMainDisplayID())
-            }
-        )
+    private func enumerate() -> [BrightnessDisplay] {
+        var remaining = DisplayListFilter.externalCandidates(DisplayDescriptor.online())
 
         var iterator: io_iterator_t = 0
         guard
@@ -74,7 +63,7 @@ final class IOI2CBackend: DisplayDDCBackend, @unchecked Sendable {
         else { return [] }
         defer { IOObjectRelease(iterator) }
 
-        var result: [ExternalDisplay] = []
+        var result: [BrightnessDisplay] = []
         var freshFramebuffers: [CGDirectDisplayID: io_service_t] = [:]
         while true {
             let service = IOIteratorNext(iterator)
@@ -87,7 +76,7 @@ final class IOI2CBackend: DisplayDDCBackend, @unchecked Sendable {
             freshFramebuffers[id] = service
             remaining.removeAll { $0 == id }
             let name = productName ?? LF("display.fallback.name", result.count + 1)
-            result.append(ExternalDisplay(id: id, name: name))
+            result.append(BrightnessDisplay(id: id, name: name))
         }
         for (id, old) in framebuffers where freshFramebuffers[id] == nil {
             IOObjectRelease(old)
@@ -155,9 +144,9 @@ final class IOI2CBackend: DisplayDDCBackend, @unchecked Sendable {
 
     // MARK: 亮度读写
 
-    func readLuminance(_ display: ExternalDisplay) async throws -> LuminanceReading {
+    func readLuminance(_ display: BrightnessDisplay) async throws -> LuminanceReading {
         try await perform { [self] in
-            guard let framebuffer = framebuffers[display.id] else { throw DDCError.displayGone }
+            guard let framebuffer = framebuffers[display.id] else { throw BrightnessError.displayGone }
             let frame = DDCPacketCodec.i2cBuffer(
                 DDCPacketCodec.getMessage(vcp: VCPCode.luminance))
             let replyDelay = Self.minReplyDelay(for: framebuffer)
@@ -174,13 +163,13 @@ final class IOI2CBackend: DisplayDDCBackend, @unchecked Sendable {
                 }
                 usleep(Self.errorRecoveryWait)
             }
-            throw DDCError.transportFailed(code: Int(lastResult))
+            throw BrightnessError.transportFailed(code: Int(lastResult))
         }
     }
 
-    func writeLuminance(_ display: ExternalDisplay, value: Int) async throws {
+    func writeLuminance(_ display: BrightnessDisplay, value: Int) async throws {
         try await perform { [self] in
-            guard let framebuffer = framebuffers[display.id] else { throw DDCError.displayGone }
+            guard let framebuffer = framebuffers[display.id] else { throw BrightnessError.displayGone }
             let frame = DDCPacketCodec.i2cBuffer(
                 DDCPacketCodec.setMessage(vcp: VCPCode.luminance, value: UInt16(clamping: value)))
             var reply = [UInt8]()
@@ -192,7 +181,7 @@ final class IOI2CBackend: DisplayDDCBackend, @unchecked Sendable {
                 if lastResult == KERN_SUCCESS { return }
                 usleep(Self.writeSettleWait)
             }
-            throw DDCError.transportFailed(code: Int(lastResult))
+            throw BrightnessError.transportFailed(code: Int(lastResult))
         }
     }
 

@@ -1,16 +1,17 @@
 /* Display Brightness (en, base key set) */
 
 "block.drawer.name" = "Display Brightness";
-"drawer.empty.title" = "No Adjustable External Display";
-"drawer.empty.short" = "No External Display";
+"drawer.empty.title" = "No Adjustable Display";
+"drawer.empty.short" = "No Adjustable Display";
 "display.fallback.name" = "Display %d";
+"display.builtin.name" = "Built-in Display";
 "a11y.slider.label" = "Brightness of %@";
 
 "block.single.name" = "Single Display Brightness";
 "single.display.section" = "Display";
 "single.followFirst" = "Follow first display";
 
-"range.section" = "DDC Range";
+"range.section" = "Brightness Range";
 "range.min" = "Min";
 "range.max" = "Max";
 "range.reset" = "Reset to full range";

@@ -1,28 +1,34 @@
 # Display Brightness（显示器亮度）
 
-经 DDC/CI 调节外接显示器亮度：抽屉块内每台外接屏一行滑杆，实时跟随拖动，写入串行合并不轰击总线。
+按屏调节亮度：抽屉块内每台可调显示器一行滑杆，实时跟随拖动，写入串行合并不轰击总线。外接屏走 DDC/CI，内建屏走系统亮度通道（与系统亮度键同一个值）。
 
 ## 提供的块
 
-- **抽屉块 `brightness.sliders`**（中 / 大 / 超大，默认中）：每台可调外接屏一行「屏名 + 亮度滑杆」；没有可调外接屏时显示空态提示。
+- **抽屉块 `brightness.sliders`**（中 / 大 / 超大，默认中）：每台可调显示器一行「屏名 + 亮度滑杆」；没有可调显示器时显示空态提示。
 - **抽屉块 `brightness.single`**（单屏条，一实例一屏）：小单元整块当进度条（竖条自底 / 横条自左填充），大单元（单元任一轴 >100）切标题 + 药丸滑杆；1×1 为启动器（点按/长按弹浮窗调光）。
 
 ## 支持的显示器
 
-- **Apple Silicon**：IOAVService 路线，行为忠实移植自 [m1ddc](https://github.com/waydabber/m1ddc)（MIT License, Copyright (c) 2021 waydabber），支持 USB-C / DisplayPort Alt Mode 与受支持的内建 HDMI 口；MCDP29xx 转换芯片自动切换 0xB7 芯片地址。
-- **Intel**：IOKit IOI2C 公开 API（IOGraphicsLib / IOI2CInterface）+ VESA DDC/CI 标准帧实现，思路参考 MonitorControl 与 ddcctl（后者仅作行为参照，未复制代码）。⚠️ Intel 实现未经真机验证（开发机为 Apple Silicon），帧编解码与值映射有单测覆盖，欢迎 Intel 用户反馈。
-- 内建屏不走 DDC（交给系统亮度键），不显示；虚拟屏（Sidecar / AirPlay）与镜像组非主屏不显示；不支持 DDC/CI 的外接屏（部分转接坞 / 采集卡）不出现在列表中。
+枚举顺序固定：内建屏在前，外接屏随后。
+
+- **内建屏**：走系统亮度通道（DisplayServices 私有框架），与系统亮度键、控制中心滑杆、「自动调节亮度」写的是同一个值。用户按亮度键改亮度时，插件滑杆跟随（注册了系统亮度变化通知）；插件自己写入同样会收到通知，但拖动中与本机写入后的短时间内不回灌，避免滑杆脱离手指。
+- **Apple Silicon 外接屏**：IOAVService 路线，行为忠实移植自 [m1ddc](https://github.com/waydabber/m1ddc)（MIT License, Copyright (c) 2021 waydabber），支持 USB-C / DisplayPort Alt Mode 与受支持的内建 HDMI 口；MCDP29xx 转换芯片自动切换 0xB7 芯片地址。
+- **Intel 外接屏**：IOKit IOI2C 公开 API（IOGraphicsLib / IOI2CInterface）+ VESA DDC/CI 标准帧实现，思路参考 MonitorControl 与 ddcctl（后者仅作行为参照，未复制代码）。⚠️ Intel 实现未经真机验证（开发机为 Apple Silicon），帧编解码与值映射有单测覆盖，欢迎 Intel 用户反馈。
+- **不显示**：内建屏之外的 Apple 外接屏（Studio Display / Pro Display XDR）本轮不走系统通道，仍按 DDC 处理；虚拟屏（Sidecar / AirPlay）与镜像组非主屏不显示；不支持 DDC/CI 的外接屏（部分转接坞 / 采集卡）不出现在列表中。
 
 ## 实现说明
 
+- 两条通道合成一个与布局无关的抽象（`BrightnessDisplay.control` 取 `.system` / `.ddc`），枚举、回读、写入、区间映射、写入合并全部共用，控制器只认这张统一列表。
 - 初值在块首次出现时回读显示器（300ms 超时），失败回退内存缓存或 50%——部分显示器不支持回读，回读失败不代表不可调节。回读期间该行只显示空槽占位，不渲染 0 值滑杆（避免初值落定时被动画事务插值成「从 0 涨到当前亮度」）。有自定义区间时回读按有效区间反算百分比。
-- DDC 写入值区间（按屏全局）：编辑模式齿轮里按屏设最小/最大值，UI 百分比 0...100 线性映射到该区间再下发（如 20...80 时 0% 下发 20、100% 下发 80）；无自定义即全量程 0...maxLuminance，存量行为不变。改区间时按同一硬件值重算百分比，滑杆不跳变；区间存插件级存储，sliders 与 single 两块共用。
-- 写入经串行合并通道（`DDCWriteChannel`）：任一时刻至多一次 DDC 传输在途，拖动中只保留最新值、完成后补写终值，两次写入至少间隔 80ms。
+- 原始值区间（按屏全局）：编辑模式齿轮里按屏设最小/最大值，UI 百分比 0...100 线性映射到该区间再下发（如 20...80 时 0% 下发 20、100% 下发 80）；无自定义即全量程（外接屏 0...maxLuminance，内建屏 0...100，内建屏的 100 即系统亮度的 1.0）。改区间时按同一硬件值重算百分比，滑杆不跳变；区间存插件级存储，sliders 与 single 两块共用。
+- 写入经串行合并通道（`BrightnessWriteChannel`）：任一时刻至多一次写入在途，拖动中只保留最新值、完成后补写终值，两次写入至少间隔 80ms。
 - 连续两次写入失败判定该屏不可调节，滑杆行自动隐藏。
-- 私有符号（IOAVService 一族与 CoreDisplay 显示信息字典）仅经 dlopen/dlsym 运行时访问，封装在 `IOAVServiceBackend`（插件内唯一私有 API 接触面）；符号缺失（Intel）时自动回退 IOI2C 路线，均不可用时显示空态，绝不崩溃。
+- 私有符号仅经 dlopen/dlsym 运行时访问，封装在两处接触面：`IOAVServiceBackend`（IOAVService 一族与 CoreDisplay 显示信息字典，外接屏）与 `SystemBrightnessBackend`（DisplayServices 亮度读写与变化通知，内建屏）。符号缺失时逐级降级：IOAVService 缺就回退 IOI2C，DisplayServices 缺就不出内建屏行，都不行时显示空态，绝不崩溃。
+- 内建屏的系统亮度变化回调是 C 函数指针（不是 block——按 block 传会段错误），经带锁的中继转发到主线程。
 
 ## 注意
 
 - v1 不做开机亮度恢复、低于硬件最小亮度的压暗、亮度键拦截与紧凑区入口。
+- 「自动调节亮度」开启时系统会自行改内建屏亮度，可能超出用户设的原始值区间（此时滑杆钳在 0/100）；插件不与之对抗。
 - 显示器列表在首次展开抽屉时枚举；运行期间监听屏幕参数变化（`didChangeScreenParametersNotification`，与宿主重建布局同一事件）做差量刷新——拔出屏的滑杆行即时消失、新屏即时出现、存活屏状态保留。已知边界：同一物理屏以新 `CGDirectDisplayID` 重连时，亮度内存缓存与自定义区间均按 id 键控匹配不到，初值回退 50% 且区间回全量程。
 - 该块不声明滑动让路（2026-09-06 修订，见 Agent Note）；滑杆只经命中测试消费鼠标拖拽、不消费滚轮横向增量，块上横向轻扫照常切页。

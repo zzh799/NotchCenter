@@ -1,16 +1,17 @@
 /* 显示器亮度（zh-Hans，键集合必须与 en 一致——LocalizationTests 强制校验） */
 
 "block.drawer.name" = "显示器亮度";
-"drawer.empty.title" = "未检测到可调节的外接显示器";
+"drawer.empty.title" = "未检测到可调节的显示器";
 "drawer.empty.short" = "无可调节显示器";
 "display.fallback.name" = "外接显示器 %d";
+"display.builtin.name" = "内建显示器";
 "a11y.slider.label" = "%@ 的亮度";
 
 "block.single.name" = "单屏亮度";
 "single.display.section" = "显示器";
 "single.followFirst" = "跟随第一台显示器";
 
-"range.section" = "DDC 范围";
+"range.section" = "亮度范围";
 "range.min" = "最小值";
 "range.max" = "最大值";
 "range.reset" = "恢复完整区间";

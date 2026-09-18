@@ -1,10 +1,11 @@
 import NotchCenterKit
 import SwiftUI
 
-/// DisplayPlugin（官方显示器亮度插件）：经 DDC/CI 调节外接显示器亮度。
-/// Apple Silicon 走 IOAVService 路线（忠实移植 m1ddc，MIT），Intel 走
-/// IOKit IOI2C 公开 API；决策记录见 Agent Note 2026-09-05-display-plugin-ddc，
-/// 能力边界见插件 README。
+/// DisplayPlugin（官方显示器亮度插件）：按屏调节亮度——外接屏经 DDC/CI
+/// （Apple Silicon 走 IOAVService 路线，忠实移植 m1ddc，MIT；Intel 走
+/// IOKit IOI2C 公开 API），内建屏经系统亮度通道（DisplayServices，与系统
+/// 亮度键同一个值）。决策记录见 Agent Note 2026-09-05-display-plugin-ddc 与
+/// 2026-09-19-builtin-brightness-system-path，能力边界见插件 README。
 ///
 /// 两块共存：`brightness.sliders` 是多屏列表（版式见 DisplaySlidersBlockView）；
 /// `brightness.single` 是单屏条（一实例一屏，形态见 SingleBrightnessBlockView，

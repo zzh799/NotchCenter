@@ -133,7 +133,7 @@ final class DisplayPluginTests: XCTestCase {
         XCTAssertEqual(bounds.upper, 80)
     }
 
-    // MARK: 外接屏候选过滤
+    // MARK: 显示器候选过滤（两条通道各取所需）
 
     func testExternalCandidatesFilter() {
         let builtin = CGDirectDisplayID(1)
@@ -141,17 +141,185 @@ final class DisplayPluginTests: XCTestCase {
         let mirrored = CGDirectDisplayID(3)
         let normal = CGDirectDisplayID(4)
         let candidates = DisplayListFilter.externalCandidates([
-            (id: builtin, isBuiltin: true, isMirrored: false, isMain: false),
-            (id: main, isBuiltin: false, isMirrored: true, isMain: true),
-            (id: mirrored, isBuiltin: false, isMirrored: true, isMain: false),
-            (id: normal, isBuiltin: false, isMirrored: false, isMain: false),
+            DisplayDescriptor(id: builtin, isBuiltin: true, isMirrored: false, isMain: true),
+            DisplayDescriptor(id: main, isBuiltin: false, isMirrored: true, isMain: true),
+            DisplayDescriptor(id: mirrored, isBuiltin: false, isMirrored: true, isMain: false),
+            DisplayDescriptor(id: normal, isBuiltin: false, isMirrored: false, isMain: false),
         ])
         XCTAssertEqual(candidates, [main, normal], "内建屏排除，镜像组只留主屏")
     }
 
-    // MARK: 通道与控制器（假后端，不触碰真实 IOKit）
+    func testBuiltinCandidatesPickOnlyBuiltin() {
+        let builtin = CGDirectDisplayID(1)
+        let external = CGDirectDisplayID(2)
+        let candidates = DisplayListFilter.builtinCandidates([
+            DisplayDescriptor(id: builtin, isBuiltin: true, isMirrored: false, isMain: true),
+            DisplayDescriptor(id: external, isBuiltin: false, isMirrored: false, isMain: false),
+        ])
+        XCTAssertEqual(candidates, [builtin], "系统通道只认内建屏，外接屏仍归 DDC")
+    }
 
-    private let testDisplay = ExternalDisplay(id: CGDirectDisplayID(7), name: "Test Panel")
+    func testBuiltinCandidatesDropMirroredNonMain() {
+        let builtin = CGDirectDisplayID(1)
+        let mainExternal = CGDirectDisplayID(2)
+        let candidates = DisplayListFilter.builtinCandidates([
+            DisplayDescriptor(id: builtin, isBuiltin: true, isMirrored: true, isMain: false),
+            DisplayDescriptor(id: mainExternal, isBuiltin: false, isMirrored: true, isMain: true),
+        ])
+        XCTAssertTrue(candidates.isEmpty, "镜像组只保留主屏，非主的内建屏不出行")
+    }
+
+    func testBuiltinCandidatesEmptyWithoutBuiltinDisplay() {
+        // Mac mini / Mac Studio 类无内建屏的机器：候选为空，插件只列外接屏。
+        XCTAssertTrue(
+            DisplayListFilter.builtinCandidates([
+                DisplayDescriptor(
+                    id: CGDirectDisplayID(2), isBuiltin: false, isMirrored: false, isMain: true)
+            ]).isEmpty)
+    }
+
+    // MARK: 内建屏数值换算与通知值解析（纯逻辑）
+
+    func testSystemBrightnessMathRoundTripsFloatAndPercent() {
+        XCTAssertEqual(SystemBrightnessMath.raw(fromBrightness: 0.4375), 44)
+        XCTAssertEqual(SystemBrightnessMath.raw(fromBrightness: 1), 100)
+        XCTAssertEqual(SystemBrightnessMath.raw(fromBrightness: 0), 0)
+        XCTAssertEqual(SystemBrightnessMath.raw(fromBrightness: -1), 0, "越界钳制")
+        XCTAssertEqual(SystemBrightnessMath.raw(fromBrightness: 2), 100, "越界钳制")
+        XCTAssertEqual(
+            SystemBrightnessMath.brightness(fromRaw: 44), 0.44, accuracy: 1e-9)
+        XCTAssertEqual(SystemBrightnessMath.brightness(fromRaw: -5), 0)
+        XCTAssertEqual(SystemBrightnessMath.brightness(fromRaw: 150), 1)
+    }
+
+    func testSystemBrightnessNotificationValueParsing() {
+        // 真机实测 userInfo 里是字符串（value = "0.6000001"），数值形态一并兼容。
+        XCTAssertEqual(
+            SystemBrightnessMath.brightness(fromNotificationValue: "0.6000001") ?? -1,
+            0.6000001, accuracy: 1e-9)
+        XCTAssertEqual(
+            SystemBrightnessMath.brightness(fromNotificationValue: NSNumber(value: 0.25)) ?? -1,
+            0.25, accuracy: 1e-9)
+        XCTAssertNil(SystemBrightnessMath.brightness(fromNotificationValue: "not a number"))
+        XCTAssertNil(SystemBrightnessMath.brightness(fromNotificationValue: nil))
+    }
+
+    // MARK: 后端合流（按 control 分发）
+
+    @MainActor
+    func testCompositeListsBuiltinFirstAndRoutesByControlPath() async throws {
+        let builtin = BrightnessDisplay(id: 1, name: "Built-in Display", control: .system)
+        let external = BrightnessDisplay(id: CGDirectDisplayID(7), name: "Test Panel")
+        let system = FakeBackend(
+            displays: [builtin], reading: LuminanceReading(value: 30, max: 100))
+        let ddc = FakeBackend(
+            displays: [external], reading: LuminanceReading(value: 60, max: 100))
+        let composite = CompositeBackend(system: system, ddc: ddc)
+
+        let listed = await composite.listDisplays()
+        XCTAssertEqual(listed.map(\.id), [1, external.id], "内建屏在前，外接屏随后")
+
+        let builtinReading = try await composite.readLuminance(builtin)
+        XCTAssertEqual(builtinReading.value, 30)
+        XCTAssertEqual(system.reads.count, 1)
+        XCTAssertTrue(ddc.reads.isEmpty, "内建屏的回读不落到 DDC 后端")
+
+        try await composite.writeLuminance(external, value: 12)
+        XCTAssertEqual(ddc.writes.first?.value, 12)
+        XCTAssertTrue(system.writes.isEmpty, "外接屏的写入不落到系统后端")
+    }
+
+    func testCompositeRejectsDisplayOfMissingChannel() async {
+        let composite = CompositeBackend(system: nil, ddc: FakeBackend(displays: []))
+        do {
+            _ = try await composite.readLuminance(
+                BrightnessDisplay(id: 1, name: "Built-in Display", control: .system))
+            XCTFail("系统通道缺失时回读应当抛错")
+        } catch {
+            XCTAssertEqual(error as? BrightnessError, .controlPathUnavailable)
+        }
+    }
+
+    // MARK: 系统亮度变化回灌（内建屏）
+
+    @MainActor
+    func testSystemBrightnessChangeUpdatesSlider() async throws {
+        let builtin = BrightnessDisplay(id: 1, name: "Built-in Display", control: .system)
+        let backend = FakeBackend(displays: [builtin])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForProbe(controller)
+        let model = try XCTUnwrap(controller.rows.first)
+        XCTAssertEqual(backend.observations, 1, "系统通道的屏建立一次观察")
+
+        backend.emitBrightnessChange(displayID: builtin.id, value: 0.8)
+        try await waitFor(
+            { model.percent == 80 }, "亮度键改的内建屏亮度应回灌到滑杆")
+        XCTAssertEqual(model.percent, 80, accuracy: 0.001)
+    }
+
+    @MainActor
+    func testSystemBrightnessChangeIgnoredWhileDragging() async throws {
+        let builtin = BrightnessDisplay(id: 1, name: "Built-in Display", control: .system)
+        let backend = FakeBackend(displays: [builtin])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForProbe(controller)
+        let model = try XCTUnwrap(controller.rows.first)
+
+        model.isDragging = true
+        backend.emitBrightnessChange(displayID: builtin.id, value: 0.8)
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(model.percent, 42, accuracy: 0.001, "拖动中不回灌，滑杆不脱离手指")
+    }
+
+    @MainActor
+    func testLocalWriteSuppressesImmediateEcho() async throws {
+        let builtin = BrightnessDisplay(id: 1, name: "Built-in Display", control: .system)
+        let backend = FakeBackend(displays: [builtin])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForProbe(controller)
+        let model = try XCTUnwrap(controller.rows.first)
+
+        controller.requestWrite(model, percent: 10)
+        try await waitFor({ !backend.writes.isEmpty }, "本机写入应已投递")
+        // 本机写入必然触发系统通知（真机实测），紧接着的回声不该覆盖刚松手的目标值。
+        backend.emitBrightnessChange(displayID: builtin.id, value: 0.9)
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(model.percent, 10, accuracy: 0.001, "自写回声被静默窗口挡下")
+    }
+
+    @MainActor
+    func testSuspendDropsSystemBrightnessObservation() async throws {
+        let builtin = BrightnessDisplay(id: 1, name: "Built-in Display", control: .system)
+        let backend = FakeBackend(displays: [builtin])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForProbe(controller)
+        let model = try XCTUnwrap(controller.rows.first)
+
+        controller.suspend()
+        XCTAssertEqual(backend.invalidations, 1, "禁用时撤销观察注册")
+        backend.emitBrightnessChange(displayID: builtin.id, value: 0.8)
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(model.percent, 42, accuracy: 0.001, "禁用后系统亮度变化不再回灌")
+    }
+
+    @MainActor
+    func testDDCDisplayDoesNotEstablishObservation() async throws {
+        // 外接屏没有变化回调通道：假后端虽实现了观察，控制器也不该为纯 DDC 列表注册。
+        let backend = FakeBackend(displays: [testDisplay])
+        let controller = BrightnessController(backend: backend)
+        await controller.startIfNeeded()
+        try await waitForProbe(controller)
+        XCTAssertTrue(controller.rows.count == 1)
+        XCTAssertEqual(backend.observations, 0)
+    }
+
+    // MARK: 假后端与等待原语（不触碰真实 IOKit / DisplayServices）
+
+    private let testDisplay = BrightnessDisplay(id: CGDirectDisplayID(7), name: "Test Panel")
 
     /// 初值探针是异步任务：轮询等待其落定（假后端即时返回，2s 超时兜底）。
     @MainActor
@@ -173,51 +341,117 @@ final class DisplayPluginTests: XCTestCase {
         XCTFail("初值回读未在 2s 内完成")
     }
 
-    private final class FakeBackend: DisplayDDCBackend, @unchecked Sendable {
+    private final class FakeBackend: DisplayBrightnessBackend, @unchecked Sendable {
         private let lock = NSLock()
         /// 当前在线显示器列表：测试可改写以模拟拔插。
-        var displays: [ExternalDisplay]
-        private let readError: DDCError?
-        private let writeError: DDCError?
-        private var readCalls: [ExternalDisplay] = []
-        private var writeCalls: [(display: ExternalDisplay, value: Int)] = []
+        var displays: [BrightnessDisplay]
+        private let readError: BrightnessError?
+        private let writeError: BrightnessError?
+        private let reading: LuminanceReading
+        private var readCalls: [BrightnessDisplay] = []
+        private var writeCalls: [(display: BrightnessDisplay, value: Int)] = []
+        private var changeHandler: (@Sendable (CGDirectDisplayID, Double) -> Void)?
+        private var observationCount = 0
+        private var invalidationCount = 0
 
         init(
-            displays: [ExternalDisplay],
-            readError: DDCError? = nil,
-            writeError: DDCError? = nil
+            displays: [BrightnessDisplay],
+            readError: BrightnessError? = nil,
+            writeError: BrightnessError? = nil,
+            reading: LuminanceReading = LuminanceReading(value: 42, max: 100)
         ) {
             self.displays = displays
             self.readError = readError
             self.writeError = writeError
+            self.reading = reading
         }
 
-        var reads: [ExternalDisplay] {
+        var reads: [BrightnessDisplay] {
             lock.lock(); defer { lock.unlock() }
             return readCalls
         }
 
-        var writes: [(display: ExternalDisplay, value: Int)] {
+        var writes: [(display: BrightnessDisplay, value: Int)] {
             lock.lock(); defer { lock.unlock() }
             return writeCalls
         }
 
-        func listDisplays() -> [ExternalDisplay] { displays }
+        func listDisplays() -> [BrightnessDisplay] { displays }
 
-        func readLuminance(_ display: ExternalDisplay) throws -> LuminanceReading {
+        func readLuminance(_ display: BrightnessDisplay) throws -> LuminanceReading {
             lock.lock()
             readCalls.append(display)
             lock.unlock()
             if let readError { throw readError }
-            return LuminanceReading(value: 42, max: 100)
+            return reading
         }
 
-        func writeLuminance(_ display: ExternalDisplay, value: Int) throws {
+        func writeLuminance(_ display: BrightnessDisplay, value: Int) throws {
             lock.lock()
             writeCalls.append((display, value))
             lock.unlock()
             if let writeError { throw writeError }
         }
+
+        // MARK: 系统亮度变化观察（假实现：测试经 `emitBrightnessChange` 驱动）
+
+        var observations: Int {
+            lock.lock(); defer { lock.unlock() }
+            return observationCount
+        }
+
+        var invalidations: Int {
+            lock.lock(); defer { lock.unlock() }
+            return invalidationCount
+        }
+
+        func observeBrightnessChanges(
+            _ handler: @escaping @Sendable (CGDirectDisplayID, Double) -> Void
+        ) -> BrightnessChangeObservation? {
+            lock.lock()
+            changeHandler = handler
+            observationCount += 1
+            lock.unlock()
+            return FakeObservation { [weak self] in self?.clearHandler() }
+        }
+
+        /// 模拟系统侧改了亮度（亮度键 / 自动调节 / 其它 App）。
+        func emitBrightnessChange(displayID: CGDirectDisplayID, value: Double) {
+            lock.lock()
+            let handler = changeHandler
+            lock.unlock()
+            handler?(displayID, value)
+        }
+
+        private func clearHandler() {
+            lock.lock()
+            changeHandler = nil
+            invalidationCount += 1
+            lock.unlock()
+        }
+
+        private final class FakeObservation: BrightnessChangeObservation, @unchecked Sendable {
+            private let onInvalidate: @Sendable () -> Void
+
+            init(_ onInvalidate: @escaping @Sendable () -> Void) {
+                self.onInvalidate = onInvalidate
+            }
+
+            func invalidate() { onInvalidate() }
+        }
+    }
+
+    /// 回灌落在 MainActor 任务里：轮询等待谓词成立（假后端即时完成，1s 超时兜底）。
+    @MainActor
+    private func waitFor(
+        _ condition: () -> Bool, _ message: String,
+        file: StaticString = #filePath, line: UInt = #line
+    ) async throws {
+        for _ in 0..<50 {
+            if condition() { return }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail(message, file: file, line: line)
     }
 
     @MainActor
@@ -296,7 +530,7 @@ final class DisplayPluginTests: XCTestCase {
 
     @MainActor
     func testRefreshRemovesUnpluggedDisplay() async throws {
-        let second = ExternalDisplay(id: CGDirectDisplayID(8), name: "Second Panel")
+        let second = BrightnessDisplay(id: CGDirectDisplayID(8), name: "Second Panel")
         let backend = FakeBackend(displays: [testDisplay, second])
         let controller = BrightnessController(backend: backend)
         await controller.startIfNeeded()
@@ -313,7 +547,7 @@ final class DisplayPluginTests: XCTestCase {
 
     @MainActor
     func testRefreshKeepsSurvivingDisplayStateAndSkipsReprobe() async throws {
-        let second = ExternalDisplay(id: CGDirectDisplayID(8), name: "Second Panel")
+        let second = BrightnessDisplay(id: CGDirectDisplayID(8), name: "Second Panel")
         let backend = FakeBackend(displays: [testDisplay, second])
         let controller = BrightnessController(backend: backend)
         await controller.startIfNeeded()

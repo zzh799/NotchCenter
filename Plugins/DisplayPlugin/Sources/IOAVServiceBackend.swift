@@ -20,13 +20,14 @@ import IOKit
 // IOAVServiceCreate / IOAVServiceCreateWithService / IOAVServiceReadI2C /
 // IOAVServiceWriteI2C 与 CoreDisplay_DisplayCreateInfoDictionary 均为未公开
 // 符号，经 dlopen/dlsym 运行时解析（与 MediaControlsPlugin 的 MediaRemoteSession
-// 同一封装形态，是插件内唯一的私有 API 接触面）；x86_64 切片没有这些符号，
-// `isAvailable()` 天然为 false，由 `DisplayDDC.makeBackend()` 回退 IOI2CBackend。
+// 同一封装形态；插件内的私有 API 接触面共两处，另一处是内建屏的
+// SystemBrightnessBackend）；x86_64 切片没有这些符号，`isAvailable()` 天然为
+// false，由 `DDCBackendFactory.make()` 回退 IOI2CBackend。
 // 注意：`CoreDisplay_DisplayCreateInfoDictionary` 的宿主框架随系统版本漂移
 // （macOS 14 及更早 CoreDisplay → macOS 15 起 DisplayServices 承接），
 // 真机（macOS 15.6, Apple Silicon）已验证枚举 + 读 + 回写同值全链路可用。
 
-final class IOAVServiceBackend: DisplayDDCBackend, @unchecked Sendable {
+final class IOAVServiceBackend: DisplayBrightnessBackend, @unchecked Sendable {
     private static let ddcWait: UInt32 = 10_000 // µs，m1ddc DDC_WAIT
     private static let mcdpReadWait: UInt32 = 50_000 // µs，m1ddc DDC_MCDP_READ_WAIT
     private static let chipAddressDefault: UInt32 = 0x37
@@ -125,7 +126,7 @@ final class IOAVServiceBackend: DisplayDDCBackend, @unchecked Sendable {
 
     // MARK: 枚举
 
-    func listDisplays() async -> [ExternalDisplay] {
+    func listDisplays() async -> [BrightnessDisplay] {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
                 continuation.resume(returning: enumerate())
@@ -133,27 +134,16 @@ final class IOAVServiceBackend: DisplayDDCBackend, @unchecked Sendable {
         }
     }
 
-    private func enumerate() -> [ExternalDisplay] {
-        var ids = [CGDirectDisplayID](repeating: 0, count: 16)
-        var count: UInt32 = 0
-        guard CGGetOnlineDisplayList(UInt32(ids.count), &ids, &count) == .success else { return [] }
+    private func enumerate() -> [BrightnessDisplay] {
+        let candidates = DisplayListFilter.externalCandidates(DisplayDescriptor.online())
 
-        let candidates = DisplayListFilter.externalCandidates(
-            ids.prefix(Int(count)).map { id in
-                (id: id,
-                 isBuiltin: CGDisplayIsBuiltin(id) != 0,
-                 isMirrored: CGDisplayIsInMirrorSet(id) != 0,
-                 isMain: id == CGMainDisplayID())
-            }
-        )
-
-        var result: [ExternalDisplay] = []
+        var result: [BrightnessDisplay] = []
         var freshTransports: [CGDirectDisplayID: (service: Unmanaged<AnyObject>, chipAddress: UInt32)] = [:]
         for (index, id) in candidates.enumerated() {
             guard let transport = findTransport(displayID: id) else { continue }
             freshTransports[id] = (transport.service, transport.chipAddress)
             let name = transport.productName ?? LF("display.fallback.name", index + 1)
-            result.append(ExternalDisplay(id: id, name: name))
+            result.append(BrightnessDisplay(id: id, name: name))
         }
         // 本轮消失的显示器：释放其 AV 服务引用。
         for (id, transport) in transports where freshTransports[id] == nil {
@@ -286,9 +276,9 @@ final class IOAVServiceBackend: DisplayDDCBackend, @unchecked Sendable {
 
     // MARK: 亮度读写
 
-    func readLuminance(_ display: ExternalDisplay) async throws -> LuminanceReading {
+    func readLuminance(_ display: BrightnessDisplay) async throws -> LuminanceReading {
         try await perform { [self] in
-            guard let transport = transports[display.id] else { throw DDCError.displayGone }
+            guard let transport = transports[display.id] else { throw BrightnessError.displayGone }
             let avService = transport.service.takeUnretainedValue()
             // Get 请求（I2C 写）→ 稍候 → 读 11 字节回复（m1ddc readingOperation）。
             usleep(Self.ddcWait)
@@ -300,7 +290,7 @@ final class IOAVServiceBackend: DisplayDDCBackend, @unchecked Sendable {
                     buffer.baseAddress!, UInt32(request.count))
             }
             guard writeResult == kIOReturnSuccess else {
-                throw DDCError.transportFailed(code: Int(writeResult))
+                throw BrightnessError.transportFailed(code: Int(writeResult))
             }
             usleep(
                 transport.chipAddress == Self.chipAddressMCDP29XX
@@ -313,15 +303,15 @@ final class IOAVServiceBackend: DisplayDDCBackend, @unchecked Sendable {
                     buffer.baseAddress!, replyByteCount)
             }
             guard readResult == kIOReturnSuccess else {
-                throw DDCError.transportFailed(code: Int(readResult))
+                throw BrightnessError.transportFailed(code: Int(readResult))
             }
             return try DDCPacketCodec.decodeReply(Array(reply.prefix(11)), vcp: VCPCode.luminance)
         }
     }
 
-    func writeLuminance(_ display: ExternalDisplay, value: Int) async throws {
+    func writeLuminance(_ display: BrightnessDisplay, value: Int) async throws {
         try await perform { [self] in
-            guard let transport = transports[display.id] else { throw DDCError.displayGone }
+            guard let transport = transports[display.id] else { throw BrightnessError.displayGone }
             let avService = transport.service.takeUnretainedValue()
             let frame = DDCPacketCodec.avServiceBuffer(
                 DDCPacketCodec.setMessage(vcp: VCPCode.luminance, value: UInt16(clamping: value)))
@@ -336,7 +326,7 @@ final class IOAVServiceBackend: DisplayDDCBackend, @unchecked Sendable {
                 }
                 if lastResult == kIOReturnSuccess { return }
             }
-            throw DDCError.transportFailed(code: Int(lastResult))
+            throw BrightnessError.transportFailed(code: Int(lastResult))
         }
     }
 

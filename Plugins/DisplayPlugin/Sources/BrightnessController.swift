@@ -9,7 +9,8 @@ import NotchCenterKit
 // 预览副本（isPreview）不触发枚举与写入。枚举在首个激活副本出现时进行，
 // 显示器插拔 / 屏幕参数变化经 `refresh()` 差量重枚举（DisplayPlugin 监听
 // didChangeScreenParametersNotification 后调用）：消失的屏移除、新增的屏
-// 回读初值、存活屏保留状态不重复回读。
+// 回读初值、存活屏保留状态不重复回读。内建屏与外接屏同列一张表，
+// 差异只在 `BrightnessDisplay.control`（见 BrightnessBackend 文件头）。
 
 /// 单台显示器的可观察亮度状态。
 @MainActor
@@ -19,49 +20,56 @@ final class BrightnessDisplayModel: ObservableObject, Identifiable {
         case probing
         /// 就绪（含回读失败但按缓存 / 50% 回退的情况）。
         case ready
-        /// DDC 写入连续失败，本屏不可调节（不显示行）。
+        /// 写入连续失败，本屏不可调节（不显示行）。
         case failed
     }
 
-    let display: ExternalDisplay
-    /// 亮度百分比 0...100（相对有效 DDC 区间，无自定义即全量程，见有效区间）。
+    let display: BrightnessDisplay
+    /// 亮度百分比 0...100（相对有效区间，无自定义即全量程，见有效区间）。
     @Published var percent: Double = 0
-    /// 显示器亮度量程上限（回读获得，回读失败前按 100）。
+    /// 亮度量程上限（回读获得，回读失败前按 100）。
     @Published var maxLuminance: Int = 100
     @Published var state: State = .probing
-    /// 用户拖动中（区分拖动与程序回写，决定是否触发 DDC 写入）。
+    /// 用户拖动中（区分拖动与程序回写，决定是否触发写入）。
     var isDragging = false
 
     /// 展示排序用标识（display 为不可变 Sendable 值，可非隔离访问）。
     nonisolated var id: CGDirectDisplayID { display.id }
 
-    init(display: ExternalDisplay) {
+    init(display: BrightnessDisplay) {
         self.display = display
     }
 }
 
 @MainActor
 final class BrightnessController: ObservableObject {
-    static let shared = BrightnessController(backend: DisplayDDC.makeBackend())
+    static let shared = BrightnessController(backend: BrightnessBackendFactory.make())
 
-    /// 枚举顺序即展示顺序。
+    /// 本机写入后的静默窗口：期间的系统通知视为自写回声，不回灌（见回灌守卫）。
+    private static let localWriteQuietPeriod: Duration = .milliseconds(250)
+
+    /// 枚举顺序即展示顺序（内建屏在前，见 CompositeBackend）。
     @Published private(set) var orderedIDs: [CGDirectDisplayID] = []
     @Published private(set) var models: [CGDirectDisplayID: BrightnessDisplayModel] = [:]
-    /// 按屏自定义 DDC 写入区间（无条目即全量程；两块共用，见 DDCLuminanceRange）。
+    /// 按屏自定义写入区间（无条目即全量程；两块共用，见 DDCLuminanceRange）。
     @Published private(set) var customRanges: [CGDirectDisplayID: DDCLuminanceRange] = [:]
 
     private var rangeStore: StateStore?
 
-    private let backend: DisplayDDCBackend?
-    private lazy var channel: DDCWriteChannel? = backend.map(DDCWriteChannel.init)
+    private let backend: DisplayBrightnessBackend?
+    private lazy var channel: BrightnessWriteChannel? = backend.map(BrightnessWriteChannel.init)
     private var enumerationTask: Task<Void, Never>?
     private var suspended = false
-    /// 连续写入失败计数（≥2 判定该屏 DDC 不可写，隐藏滑杆行）。
+    /// 系统亮度变化的观察（内建屏）；插件禁用时撤销。
+    private var changeObservation: BrightnessChangeObservation?
+    /// 连续写入失败计数（≥2 判定该屏不可写，隐藏滑杆行）。
     private var writeFailures: [CGDirectDisplayID: Int] = [:]
+    /// 本机最近一次写入时刻：抑制自己写入引发的系统通知回灌（见回灌守卫）。
+    private var lastLocalWrite: [CGDirectDisplayID: ContinuousClock.Instant] = [:]
     /// 内存级最近值缓存：初值回读失败时的回退（不持久化）。
     private var cachedValues: [CGDirectDisplayID: (percent: Double, max: Int)] = [:]
 
-    init(backend: DisplayDDCBackend?) {
+    init(backend: DisplayBrightnessBackend?) {
         self.backend = backend
     }
 
@@ -141,6 +149,8 @@ final class BrightnessController: ObservableObject {
 
     /// 首个激活副本出现时枚举显示器并回读初值；幂等、可重入（多屏并发调用安全）。
     func startIfNeeded() async {
+        // 已有枚举结果时也要经过这里：插件禁用—启用往返会撤销观察，本条是重建入口。
+        ensureSystemBrightnessObservation()
         if let task = enumerationTask {
             await task.value
             return
@@ -175,6 +185,7 @@ final class BrightnessController: ObservableObject {
             guard let model = models[display.id], model.state != .ready else { continue }
             probe(model, backend: backend)
         }
+        ensureSystemBrightnessObservation()
     }
 
     /// 显示器热插拔 / 屏幕参数变化后的差量刷新：重新枚举并按 id 增删模型，
@@ -184,10 +195,46 @@ final class BrightnessController: ObservableObject {
         await runEnumeration()
     }
 
+    /// 建立内建屏的系统亮度观察（幂等）：枚举结果里出现系统通道的屏时注册一次。
+    /// 撤销后由 `startIfNeeded` / `runEnumeration` / `resume` 三处任一处重建，
+    /// 故禁用—启用的往返不需要额外状态。
+    private func ensureSystemBrightnessObservation() {
+        guard changeObservation == nil, !suspended, let backend else { return }
+        guard orderedIDs.contains(where: { models[$0]?.display.control == .system }) else { return }
+        changeObservation = backend.observeBrightnessChanges { [weak self] displayID, brightness in
+            Task { @MainActor in
+                self?.applySystemBrightness(displayID: displayID, brightness: brightness)
+            }
+        }
+    }
+
+    /// 系统侧（亮度键 / 自动调节 / 其它 App）改了内建屏亮度：把新值回灌到滑杆。
+    ///
+    /// 两条抑制都必须有：本机写入**同样**触发这条通知，无脑回灌会把拖动中的
+    /// 滑杆从用户手边拽回（滑杆位置与用户手指脱钩）；合并通道的尾随写入则会在
+    /// 用户已松手的窗口里把滑杆拉回上一笔值。故拖动中一律丢弃，本机写入后
+    /// `localWriteQuietPeriod` 内也丢弃。
+    private func applySystemBrightness(displayID: CGDirectDisplayID, brightness: Double) {
+        guard !suspended, let model = models[displayID], model.display.control == .system
+        else { return }
+        guard !model.isDragging else { return }
+        if let lastWrite = lastLocalWrite[displayID],
+           ContinuousClock.now - lastWrite < Self.localWriteQuietPeriod
+        {
+            return
+        }
+        model.maxLuminance = SystemBrightnessMath.fullScale
+        let bounds = effectiveBounds(for: displayID, maxLuminance: model.maxLuminance)
+        model.percent = Self.percent(
+            value: SystemBrightnessMath.raw(fromBrightness: brightness),
+            lowerBound: bounds.lower, upperBound: bounds.upper)
+        cachedValues[displayID] = (model.percent, model.maxLuminance)
+    }
+
     /// 初值回读：300ms 超时，失败回退内存缓存或 50%（部分屏不支持回读，
     /// 回读失败不代表不可调节——那是写入连续失败的判定）。
     /// 成功时按有效区间反算百分比（无自定义即全量程）。
-    private func probe(_ model: BrightnessDisplayModel, backend: DisplayDDCBackend) {
+    private func probe(_ model: BrightnessDisplayModel, backend: DisplayBrightnessBackend) {
         let display = model.display
         Task {
             do {
@@ -214,13 +261,14 @@ final class BrightnessController: ObservableObject {
     func requestWrite(_ model: BrightnessDisplayModel, percent: Double) {
         guard !suspended, let channel else { return }
         // 屏已从枚举结果移除（拔出）时丢弃尾随写入：不再对消失的 transport
-        // 发起无意义 DDC IO（后端会抛 displayGone，重复失败计数也无益）。
+        // 发起无意义 IO（后端会抛 displayGone，重复失败计数也无益）。
         guard models[model.display.id] != nil else { return }
         let clamped = min(max(percent, 0), 100)
         model.percent = clamped
         let bounds = effectiveBounds(for: model.display.id, maxLuminance: model.maxLuminance)
         let value = Self.ddcValue(percent: clamped, lowerBound: bounds.lower, upperBound: bounds.upper)
         cachedValues[model.display.id] = (clamped, model.maxLuminance)
+        lastLocalWrite[model.display.id] = .now
         let display = model.display
         Task {
             let ok = await channel.submit(WriteRequest(display: display, value: value))
@@ -242,12 +290,17 @@ final class BrightnessController: ObservableObject {
 
     func suspend() {
         suspended = true
+        // 撤销系统亮度观察：禁用期间不再接系统通知（`resume` / 下一次枚举会重建）。
+        changeObservation?.invalidate()
+        changeObservation = nil
         Task { await channel?.cancel() }
     }
 
     /// 插件重新启用后恢复写入通道；下一次块出现会按需重新枚举。
     func resume() {
         suspended = false
+        // 已挂载的块不会重跑 `.task`，禁用的观察要在这里补回来（枚举仍是首次的入口）。
+        ensureSystemBrightnessObservation()
         Task { await channel?.resume() }
     }
 
