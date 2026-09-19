@@ -6,22 +6,24 @@ struct TabPagerControl: View {
     let activeTabID: UUID
     let editorInteractionState: EditorInteractionState
     let onSelectTab: (UUID) -> Void
-    /// 新建笔记入口：由所属块实例提供（创建 + 定向记忆 + 挂起焦点），返回新标签 ID。
-    let onCreateNote: () -> UUID
+    /// 圆点换行可用的宽度：块宽扣掉两侧内容内边距**与右上角悬浮新建角标的槽位**
+    /// （角标见 `NotesBlockView`）。槽位恒留——角标只在悬浮时进视图树，若让圆点
+    /// 铺满整行，悬浮瞬间圆点就被浮动角标压住（同「角标必须落在自身命中区内」的
+    /// 教训，见抽屉分页文档）。
     let availableWidth: CGFloat
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            // 左侧：页面指示器圆点（多标签时自动换行，与旧行为一致）
+            // 页面指示器圆点（多标签时自动换行，与旧行为一致）
             WrappingHStack(
-                availableWidth: max(availableWidth - 34, 160),
+                availableWidth: availableWidth,
                 horizontalSpacing: 6,
                 verticalSpacing: 4
             ) {
                 ForEach(store.tabs) { tab in
                     let isSelected = tab.id == activeTabID
                     Button {
-                        rememberCurrentSelection()
+                        editorInteractionState.commitSelection(to: store, tabID: activeTabID)
                         withAnimation(tabSwitchAnimation) {
                             onSelectTab(tab.id)
                         }
@@ -51,7 +53,7 @@ struct TabPagerControl: View {
                     )
                     .contextMenu {
                         Button(role: .destructive) {
-                            rememberCurrentSelection()
+                            editorInteractionState.commitSelection(to: store, tabID: activeTabID)
                             withAnimation(tabSwitchAnimation) {
                                 store.removeTab(tab.id)
                             }
@@ -64,28 +66,6 @@ struct TabPagerControl: View {
             }
 
             Spacer(minLength: 0)
-
-            // 右侧：新建按钮
-            Button {
-                rememberCurrentSelection()
-                let newTabID = onCreateNote()
-                withAnimation(tabSwitchAnimation) {
-                    onSelectTab(newTabID)
-                }
-            } label: {
-                Image(systemName: "plus")
-                    .font(NotchTokens.Text.system(12, weight: .semibold))
-                    .foregroundStyle(NotchTokens.Foreground.hover)
-                    .frame(width: 24, height: 24)
-                    .background(
-                        Circle()
-                            .fill(NotchTokens.Surface.track)
-                    )
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(L("notes.newNote"))
-            .accessibilityLabel(L("notes.newNote"))
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 2)
@@ -94,11 +74,6 @@ struct TabPagerControl: View {
 
     private var tabSwitchAnimation: Animation {
         NotchTokens.Motion.tabSwitch
-    }
-
-    private func rememberCurrentSelection() {
-        guard let range = editorInteractionState.currentSelectionRange() else { return }
-        store.updateSelection(for: activeTabID, range: range)
     }
 }
 

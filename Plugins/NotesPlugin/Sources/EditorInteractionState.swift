@@ -141,6 +141,14 @@ final class EditorInteractionState: ObservableObject {
         return safeSelectedRange(in: textView)
     }
 
+    /// 把编辑器当前选区写回 store 上某个标签页——**离开该标签之前**的收尾。
+    /// 切标签与新建笔记两条路径都要做，故收敛在这一处（漏掉就是回来时选区
+    /// 落在文档开头）。`textView` 未 bind 时无事可做。
+    func commitSelection(to store: NotesStore, tabID: UUID) {
+        guard let range = currentSelectionRange() else { return }
+        store.updateSelection(for: tabID, range: range)
+    }
+
     func hasKeyboardFocus() -> Bool {
         guard let textView, let window = textView.window else { return false }
         return window.firstResponder === textView

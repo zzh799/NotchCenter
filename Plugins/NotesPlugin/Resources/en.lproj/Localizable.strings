@@ -5,11 +5,6 @@
 "notes.block.notebook" = "Notebook";
 "notes.newNote" = "New Note";
 
-/* 设置界面 */
-"notes.count.one" = "%d note";
-"notes.count.other" = "%d notes";
-"notes.settings.description" = "Markdown notes with TextKit 2 rendering. Images are stored inside the plugin's data directory.";
-
 /* 标签页控制 */
 "notes.tab.current" = "Current note: %@";
 "notes.tab.open" = "Open note: %@";

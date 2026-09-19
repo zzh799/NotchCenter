@@ -175,7 +175,7 @@
 
 1. **CompactNotchView（紧凑刘海）**：透明命中区覆盖刘海；`click` 模式下悬停时显示一条 48×2 的胶囊指示器（`white.opacity(0.72)` + 微光）。
 2. **NotebookView（展开抽屉）**：`TopAttachedRoundedShape` 遮罩；内含 `TabPagerControl` + `MarkdownEditorPanel` + `FileShelfView`；强制深色。
-3. **TabPagerControl（标签页）**：自动换行的圆点（每笔记一个），选中态为更大更亮的白点 + 外发光；右侧「+」新建笔记；支持右键删除（仅剩 1 个时禁用）。
+3. **TabPagerControl（标签页）**：自动换行的圆点（每笔记一个），选中态为更大更亮的白点 + 外发光；支持右键删除（仅剩 1 个时禁用）。**本控件无按钮**：右侧恒留 34pt 空槽（悬浮新建角标的占位），新建入口在块级右上角悬浮角标（见 §9《组件默认圆形按钮》）。
 4. **MarkdownEditorPanel**：原生 `NSTextView`（`MarkdownEngine`）+ 1px 分隔线 + `MarkdownShortcutToolbar`。
 5. **MarkdownShortcutToolbar**：命令按钮（bold/italic/strikethrough/inlineCode/link/quote/unorderedList/orderedList/todoList）+ `KeepAwakeButton` + `SettingsMenu`。
 6. **FileShelfView（文件暂存区）**：横向滚动 chip 列表，支持拖出到 Finder/应用、框选（marquee）、拖入高亮、QuickLook 预览（空格）；不可用文件显示橙色角标。
@@ -196,7 +196,9 @@
 
 ### 组件默认圆形按钮（Kit `IconCircleButton` / `IconCircleBadge`）
 
-圆形角标式按钮的唯一外观基元：半透明圆形底衬（常态 `white 0.14` / 悬停 `0.28`）+ 发丝描边（`0.25` / `0.55`）+ 白色符号，悬停增亮并切换手型光标，直径基准 22pt。编辑模式角标（设置 / 移除 / 缩放握把）与插件块内的圆形动作按钮（如用量卡右上角刷新）共用，任何落位不得各自重画。
+圆形角标式按钮的唯一外观基元：半透明圆形底衬（常态 `white 0.14` / 悬停 `0.28`）+ 发丝描边（`0.25` / `0.55`）+ 白色符号，悬停增亮并切换手型光标，直径基准 22pt。编辑模式角标（设置 / 移除 / 缩放握把）与插件块内的圆形动作按钮（如用量卡右上角刷新、镜子块右上角启停、笔记块右上角新建、定时命令块右上角新建）共用，任何落位不得各自重画。
+
+**块内动作角标的统一落位**：块级 `.overlay(alignment: .topTrailing)` + `padding(6)`（与宿主编辑角标同一环）+ `if isHovering` + `.transition(.opacity)` + `NotchTokens.Motion.hover`——默认隐藏、指针悬浮本块才浮出。角标必须在块的悬停命中区内且**不单列 `BlockProbe`**（探针做互不重叠判定，详见[插件开发约定](agents/插件开发约定.md)）。
 
 ### 抽屉块 chrome
 

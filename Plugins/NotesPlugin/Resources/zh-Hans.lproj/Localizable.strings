@@ -5,11 +5,6 @@
 "notes.block.notebook" = "笔记本";
 "notes.newNote" = "新建笔记";
 
-/* 设置界面 */
-"notes.count.one" = "%d 条笔记";
-"notes.count.other" = "%d 条笔记";
-"notes.settings.description" = "基于 TextKit 2 渲染的 Markdown 笔记。图片保存在插件的数据目录内。";
-
 /* 标签页控制 */
 "notes.tab.current" = "当前笔记：%@";
 "notes.tab.open" = "打开笔记：%@";

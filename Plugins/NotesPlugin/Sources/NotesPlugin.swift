@@ -6,6 +6,10 @@ import SwiftUI
 /// 「新建笔记」一键入口统一为**快捷按钮**（`notes.compact`，快速区与按钮盒
 /// 均可放；宿主统一标准样式渲染）；抽屉笔记本块（多标签 Markdown 编辑器）
 /// 仍以组件块提供。
+///
+/// 本插件**不提供设置界面**：笔记块的设置项只有「条数 + 新建入口」这类无配置
+/// 价值的展示，而宿主左侧齿轮与块内控件是重复入口（用户裁定撤掉）。不声明
+/// `settingsView` 即无齿轮、无 `SettingPopover` 入口。
 @objc(NotesPlugin) @MainActor public final class NotesPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
     /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe；几何区带镜像 NotebookBlockView /
     /// MarkdownEditorViews 的布局常量——改动布局时同步这里）。
@@ -13,6 +17,8 @@ import SwiftUI
     /// 文本区下限 120pt（editorHeight clamp）+ 底栏 38+1（toolbar + separator）。
     /// 竖轴总和 201 必须 ≤ minSize.height；违规说明块缩到比自身结构还矮，会向
     /// 邻居溢出（宿主卡片不裁切）。
+    /// 右上角悬浮的新建角标**不单列探针**：它 34pt 见方、恒落在分页条那条带内
+    /// （规则与理由见 `docs/agents/插件开发约定.md`「块内悬浮角标不单列 BlockProbe」）。
     private static func notesLayoutProbes(for size: CGSize) -> [BlockProbe] {
         let pagerHeight: CGFloat = 34
         let spacing: CGFloat = 8
@@ -62,15 +68,6 @@ import SwiftUI
             }
         )
     ]
-
-    public var settingsView: (@MainActor (PluginSettingsContext) -> AnyView)? {
-        { context in
-            AnyView(NotesSettingsView(
-                store: NotesModel.shared.resolve(stateStore: context.stateStore),
-                editorInteractionState: NotesModel.shared.editorInteractionState
-            ))
-        }
-    }
 
     public var menuItems: [PluginMenuItem] {
         [
@@ -140,8 +137,6 @@ final class NotesModel {
     private(set) var imageStore: NotesImageStore?
     /// 注入的插件状态存储（持久化每个放置实例的标签页选择）。
     private var stateStore: StateStore?
-    /// 默认编辑器交互状态（设置界面/菜单等无放置上下文的入口使用）。
-    let editorInteractionState = EditorInteractionState()
     /// placementID → 该实例当前显示的标签页。
     private var activeTabByPlacement: [String: UUID] = [:]
     /// placementID → 该实例在抽屉网格中的纵向位置（originRow / heightRows），
@@ -255,32 +250,5 @@ private struct NotesCompactView: View {
             }
             .help(L("notes.newNote"))
             .accessibilityLabel(L("notes.newNote"))
-    }
-}
-
-/// 设置界面（嵌入插件管理窗口）：标签计数与新笔记入口。
-private struct NotesSettingsView: View {
-    @ObservedObject var store: NotesStore
-    let editorInteractionState: EditorInteractionState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // 中英文单复数形式不同，分键处理；中文两键同文。
-            Text(store.tabs.count == 1
-                 ? LF("notes.count.one", store.tabs.count)
-                 : LF("notes.count.other", store.tabs.count))
-                .font(NotchTokens.Text.system(12, weight: .semibold))
-
-            Text(L("notes.settings.description"))
-                .font(NotchTokens.Text.system(11))
-                .foregroundStyle(NotchTokens.Foreground.muted)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Button(L("notes.newNote")) {
-                store.addTab()
-            }
-            .controlSize(.small)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
