@@ -170,22 +170,17 @@ struct TaskFormView: View {
             .pickerStyle(.menu)
             .controlSize(.small)
 
-            HStack(spacing: 6) {
-                switch kind {
-                case .everyMinutes:
-                    stepper(value: $minutes, range: ScheduleRule.minuteStepRange, unit: L("scheduler.unit.minutes"))
-                case .hourly:
-                    stepper(value: $minute, range: 0...59, unit: L("scheduler.unit.minuteOfHour"))
-                case .daily:
-                    timeSteppers
-                case .weekly:
-                    timeSteppers
-                    weekdayPicker
-                case .monthly:
-                    timeSteppers
-                    stepper(value: $day, range: ScheduleRule.dayOfMonthRange, unit: L("scheduler.unit.day"))
+            // 参数行：宽卡一行摆下（时间步进器 + 星期/日），窄卡自动转两行。
+            // 最小块 300×300 给表单卡只有 252pt 宽，而「每周」一行的自然宽约
+            // 317pt（两套步进器 + 七个星期钮），硬排会被卡片边缘裁掉。
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    ruleParameters
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 6) {
+                    ruleParameters
+                }
             }
 
             Text(LF("scheduler.form.nextFire", nextFirePreview))
@@ -196,6 +191,25 @@ struct TaskFormView: View {
                     .font(NotchTokens.Text.caption)
                     .foregroundStyle(SchedulerPalette.timeout)
             }
+        }
+    }
+
+    /// 当前档位要填的参数（各档不同，故抽成独立的 `ViewBuilder` 供两种排布复用）。
+    @ViewBuilder
+    private var ruleParameters: some View {
+        switch kind {
+        case .everyMinutes:
+            stepper(value: $minutes, range: ScheduleRule.minuteStepRange, unit: L("scheduler.unit.minutes"))
+        case .hourly:
+            stepper(value: $minute, range: 0...59, unit: L("scheduler.unit.minuteOfHour"))
+        case .daily:
+            timeSteppers
+        case .weekly:
+            timeSteppers
+            weekdayPicker
+        case .monthly:
+            timeSteppers
+            stepper(value: $day, range: ScheduleRule.dayOfMonthRange, unit: L("scheduler.unit.day"))
         }
     }
 

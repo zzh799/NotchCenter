@@ -15,28 +15,21 @@ import SwiftUI
     /// 打包期最小尺寸遮挡校验探针（Kit `BlockProbe`；几何区带镜像 `TaskListView`
     /// 的布局常量——改动布局时同步这里，数字一律取自 `SchedulerMetrics`）。
     ///
-    /// 区带意图：顶部工具行（新建 / 全局设置）+ 任务列表区（在 `minSize` 下须
-    /// 完整可见 `SchedulerMetrics.visibleRowsAtMinimum` 行）。竖轴总和必须 ≤
-    /// `minSize.height`，违规说明块矮到装不下自己的工具行与几行任务，会向邻居
-    /// 溢出（宿主卡片不裁切）。
+    /// 区带意图：只剩任务列表一条（块内已无工具行）。竖轴总和
+    /// （`padding` + `listMinimumHeight` + `padding`）必须 ≤ `minSize.height`，
+    /// 违规说明块矮到装不下自己声明的最少行数，会向邻居溢出（宿主卡片不裁切）。
+    ///
+    /// 右上角悬浮「+」不单列探针：它必然落在列表区内，而 `BlockSizeVerifier`
+    /// 对探针做**互不重叠**判定，单列会直接判错（同 CameraPlugin 的收敛结论）。
     static func schedulerLayoutProbes(for size: CGSize) -> [BlockProbe] {
         let padding = SchedulerMetrics.padding
-        let contentWidth = max(size.width - padding * 2, 1)
-        let toolbarTop = padding
-        let listTop = padding + SchedulerMetrics.toolbarHeight + SchedulerMetrics.toolbarSpacing
         return [
-            BlockProbe(
-                id: "scheduler.toolbar",
-                rect: CGRect(
-                    x: padding, y: toolbarTop,
-                    width: contentWidth, height: SchedulerMetrics.toolbarHeight
-                )
-            ),
             BlockProbe(
                 id: "scheduler.list",
                 rect: CGRect(
-                    x: padding, y: listTop,
-                    width: contentWidth, height: SchedulerMetrics.listMinimumHeight
+                    x: padding, y: padding,
+                    width: max(size.width - padding * 2, 1),
+                    height: SchedulerMetrics.listMinimumHeight
                 )
             ),
         ]
@@ -47,10 +40,10 @@ import SwiftUI
             id: "command.scheduler",
             displayName: L("scheduler.block.title"),
             kind: .drawer,
-            // 三档往大定是决策 9 的直接后果：历史浮窗卡片尺寸被"卡片 ⊆ 块矩形"
-            // 这条约束夹住（卡片 = 块 − BlockPopover.cardInset），块小了日志就
-            // 没得看；480×340 是"卡片还能当分栏日志查看器用"的地板。
-            minSize: BlockPixelSize(width: 480, height: 340),
+            // 三档：min 300×300 是用户明确要求的下限——卡片尺寸数学随块尺寸走
+            // （卡片 = 块 − cardInset），300×300 下卡片 252×252，历史卡切单栏
+            // 排布、表单卡靠卡片内滚动，功能不残。rec / max 不动：块大日志才好看。
+            minSize: BlockPixelSize(width: 300, height: 300),
             maxSize: BlockPixelSize(width: 960, height: 760),
             recommendedSize: BlockPixelSize(width: 660, height: 460),
             // 大组件不往别人页缝里塞：当前页为空就地占用，否则另开一页。
@@ -65,9 +58,8 @@ import SwiftUI
         )
     ]
 
-    /// 插件级设置（宿主编辑模式齿轮入口）。块内齿轮走同一个视图，但由插件
-    /// 自己调 `SettingPopover` 呈现——`settingsView` 的标准触发点要先进布局
-    /// 编辑模式，改配置的心智不该长在那里（决策 6）。
+    /// 插件级设置（宿主块左上角齿轮入口：悬停即出现，不要求编辑模式）。块内不再
+    /// 有齿轮按钮——它曾是同一份设置的第二个入口，现已由宿主齿轮完全覆盖。
     public var settingsView: (@MainActor (PluginSettingsContext) -> AnyView)? {
         { _ in AnyView(SchedulerSettingsView()) }
     }

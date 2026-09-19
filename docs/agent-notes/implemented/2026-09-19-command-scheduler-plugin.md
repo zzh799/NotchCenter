@@ -112,3 +112,4 @@ cardSize = clamp(理想尺寸, 下限, 块渲染尺寸 − BlockPopover.cardInse
 
 - 2026-09-19: 初稿。九条决策经设计追问逐条敲定；决策 9 的停留区约束由代码勘验（`NotchPanelInteraction` / `BlockPopover`）发现并写入硬约束。
 - 2026-09-19: 实现落地（插件、Kit 加法、单测齐备），状态转 `implemented`；补记输出截断的读取投影细化、规则边界语义、run 生命周期语义，以及发现的 `BlockMinSizeVerificationTests` 幽灵引用缺口。
+- 2026-09-20: 决策 9 的块尺寸与门禁口径被 [2026-09-20-command-scheduler-floating-add](2026-09-20-command-scheduler-floating-add.md) **部分取代**——块内工具行撤销、新建钮改右上角悬浮角标、minSize `480×340` → `300×300`，卡片兜底下限不再是固定 320×200。本 note 的调度/执行/存储决策（1–5、6 的表单落点、7 的列表主视图、8 的失败反馈）全部仍然有效。

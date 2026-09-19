@@ -6,6 +6,10 @@ import SwiftUI
 // 块内只有一层——任务列表。导航两层：块内列表 → 浮窗（run/history）。
 // 启停与「立即运行」内联在行上**不经浮窗**：它们是运行控制而非配置编辑，
 // 「配置去浮窗、控制留块内」这条线要划清楚。点行开历史浮窗，长按直接进编辑表单。
+//
+// 块内无工具行：新建入口是右上角悬浮浮出的圆形「+」（与 ClipboardHistory /
+// CameraMirror 的块内角标同一套交互），插件设置改由宿主齿轮入口
+// （`settingsView` + `DrawerBlockContainer` 的左上角齿轮）承担。
 struct TaskListView: View {
     let context: BlockContext
 
@@ -16,50 +20,42 @@ struct TaskListView: View {
     /// `layoutEngine.frame(for:)`（网格本地坐标），只有编辑模式的齿轮设置路径
     /// 才传真全局 frame，同一字段两义（见 Agent Note 决策 9）。
     @State private var blockFrame: CGRect = .zero
+    /// 指针是否在块上：决定右上角「+」的浮出。
+    @State private var isHovering = false
 
     var body: some View {
         BlockCard { _ in
-            VStack(alignment: .leading, spacing: SchedulerMetrics.toolbarSpacing) {
-                toolbar
-                listOrEmptyState
-            }
-            .padding(SchedulerMetrics.padding)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            listOrEmptyState
+                .padding(SchedulerMetrics.padding)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        // 新建钮：与 ClipboardHistory / CameraMirror 的块内角标同一套交互——
+        // 默认隐藏，鼠标悬浮组件才浮出，落位与宿主编辑角标同一环（`padding(6)`）。
+        .overlay(alignment: .topTrailing) {
+            if isHovering {
+                addButton
+                    .padding(SchedulerMetrics.controlInset)
+                    .transition(.opacity)
+            }
+        }
+        .onHover { isHovering = $0 }
+        .animation(NotchTokens.Motion.hover, value: isHovering)
         .background(BlockGlobalFrameReader { blockFrame = $0 })
     }
 
-    // MARK: 工具行
+    // MARK: 新建钮
 
-    private var toolbar: some View {
-        HStack(spacing: 6) {
-            Text(L("scheduler.block.title"))
-                .font(NotchTokens.Text.toolbarSmall)
-                .foregroundStyle(NotchTokens.Foreground.secondary)
-            Text("\(core.tasks.count)")
-                .font(NotchTokens.Text.caption)
-                .foregroundStyle(NotchTokens.Foreground.muted)
-            Spacer(minLength: 0)
-            toolbarButton(symbol: "plus", help: L("scheduler.action.newTask")) {
-                presentEditor(for: nil)
-            }
-            toolbarButton(symbol: "gearshape", help: L("scheduler.action.settings")) {
-                presentGlobalSettings()
-            }
+    /// 右上角「+」：组件默认圆形按钮（Kit `IconCircleButton`，直径 22、自带
+    /// 悬停增亮 / 手型光标 / help / a11y），打开空表单。
+    private var addButton: some View {
+        IconCircleButton(
+            systemImage: "plus",
+            helpText: L("scheduler.action.newTask")
+        ) {
+            presentEditor(for: nil)
         }
-        .frame(height: SchedulerMetrics.toolbarHeight)
-    }
-
-    private func toolbarButton(symbol: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(NotchTokens.Text.system(11, weight: .semibold))
-                .foregroundStyle(NotchTokens.Foreground.secondary)
-                .frame(width: 20, height: 20)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
+        // 过渡副本护栏：滑动切页的预览副本不得真的弹浮窗（同 CameraMirror）。
+        .disabled(context.layoutInfo.isPreview)
     }
 
     // MARK: 列表
@@ -187,7 +183,7 @@ struct TaskListView: View {
     /// 历史浮窗（run 列表 + 输出）。
     private func presentHistory(for task: ScheduledTask) {
         guard blockFrame != .zero else { return }
-        let size = popoverCardSize(ideal: Self.historyIdealSize)
+        let size = popoverCardSize(ideal: SchedulerPopoverMetrics.historyIdeal)
         BlockPopover.shared.present(
             anchoredTo: blockFrame,
             cardSize: size,
@@ -206,15 +202,15 @@ struct TaskListView: View {
 
     /// 任务编辑表单（决策 6：走宿主的 `SettingPopover`）。
     ///
-    /// 入口有两处，共用同一份表单：这里（块内长按 / 新建按钮）与宿主编辑模式
-    /// 齿轮（插件级 `settingsView`）。宿主对 `settingsView` 的标准触发点是
-    /// 「编辑模式下抽屉块左上角的齿轮」——让用户为了改一个命令先切进布局编辑
-    /// 模式是错的，所以块内必须有直达入口。
+    /// 入口有两处，共用同一份表单：这里（块内长按行 / 右上角悬浮「+」）与宿主
+    /// 块左上角的齿轮（插件级 `settingsView`，呈现同一份插件设置）。块内的新建
+    /// 入口是必需的——行的长按触发器挂在行上，空态与卡片空白区没有触发器，
+    /// 没有右上角「+」就无从创建第一条任务。
     private func presentEditor(for task: ScheduledTask?) {
         guard blockFrame != .zero else { return }
         SettingPopover.shared.present(
             anchoredTo: blockFrame,
-            cardSize: popoverCardSize(ideal: Self.formIdealSize),
+            cardSize: popoverCardSize(ideal: SchedulerPopoverMetrics.formIdeal),
             // 表单就是拿来填的：打开即聚焦名称框，不必先点一下输入框。
             focusContent: true,
             title: task == nil ? L("scheduler.form.newTitle") : L("scheduler.form.editTitle")
@@ -237,39 +233,15 @@ struct TaskListView: View {
         }
     }
 
-    /// 插件级设置（全局守卫超时默认值 + 维护动作）。
-    private func presentGlobalSettings() {
-        guard blockFrame != .zero else { return }
-        SettingPopover.shared.present(
-            anchoredTo: blockFrame,
-            cardSize: popoverCardSize(ideal: CGSize(width: 340, height: 260)),
-            title: L("scheduler.settings.title")
-        ) {
-            SchedulerSettingsView()
-        }
-    }
-
     /// 卡片尺寸 = 块渲染尺寸 − `BlockPopover.cardInset`（决策 9）。
     ///
     /// 这么算出来的卡片让**浮窗窗口恰好与块矩形重合**（窗口 = 卡片 + 留白），
     /// 于是卡片既不越出块、透明留白也正好压在块边界上：鼠标无论停在卡片哪里
-    /// 都在抽屉的「停留区」内，浮窗不会被抽屉收起带走。下限 320×200 只为
-    /// 极端退化尺寸兜底（块最小 480×340，正常路径不会触到）。
+    /// 都在抽屉的「停留区」内，浮窗不会被抽屉收起带走。尺寸数学收敛在
+    /// `SchedulerPopoverMetrics.cardSize`（纯函数、单测覆盖），这里只负责喂块尺寸。
     private func popoverCardSize(ideal: CGSize) -> CGSize {
-        let available = CGSize(
-            width: blockFrame.width - BlockPopover.cardInset,
-            height: blockFrame.height - BlockPopover.cardInset
-        )
-        return CGSize(
-            width: max(min(ideal.width, available.width), 320),
-            height: max(min(ideal.height, available.height), 200)
-        )
+        SchedulerPopoverMetrics.cardSize(ideal: ideal, blockSize: blockFrame.size)
     }
-
-    /// 历史浮窗理想尺寸（上限；实际取块尺寸与它的较小者）。
-    static let historyIdealSize = CGSize(width: 860, height: 660)
-    /// 编辑表单理想尺寸：够放"命令多行 + cwd + env + 调度 + 超时"一屏不滚。
-    static let formIdealSize = CGSize(width: 460, height: 560)
 }
 
 // MARK: - 块全局 frame 捕获

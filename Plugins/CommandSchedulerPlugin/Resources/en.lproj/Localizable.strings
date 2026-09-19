@@ -4,7 +4,7 @@
 "scheduler.block.title" = "Scheduled commands";
 "scheduler.task.untitled" = "Untitled task";
 "scheduler.empty.title" = "No scheduled commands";
-"scheduler.empty.hint" = "Tap + to add one. Commands run only while NotchCenter is running.";
+"scheduler.empty.hint" = "Hover the block, then click + in its top-right corner. Commands run only while NotchCenter is running.";
 
 /* Actions */
 "scheduler.action.newTask" = "New task";
@@ -12,7 +12,6 @@
 "scheduler.action.toggle" = "Enable or pause this task";
 "scheduler.action.edit" = "Edit";
 "scheduler.action.close" = "Close";
-"scheduler.action.settings" = "Settings";
 
 /* Schedule summary */
 "scheduler.rule.everyMinutes" = "Every %d min";
@@ -103,7 +102,7 @@
 "scheduler.unit.seconds" = "s";
 
 /* Plugin settings */
-"scheduler.settings.title" = "Settings";
+/* Plugin settings (entered from the host gear; the title comes from the host) */
 "scheduler.settings.description" = "Commands run inside the NotchCenter process. If NotchCenter is not running, nothing fires — missed times are counted, not replayed. The shell is a non-login /bin/zsh with an explicit PATH.";
 "scheduler.settings.defaultTimeout" = "Default guard timeout";
 "scheduler.settings.minutes" = "%d min";

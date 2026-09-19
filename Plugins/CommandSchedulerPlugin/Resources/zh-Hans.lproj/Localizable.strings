@@ -4,7 +4,7 @@
 "scheduler.block.title" = "定时命令";
 "scheduler.task.untitled" = "未命名任务";
 "scheduler.empty.title" = "还没有定时命令";
-"scheduler.empty.hint" = "点 + 新建一条。命令只在 NotchCenter 运行时执行。";
+"scheduler.empty.hint" = "悬浮本组件，点右上角 + 新建一条。命令只在 NotchCenter 运行时执行。";
 
 /* 动作 */
 "scheduler.action.newTask" = "新建任务";
@@ -12,7 +12,6 @@
 "scheduler.action.toggle" = "启用或暂停该任务";
 "scheduler.action.edit" = "编辑";
 "scheduler.action.close" = "关闭";
-"scheduler.action.settings" = "设置";
 
 /* 调度摘要 */
 "scheduler.rule.everyMinutes" = "每 %d 分钟";
@@ -102,8 +101,7 @@
 "scheduler.unit.day" = "日";
 "scheduler.unit.seconds" = "秒";
 
-/* 插件设置 */
-"scheduler.settings.title" = "设置";
+/* 插件设置（入口是宿主块左上角齿轮，标题由宿主填，故无标题键） */
 "scheduler.settings.description" = "命令在 NotchCenter 进程内执行。宿主没运行时不会执行任何任务——错过的时刻只计数，不补跑。shell 是非登录的 /bin/zsh，PATH 由插件显式注入。";
 "scheduler.settings.defaultTimeout" = "默认守卫超时";
 "scheduler.settings.minutes" = "%d 分钟";

@@ -5,8 +5,9 @@ import SwiftUI
 // MARK: - 历史浮窗：run 列表 + 输出（决策 7 / 9）
 //
 // 块内不该塞日志——`BlockPopover` 卡片尺寸受块尺寸约束（决策 9），块只负责
-// 任务列表，完整历史进这里。左侧 run 列表、右侧选中 run 的输出，顶部一行
-// 元信息 + 动作（立即运行 / 编辑）。
+// 任务列表，完整历史进这里。宽卡两栏（左侧 run 列表、右侧选中 run 的输出），
+// 窄卡切单栏（列表在上、输出在下，见 `isNarrow`）；顶部一行元信息 + 动作
+// （立即运行 / 编辑）。
 //
 // 运行中的 run 边跑边读文件尾（决策 5 的副产品：watch 语义），跑完读文件
 // 头尾投影（`RunStore.runOutput`）。
@@ -36,15 +37,25 @@ struct HistoryPopoverView: View {
         VStack(spacing: 0) {
             header
             hairline
-            HStack(spacing: 0) {
+            if isNarrow {
+                // 单栏：记录列表在上、选中记录的输出在下。两栏在窄卡里会只剩
+                // 几十点给输出（左栏有 148pt 下限），等于把日志区挤没。
                 runList
-                    .frame(width: listWidth)
-                Rectangle()
-                    .fill(NotchTokens.Hairline.divider)
-                    .frame(width: 1)
+                    .frame(height: narrowListHeight)
+                hairline
                 detail
+                    .frame(maxHeight: .infinity)
+            } else {
+                HStack(spacing: 0) {
+                    runList
+                        .frame(width: listWidth)
+                    Rectangle()
+                        .fill(NotchTokens.Hairline.divider)
+                        .frame(width: 1)
+                    detail
+                }
+                .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
         }
         .frame(width: cardSize.width, height: cardSize.height)
         .onReceive(tick) { _ in refreshLiveOutput() }
@@ -53,7 +64,18 @@ struct HistoryPopoverView: View {
         .onChange(of: selectedRun?.id) { _, _ in refreshLiveOutput() }
     }
 
-    /// 左栏宽度：窄卡片下也要给输出留够地方（卡片最窄约 432pt）。
+    /// 卡片窄于阈值即切单栏。阈值取 420：再窄时两栏的左栏已经贴着 148pt 下限，
+    /// 输出栏剩不到 250pt，而 `minSize` 300×300 的块给出的卡片只有 252×252。
+    private var isNarrow: Bool {
+        cardSize.width < SchedulerPopoverMetrics.twoColumnMinWidth
+    }
+
+    /// 单栏下记录列表占的高度，其余全部给输出。
+    private var narrowListHeight: CGFloat {
+        max(cardSize.height * 0.34, 64)
+    }
+
+    /// 左栏宽度：窄卡片下也要给输出留够地方（两栏分支的最小卡片宽 420pt）。
     private var listWidth: CGFloat {
         min(max(cardSize.width * 0.34, 148), 240)
     }

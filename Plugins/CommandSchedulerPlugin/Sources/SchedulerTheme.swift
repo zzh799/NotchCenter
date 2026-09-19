@@ -43,24 +43,66 @@ enum SchedulerPalette {
 enum SchedulerMetrics {
     /// 块内边距。
     static let padding: CGFloat = NotchTokens.Space.cardPadding
-    /// 工具行高度。
-    static let toolbarHeight: CGFloat = 24
-    /// 工具行与列表的间距。
-    static let toolbarSpacing: CGFloat = 6
+    /// 块内唯一控件（右上角悬浮「+」）相对块边缘的内缩：与宿主编辑角标同一环
+    /// （`padding(6)`），同 ClipboardHistory / CameraPlugin 的块内角标。
+    static let controlInset: CGFloat = 6
     /// 任务行高度。
     static let rowHeight: CGFloat = 52
     /// 任务行间距。
     static let rowSpacing: CGFloat = 6
     /// 任务列表在最小尺寸下必须完整可见的行数（探针据此声明）。
-    static let visibleRowsAtMinimum = 3
+    ///
+    /// 4 是 300pt 高（`minSize`）的几何上限：内容盒 300 − `padding`×2 = 280，
+    /// 4 行 = 4×52 + 3×6 = 226 装得下，5 行 = 290 越界。
+    static let visibleRowsAtMinimum = 4
     /// 空态占位高度。
     static let emptyStateHeight: CGFloat = 64
-    /// 单行文本行高（探针推算用）。
-    static let textLineHeight: CGFloat = 15
 
     /// 最小尺寸下任务列表区所需高度。
     static var listMinimumHeight: CGFloat {
         CGFloat(visibleRowsAtMinimum) * rowHeight
             + CGFloat(visibleRowsAtMinimum - 1) * rowSpacing
+    }
+}
+
+/// 浮窗卡片尺寸（决策 9 的「卡片 ⊆ 块」不变量）。
+///
+/// 卡片尺寸必须夹在块渲染尺寸 − `BlockPopover.cardInset` 之内，理由见
+/// `BlockPopover.cardInset` 的文档（停留区只看抽屉可见矩形）。收进本枚举是为了
+/// 让「三张卡在 `minSize` 下都装得进块」这条不变量能被单测直接验（不需要起视图）。
+///
+/// `@MainActor` 是 `BlockPopover.cardInset` 的执行者要求（Kit 的 `BlockPopover`
+/// 整体主执行者隔离）——不为了让本枚举"看起来纯"而把 48 抄成插件内字面量，
+/// 那正是「同一事实两处写」的违例。
+@MainActor
+enum SchedulerPopoverMetrics {
+    /// 历史卡理想尺寸（上限；实际取块尺寸与它的较小者）。
+    static let historyIdeal = CGSize(width: 860, height: 660)
+    /// 编辑表单卡理想尺寸：够放"命令多行 + cwd + env + 调度 + 超时"一屏不滚。
+    static let formIdeal = CGSize(width: 460, height: 560)
+    /// 插件设置卡理想尺寸（块内不再有齿轮入口，仅用于宿主齿轮路径与不变量校验）。
+    static let settingsIdeal = CGSize(width: 340, height: 260)
+
+    /// 卡片兜底下限——**必须 ≤ minSize − cardInset**（300 − 48 = 252），否则
+    /// 下限会在最小块上生效，把卡片撑出块矩形，鼠标再也够不到浮窗边缘。
+    /// 只兜极端退化尺寸（块被拖到比 minSize 还小的一帧）。
+    static let floor = CGSize(width: 200, height: 160)
+    /// 历史卡两栏 → 单栏（列表在上、输出在下）切换阈值。
+    static let twoColumnMinWidth: CGFloat = 420
+
+    /// 卡片尺寸：理想尺寸与可用空间取小，下限兜底但绝不越出可用空间。
+    static func cardSize(ideal: CGSize, blockSize: CGSize) -> CGSize {
+        let available = CGSize(
+            width: blockSize.width - BlockPopover.cardInset,
+            height: blockSize.height - BlockPopover.cardInset
+        )
+        return CGSize(
+            width: axis(ideal.width, available: available.width, floor: floor.width),
+            height: axis(ideal.height, available: available.height, floor: floor.height)
+        )
+    }
+
+    private static func axis(_ ideal: CGFloat, available: CGFloat, floor: CGFloat) -> CGFloat {
+        min(max(ideal, floor), max(available, 0))
     }
 }

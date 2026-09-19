@@ -474,37 +474,61 @@ struct CommandSchedulerBlockTests {
         #expect(violations.isEmpty, "\(block.id) 探针违规：\(violations)")
     }
 
-    @Test("minSize 装得下工具行 + 声明的最少任务行数")
+    @Test("minSize 装得下声明的最少任务行数")
     func minimumSizeFitsDeclaredRows() throws {
         let block = try drawerBlock()
         let minSize = try #require(block.minSize)
+        // 块内已无工具行，竖轴只剩「上内边距 + 列表区 + 下内边距」。
         let required = SchedulerMetrics.padding
-            + SchedulerMetrics.toolbarHeight
-            + SchedulerMetrics.toolbarSpacing
             + SchedulerMetrics.listMinimumHeight
             + SchedulerMetrics.padding
         #expect(
             minSize.height >= required,
-            "minSize \(minSize.height) 低于「工具行 + \(SchedulerMetrics.visibleRowsAtMinimum) 行任务」所需 \(required)"
+            "minSize \(minSize.height) 低于「\(SchedulerMetrics.visibleRowsAtMinimum) 行任务」所需 \(required)"
         )
     }
 
-    @Test("浮窗尺寸约束在 minSize 下成立：卡片 = 块 − cardInset 不会触到兜底下限")
-    func cardFitsInsideBlockAtMinimumSize() throws {
+    @Test("浮窗尺寸在 minSize 下成立：三张卡的尺寸都夹在块矩形内")
+    func cardsFitInsideBlockAtMinimumSize() throws {
         let block = try drawerBlock()
         let minSize = try #require(block.minSize)
-        // 下限兜底一旦生效，"卡片 ⊆ 块"就破了 → 卡片会伸出块、鼠标移不过去
-        // （决策 9 的停留区约束）。所以最小块也必须撑得住下限。
+        // 兜底下限一旦生效，"卡片 ⊆ 块"就破了 → 卡片会伸出块、鼠标移不过去
+        // （决策 9 的停留区约束）。所以兜底下限必须 ≤ minSize − cardInset。
+        let smallestCard = min(minSize.width, minSize.height) - BlockPopover.cardInset
         #expect(
-            minSize.width - BlockPopover.cardInset >= 320,
-            "minSize 宽度过小：卡片会被兜底下限撑出块矩形"
+            SchedulerPopoverMetrics.floor.width <= smallestCard
+                && SchedulerPopoverMetrics.floor.height <= smallestCard,
+            "兜底下限 \(SchedulerPopoverMetrics.floor) 会在 \(minSize) 的块上把卡片撑出块矩形"
         )
-        #expect(
-            minSize.height - BlockPopover.cardInset >= 200,
-            "minSize 高度过小：卡片会被兜底下限撑出块矩形"
-        )
+        // 三张卡（历史 / 表单 / 设置）在最小块上都必须装得进：卡片 + 留白 ≤ 块。
+        for ideal in [
+            SchedulerPopoverMetrics.historyIdeal,
+            SchedulerPopoverMetrics.formIdeal,
+            SchedulerPopoverMetrics.settingsIdeal,
+        ] {
+            let card = SchedulerPopoverMetrics.cardSize(ideal: ideal, blockSize: minSize.size)
+            #expect(
+                card.width + BlockPopover.cardInset <= minSize.width
+                    && card.height + BlockPopover.cardInset <= minSize.height,
+                "理想尺寸 \(ideal) 在 \(minSize) 下算出 \(card)，越出块矩形"
+            )
+        }
         // 浮窗窗口 = 卡片 + 留白，应当恰好与块矩形重合。
         #expect(BlockPopover.cardInset == 48)
+    }
+
+    @Test("块足够大时卡片取理想尺寸，兜底下限不抬高它")
+    func largeBlocksUseIdealCardSize() throws {
+        let block = try drawerBlock()
+        let maxSize = try #require(block.maxSize)
+        for ideal in [
+            SchedulerPopoverMetrics.historyIdeal,
+            SchedulerPopoverMetrics.formIdeal,
+            SchedulerPopoverMetrics.settingsIdeal,
+        ] {
+            let card = SchedulerPopoverMetrics.cardSize(ideal: ideal, blockSize: maxSize.size)
+            #expect(card == ideal, "\(maxSize) 装得下 \(ideal)，却算出 \(card)")
+        }
     }
 }
 

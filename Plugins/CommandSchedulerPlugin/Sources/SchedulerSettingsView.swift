@@ -4,9 +4,9 @@ import SwiftUI
 
 // MARK: - 插件级设置（全局选项 + 维护动作）
 //
-// 挂在插件级 `settingsView` 上（宿主编辑模式齿轮入口）与块内工具行的齿轮按钮
-// （插件自己调 `SettingPopover.shared.present`）。任务本身的配置在
-// `TaskFormView`，这里只放跨任务的东西。
+// 挂在插件级 `settingsView` 上（宿主块左上角齿轮入口：悬停即出现）。块内不再有
+// 齿轮按钮，这块设置只有宿主齿轮一个入口。任务本身的配置在 `TaskFormView`，
+// 这里只放跨任务的东西。
 struct SchedulerSettingsView: View {
     @ObservedObject private var core = SchedulerCore.shared
     @State private var timeoutMinutes: Int = max(SchedulerCore.defaultTimeoutSeconds / 60, 1)
