@@ -3,13 +3,15 @@
 "block.mirror.name" = "镜子";
 
 /* 镜子 */
-"mirror.title" = "镜子";
-"mirror.start" = "点击预览";
-"mirror.pause" = "停止";
-"mirror.resume" = "继续";
+"mirror.start" = "点击打开镜子";
+"mirror.help.start" = "开始预览";
+"mirror.help.resume" = "继续预览";
+"mirror.help.stop" = "停止预览";
+"a11y.mirror" = "摄像头镜子";
 
 /* 权限引导 */
 "gate.openSettings" = "权限管理";
+"gate.openSettings.help" = "在宿主的权限管理面板中开启摄像头权限";
 "gate.camera.title" = "需要摄像头权限";
 "gate.camera.message" = "授予摄像头权限后即可使用镜像预览。";
 "gate.camera.denied.title" = "摄像头权限已被拒绝";

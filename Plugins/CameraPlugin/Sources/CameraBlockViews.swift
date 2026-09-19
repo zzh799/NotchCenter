@@ -6,12 +6,15 @@ import SwiftUI
 // MARK: - 布局常量（探针与视图同源）
 
 enum CameraBlockMetrics {
-    static let inset: CGFloat = 10
-    static let headerHeight: CGFloat = 18
-    static let spacing: CGFloat = 6
-    static let statusRowHeight: CGFloat = 22
-    /// 预览区最小高度（小尺寸下仍要能看到画面）。
-    static let previewMinHeight: CGFloat = 60
+    /// 块内容内边距（对齐 `Space.cardPadding`，与其他官方块同值）。
+    static let inset: CGFloat = NotchTokens.Space.cardPadding
+    /// 预览区圆角。
+    static let previewRadius: CGFloat = NotchTokens.Radius.chip
+    /// 悬停浮出的启停钮内缩：与宿主编辑角标同一环（`padding(6)`），
+    /// 同 ClipboardHistory 的块内角标；直径用 Kit 基元默认的 22pt。
+    static let controlInset: CGFloat = 6
+    /// 未启动态中央提示的图标字号。
+    static let idleSymbolSize: CGFloat = 22
 }
 
 // MARK: - 摄像头镜像块
@@ -21,17 +24,36 @@ struct CameraMirrorBlockView: View {
     let context: BlockContext
     @ObservedObject private var store = CameraStore.shared
 
+    /// 指针是否在块上：决定右上角启停钮的浮出。
+    @State private var isHovering = false
+
     /// 抽屉是否展开。温存让 `onDisappear` 不再表示"用户看不到了"，而摄像头
     /// 会话必须随"看不到"立刻停——否则收起后继续采集、指示灯常亮。
     @Environment(\.isDrawerPresented) private var isDrawerPresented
 
     var body: some View {
-        VStack(alignment: .leading, spacing: CameraBlockMetrics.spacing) {
-            header
+        // 卡片壳归位：宿主 DrawerBlockContainer 只做 clipShape 与编辑态压暗，
+        // 表面（填充/发丝描边）由插件自绘——本块曾漏掉这一步，是 11 个官方
+        // 抽屉块里唯一的样式异类。决策见 Agent Note
+        // 2026-09-20-camera-mirror-block-styling。
+        BlockCard(hoverEffect: false) { _ in
             content
+                .padding(CameraBlockMetrics.inset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(CameraBlockMetrics.inset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // 启停钮：与 ClipboardHistory 的块内角标同一套交互——默认隐藏，鼠标
+        // 悬浮组件才浮出，落位与宿主编辑角标同一环（`padding(6)` 的右上角）。
+        .overlay(alignment: .topTrailing) {
+            if isHovering, store.authorization == .authorized {
+                toggleButton
+                    .padding(CameraBlockMetrics.controlInset)
+                    .transition(.opacity)
+            }
+        }
+        .onHover { isHovering = $0 }
+        .animation(NotchTokens.Motion.hover, value: isHovering)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L("a11y.mirror"))
         .onAppear { store.refreshAuthorization(hostController: context.hostController) }
         .onDisappear { store.stopSession() }
         .onChange(of: isDrawerPresented) { _, presented in
@@ -41,29 +63,20 @@ struct CameraMirrorBlockView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "camera")
-                .font(NotchTokens.Text.system(11))
-                .foregroundStyle(NotchTokens.Foreground.secondary)
-            Text(L("mirror.title"))
-                .font(NotchTokens.Text.system(11, weight: .semibold))
-                .foregroundStyle(NotchTokens.Foreground.body)
-            Spacer(minLength: 0)
-            if store.isRunning {
-                Button {
-                    store.toggleSession()
-                } label: {
-                    Text(store.isPaused ? L("mirror.resume") : L("mirror.pause"))
-                        .font(NotchTokens.Text.system(9, weight: .semibold))
-                        .foregroundStyle(NotchTokens.Foreground.muted)
-                }
-                .buttonStyle(.plain)
-            }
+    /// 右上角启停钮：组件默认圆形按钮（Kit `IconCircleButton`，直径 22、自带
+    /// 悬停增亮/手型光标/help/a11y），未启动 `play.fill`、运行中 `stop.fill`。
+    private var toggleButton: some View {
+        IconCircleButton(
+            systemImage: store.isRunning ? "stop.fill" : "play.fill",
+            helpText: toggleHelpText
+        ) {
+            store.toggleSession()
         }
-        .frame(height: CameraBlockMetrics.headerHeight)
+        // 过渡副本护栏：滑动切页的预览副本不得真的启停单例会话（同 Pomodoro）。
+        .disabled(context.layoutInfo.isPreview)
     }
 
+    /// 块内不再有标题行：画面区独占整块，未授权时换成权限引导态。
     @ViewBuilder
     private var content: some View {
         switch store.authorization {
@@ -78,34 +91,63 @@ struct CameraMirrorBlockView: View {
         }
     }
 
+    /// 画面区：块内唯一内容，整区可点即启停（README 已记载的交互），启停钮
+    /// 由块级 overlay 悬浮浮出（见 `body`）。
+    ///
+    /// 底衬取 `Surface.track` 而非卡片常态同值的 `fill`：未启动态（因为收起
+    /// 即停会话，这是本块每次展开的默认长相）必须有可见的取景器，不能是一块
+    /// 同色空洞。
     private var preview: some View {
-        ZStack {
-            CameraPreviewLayer(session: store.session)
-                .clipShape(RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous))
-            if !store.isRunning {
-                // 未开始采集时给一个明确的"点一下就开始"，而不是一块黑。
-                Button {
-                    store.toggleSession()
-                } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: "video.fill")
-                            .font(NotchTokens.Text.system(16))
-                        Text(L("mirror.start"))
-                            .font(NotchTokens.Text.system(9, weight: .semibold))
-                    }
-                    .foregroundStyle(NotchTokens.Foreground.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
+        Button {
+            store.toggleSession()
+        } label: {
+            ZStack {
+                CameraPreviewLayer(session: store.session)
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: CameraBlockMetrics.previewRadius,
+                            style: .continuous))
+                if !store.isRunning {
+                    // 未启动态没有画面：图标 + 一句话交代这块区域会出现什么。
+                    // 右上角启停钮只在悬浮时出现，所以这条提示必须常驻。
+                    idleHint
                 }
-                .buttonStyle(.plain)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        // 过渡副本护栏：滑动切页的预览副本不得真的启停单例会话（同 Pomodoro）。
+        .disabled(context.layoutInfo.isPreview)
+        .help(toggleHelpText)
+        .accessibilityLabel(toggleHelpText)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .frame(minHeight: CameraBlockMetrics.previewMinHeight)
         .background {
-            RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous)
-                .fill(NotchTokens.Surface.fill)
+            RoundedRectangle(cornerRadius: CameraBlockMetrics.previewRadius, style: .continuous)
+                .fill(NotchTokens.Surface.track)
         }
+        .overlay {
+            RoundedRectangle(cornerRadius: CameraBlockMetrics.previewRadius, style: .continuous)
+                .strokeBorder(NotchTokens.Hairline.thumbnail, lineWidth: 0.5)
+        }
+    }
+
+    /// 未启动态中央提示：相机图标 + 「点击打开镜子」。
+    private var idleHint: some View {
+        VStack(spacing: 5) {
+            Image(systemName: "camera")
+                .font(NotchTokens.Text.system(CameraBlockMetrics.idleSymbolSize, weight: .light))
+            Text(L("mirror.start"))
+                .font(NotchTokens.Text.system(12, weight: .medium))
+        }
+        .foregroundStyle(NotchTokens.Foreground.muted)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// 画面区/启停钮的提示与可访问性文案：停止 / 继续 / 开始三态同源于会话状态。
+    private var toggleHelpText: String {
+        if store.isRunning { return L("mirror.help.stop") }
+        return store.isPaused ? L("mirror.help.resume") : L("mirror.help.start")
     }
 
     private func gate(title: String, message: String) -> some View {
@@ -132,29 +174,25 @@ struct CameraPermissionGateView: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
                 Image(systemName: symbolName)
-                    .font(NotchTokens.Text.system(12))
+                    .font(NotchTokens.Text.system(12, weight: .medium))
                     .foregroundStyle(NotchTokens.Foreground.muted)
                 Text(title)
-                    .font(NotchTokens.Text.system(11, weight: .semibold))
+                    .font(NotchTokens.Text.system(12, weight: .semibold))
                     .foregroundStyle(NotchTokens.Foreground.secondary)
                     .lineLimit(1)
             }
             Text(message)
-                .font(NotchTokens.Text.system(9))
+                .font(NotchTokens.Text.system(11))
                 .foregroundStyle(NotchTokens.Foreground.muted)
                 .fixedSize(horizontal: false, vertical: true)
             Button(action: openGuide) {
                 Text(L("gate.openSettings"))
-                    .font(NotchTokens.Text.system(9, weight: .semibold))
-                    .foregroundStyle(NotchTokens.Foreground.body)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
             }
-            .buttonStyle(.plain)
-            .background {
-                RoundedRectangle(cornerRadius: NotchTokens.Radius.thumbnail, style: .continuous)
-                    .fill(NotchTokens.Surface.fillHighlighted)
-            }
+            .buttonStyle(CameraPermissionButtonStyle())
+            .help(L("gate.openSettings.help"))
+            .accessibilityLabel(L("gate.openSettings.help"))
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -163,6 +201,25 @@ struct CameraPermissionGateView: View {
     /// 只弹宿主的「权限管理」弹窗；系统设置由用户在弹窗内逐行点开，插件不代开。
     private func openGuide() {
         hostController?.presentPermissions([permission])
+    }
+}
+
+/// 权限引导按钮：走 Kit 统一圆角按钮基体（DESIGN.md §9），参数与 Pomodoro 主按钮
+/// 同族，字号按块内档收敛到 11。原实现是自绘
+/// `RoundedRectangle(cornerRadius: Radius.thumbnail)`——4pt 属缩略图档位，
+/// 圆角与常态/悬停/按下三态反馈都不该由调用点各自重画。
+private struct CameraPermissionButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        RoundedHoverButtonBody(
+            configuration: configuration,
+            font: NotchTokens.Text.system(11, weight: .semibold),
+            normalOpacity: 0.07,
+            hoverOpacity: 0.11,
+            pressedOpacity: 0.15,
+            strokeOpacity: 0.10,
+            foregroundOpacity: 0.92,
+            pressedForegroundOpacity: 0.60
+        )
     }
 }
 

@@ -3,13 +3,15 @@
 "block.mirror.name" = "Mirror";
 
 /* Mirror */
-"mirror.title" = "Mirror";
-"mirror.start" = "Tap to preview";
-"mirror.pause" = "Stop";
-"mirror.resume" = "Resume";
+"mirror.start" = "Tap to open the mirror";
+"mirror.help.start" = "Start preview";
+"mirror.help.resume" = "Resume preview";
+"mirror.help.stop" = "Stop preview";
+"a11y.mirror" = "Camera mirror";
 
 /* Permission gate */
 "gate.openSettings" = "Permissions";
+"gate.openSettings.help" = "Enable camera access in the host permission panel";
 "gate.camera.title" = "Camera access needed";
 "gate.camera.message" = "Grant camera access to see the mirror preview.";
 "gate.camera.denied.title" = "Camera access denied";

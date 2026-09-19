@@ -17,23 +17,18 @@ public final class CameraPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginS
         super.init()
     }
 
-    /// 打包期最小尺寸遮挡校验探针：镜像块的顶栏 + 预览区下限。
-    /// 常量与 CameraBlockMetrics 同源。
+    /// 打包期最小尺寸遮挡校验探针：块内只剩画面区一条（标题行已撤、控件走
+    /// 悬停浮出面板），所以只需声明"内容区完整可见"。常量与 CameraBlockMetrics
+    /// 同源。
     private static func mirrorLayoutProbes(for size: CGSize) -> [BlockProbe] {
         let inset = CameraBlockMetrics.inset
-        let spacing = CameraBlockMetrics.spacing
-        let contentWidth = max(size.width - inset * 2, 0)
-        let header = CameraBlockMetrics.headerHeight
-        let preview = CameraBlockMetrics.previewMinHeight
         return [
-            BlockProbe(
-                id: "camera.header",
-                rect: CGRect(x: inset, y: inset, width: contentWidth, height: header)),
             BlockProbe(
                 id: "camera.preview",
                 rect: CGRect(
-                    x: inset, y: inset + header + spacing,
-                    width: contentWidth, height: preview)),
+                    x: inset, y: inset,
+                    width: max(size.width - inset * 2, 0),
+                    height: max(size.height - inset * 2, 0))),
         ]
     }
 
