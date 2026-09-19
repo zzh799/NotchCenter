@@ -26,18 +26,23 @@ public final class SettingPopover {
     ///   - cardSize: 卡片内容区尺寸；设置视图在其中自由排布。
     ///   - placement: 与锚定块的相对摆放——紧凑小图标贴下方（.below），
     ///     抽屉块同心覆盖（.overlay，默认）。
+    ///   - focusContent: 浮现即让浮窗取得键盘焦点，供表单类设置在打开时自动聚焦
+    ///     首个输入框（配合内容里的 `@FocusState`）；只在"打开就是为了输入"时传 true，
+    ///     详见 `BlockPopover.present`。
     ///   - title: 标题行文字，通常传插件显示名；nil/空串时只显示齿轮图标。
     public func present(
         anchoredTo frameInWindow: CGRect,
         cardSize: CGSize = SettingPopover.defaultCardSize,
         placement: BlockPopoverPlacement = .overlay,
+        focusContent: Bool = false,
         title: String?,
         @ViewBuilder content: () -> some View
     ) {
         BlockPopover.shared.present(
             anchoredTo: frameInWindow,
             cardSize: cardSize,
-            placement: placement
+            placement: placement,
+            focusContent: focusContent
         ) {
             SettingPopoverCard(title: title, content: AnyView(content()))
         }

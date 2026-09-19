@@ -12,6 +12,36 @@ import SwiftUI
 //
 // 插件侧只需提供内容视图与卡片尺寸，见各官方插件 Popover.swift 的薄入口。
 
+// MARK: - 浮窗面板
+
+/// 浮窗窗口。
+///
+/// 无边框 `NSPanel` 的 `canBecomeKey` 默认为 `false`（`.nonactivatingPanel` 只
+/// 决定"成为 key 时不激活 App"，不赋予 key 资格），窗口永远成不了 key window，
+/// 内部 `TextField` / `TextEditor` 的字段编辑器也就无法成为 first responder -
+/// 表现即"输入框点不进去"。
+///
+/// 重写为 `true` 只是打开**资格**：`present` 仍只 `orderFrontRegardless()`，
+/// 由用户点进浮窗时 AppKit 才把它设为 key，纯按钮类浮窗"呈现不抢焦点"的既有
+/// 语义不变。`canBecomeMain` 保持 `false`（浮窗不该成为主窗口）。
+///
+/// 取消指令（裸 Esc，以及 Cmd+. 这类同样映射到 `cancelOperation` 的组合）走
+/// AppKit 标准取消链关闭浮窗，不在 `sendEvent` 里拦截：输入法处于 marked text
+/// 时 Esc 由输入上下文消费、本方法不会被调用，天然 IME 正确，不必像
+/// `NotchPanel.sendEvent` 那样手写 marked text 与修饰键判定。
+/// 规则背景见 docs/agents/面板与抽屉.md。
+internal final class BlockPopoverPanel: NSPanel {
+    /// 浮窗收到取消指令（裸 Esc / Cmd+.）时调用。
+    var onEscape: (() -> Void)?
+
+    override var canBecomeKey: Bool { true }
+
+    override func cancelOperation(_ sender: Any?) {
+        guard let onEscape else { return super.cancelOperation(sender) }
+        onEscape()
+    }
+}
+
 /// 浮窗与锚定块的相对摆放。
 public enum BlockPopoverPlacement {
     /// 同心叠在块正上方（默认）：服务卡类浮窗的既有表现，直接盖住原块。
@@ -40,11 +70,29 @@ public final class BlockPopover {
     /// 留白区命中测试穿透（`PopoverHostingView.hitTest`），行为等同点在浮窗外。
     private static let margin: CGFloat = 24
 
-    private var panel: NSPanel?
+    /// 卡片四周留白的**合计**（`margin * 2`），即窗口比卡片大出的量。
+    ///
+    /// 插件用它把浮窗卡片尺寸夹在自己的块矩形内：
+    /// `cardSize = min(理想尺寸, 块渲染尺寸 - BlockPopover.cardInset)`。
+    /// 原因是宿主的鼠标「停留区」判定只看抽屉可见矩形（
+    /// `NotchPanelInteraction.isPointInExpandedStayRegion`），**浮窗窗口不参与**；
+    /// 卡片一旦伸出块矩形，伸出部分收不到鼠标：光标离开停留区即触发收起，
+    /// 收起会投递 `.notchCenterDrawerDidCollapse` 让浮窗自动关闭。
+    ///
+    /// 公开此值是为了让插件不必镜像私有的 `margin`（同一事实两处写必然腐烂）。
+    /// 决策背景见 Agent Note 2026-09-19-command-scheduler-plugin。
+    public static let cardInset: CGFloat = margin * 2
+
+    private var panel: BlockPopoverPanel?
     /// 点击外部关闭：本地鼠标监听。
     private var eventMonitor: Any?
     /// 抽屉收起 → 浮窗随之消失：宿主通知的观察令牌（需持有防注销）。
     private var drawerCollapseObserver: NSObjectProtocol?
+    /// 弹出前谁是 key：浮窗被点成 key 后会抢走它，关闭时按此归还。
+    ///
+    /// 必须是"打开前的 key 窗口"而不是宿主块窗口 - 浮窗也可能开在设置窗口
+    /// 之上，归还目标得是原来那个。为空（打开时 App 未激活）则不归还。
+    private weak var previousKeyWindow: NSWindow?
 
     private init() {
         // queue 指定 .main：宿主在主线程投递，回调可安全假设主执行者。
@@ -61,14 +109,22 @@ public final class BlockPopover {
 
     /// 在块正上方叠加浮窗。`frameInWindow` 为块在宿主窗口坐标系中的 frame
     /// （SwiftUI .global 空间），内部经宿主窗口 convertToScreen 转屏幕坐标。
+    ///
+    /// 默认浮现时不主动成为 key（不抢焦点）；面板具备 key 资格，内容里的输入控件
+    /// 由用户点进浮窗时正常获得焦点（见 `BlockPopoverPanel`）。
     /// - Parameters:
     ///   - cardSize: 卡片尺寸；内容由 `content` 自行排布，外观（背景/描边/深色环境）
     ///     与弹出动画由本组件统一施加。
     ///   - placement: 与锚定块的相对摆放（同心覆盖 / 贴块下方），默认同心。
+    ///   - focusContent: 浮现即让面板成为 key，好让内容马上拿到键盘焦点
+    ///     （表单类浮窗配合 `@FocusState` 用，见 `TaskFormView`）。**只在"打开就是为了
+    ///     输入"时传 true**：面板是 `nonactivatingPanel`，应用未激活时它会直接从
+    ///     当前前台 App 抢走键盘输入（紧凑区浮窗正处于这种状态）。
     public func present(
         anchoredTo frameInWindow: CGRect,
         cardSize: CGSize,
         placement: BlockPopoverPlacement = .overlay,
+        focusContent: Bool = false,
         @ViewBuilder content: () -> some View
     ) {
         dismiss()
@@ -95,8 +151,8 @@ public final class BlockPopover {
         let blockFrame = hostWindow.convertToScreen(flipped)
 
         let windowSize = CGSize(
-            width: cardSize.width + Self.margin * 2,
-            height: cardSize.height + Self.margin * 2
+            width: cardSize.width + Self.cardInset,
+            height: cardSize.height + Self.cardInset
         )
         let origin = BlockPopoverGeometry.windowOrigin(
             blockFrame: blockFrame,
@@ -115,7 +171,7 @@ public final class BlockPopover {
             width: cardSize.width, height: cardSize.height
         )
 
-        let panel = NSPanel(
+        let panel = BlockPopoverPanel(
             contentRect: NSRect(origin: origin, size: windowSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -129,8 +185,15 @@ public final class BlockPopover {
         panel.hidesOnDeactivate = false
         panel.contentView = hosting
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.onEscape = { [weak self] in self?.dismiss() }
 
+        previousKeyWindow = NSApp.keyWindow
         panel.orderFrontRegardless()
+        // 成为 key 需在窗口上线之后；内容里的 @FocusState 随后才生效（实测：
+        // onAppear 晚于本调用，下一帧字段编辑器即成为 first responder）。
+        if focusContent {
+            panel.makeKey()
+        }
         self.panel = panel
 
         // 点击浮窗以外区域关闭（透明留白区的点击会落到下层窗口，同样触发关闭）。
@@ -148,6 +211,14 @@ public final class BlockPopover {
             NSEvent.removeMonitor(eventMonitor)
             self.eventMonitor = nil
         }
+        // 只有"浮窗确实抢走了 key"才归还：无边框面板 orderOut 后 AppKit 不保证
+        // 自动补 key，抽屉会退化成无 key 窗口（Esc 收起与 Cmd+C/V/X/A/Z 全失效）。
+        // 用 makeKey（非 makeKeyAndOrderFront）且带 isVisible 守卫，绝不复活
+        // 已收起的宿主窗口。
+        if panel?.isKeyWindow == true, let target = previousKeyWindow, target.isVisible {
+            target.makeKey()
+        }
+        previousKeyWindow = nil
         panel?.orderOut(nil)
         panel = nil
     }
@@ -256,6 +327,10 @@ private struct BlockPopoverCard: View {
 private final class PopoverHostingView<Content: View>: NSHostingView<Content> {
     /// 可交互卡片矩形（bounds 坐标，左下原点）。
     var interactiveRect: CGRect = .zero
+
+    /// 首击也投递给内容。应用未激活时（紧凑区浮窗）默认的首击只用于激活窗口，
+    /// 会把"点击输入框"吞掉，表现为要点两下。
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard interactiveRect.contains(point) else { return nil }

@@ -1,7 +1,38 @@
+import AppKit
 import XCTest
-import NotchCenterKit
+@testable import NotchCenterKit
 
+@MainActor
 final class BlockPopoverTests: XCTestCase {
+    // MARK: BlockPopoverPanel（浮窗面板的 key 资格与取消指令）
+
+    /// 回归锁：无边框 NSPanel 的 canBecomeKey 默认为 false，窗口成不了 key
+    /// window，浮窗内的 TextField/TextEditor 就永远聚焦不了（用户报告的
+    /// "新建任务输入框点不进去"）。
+    func testPopoverPanelCanBecomeKey() {
+        let panel = BlockPopoverPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        XCTAssertTrue(panel.canBecomeKey)
+        XCTAssertFalse(panel.canBecomeMain)
+    }
+
+    func testCancelOperationInvokesEscapeHandler() {
+        let panel = BlockPopoverPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        var escaped = false
+        panel.onEscape = { escaped = true }
+        panel.cancelOperation(nil)
+        XCTAssertTrue(escaped)
+    }
+
     // MARK: BlockPopoverGeometry.windowOrigin（同心叠加 + 屏幕可见区钳制）
 
     func testCentersWindowOnBlockWhenNoScreenFrame() {

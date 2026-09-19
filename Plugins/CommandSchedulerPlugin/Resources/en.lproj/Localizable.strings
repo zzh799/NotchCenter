@@ -1,0 +1,119 @@
+/* CommandSchedulerPlugin — English strings */
+
+/* Block */
+"scheduler.block.title" = "Scheduled commands";
+"scheduler.task.untitled" = "Untitled task";
+"scheduler.empty.title" = "No scheduled commands";
+"scheduler.empty.hint" = "Tap + to add one. Commands run only while NotchCenter is running.";
+
+/* Actions */
+"scheduler.action.newTask" = "New task";
+"scheduler.action.runNow" = "Run now";
+"scheduler.action.toggle" = "Enable or pause this task";
+"scheduler.action.edit" = "Edit";
+"scheduler.action.close" = "Close";
+"scheduler.action.settings" = "Settings";
+
+/* Schedule summary */
+"scheduler.rule.everyMinutes" = "Every %d min";
+"scheduler.rule.hourly" = "Hourly at :%02d";
+"scheduler.rule.daily" = "Daily at %02d:%02d";
+"scheduler.rule.weekly" = "%@ at %02d:%02d";
+"scheduler.rule.monthly" = "Monthly on day %d at %02d:%02d";
+
+/* Next fire */
+"scheduler.next.disabled" = "Paused";
+"scheduler.next.imminent" = "next: within a minute";
+"scheduler.next.never" = "next: never";
+"scheduler.next.in" = "next in %@";
+
+/* Duration */
+"scheduler.duration.none" = "—";
+"scheduler.duration.seconds" = "%ds";
+"scheduler.duration.minutes" = "%dm %ds";
+"scheduler.duration.hours" = "%dh %dm";
+
+/* Relative time */
+"scheduler.relative.now" = "just now";
+"scheduler.relative.minutes" = "%dm ago";
+"scheduler.relative.hours" = "%dh ago";
+"scheduler.relative.days" = "%dd ago";
+
+/* Run status */
+"scheduler.status.running" = "Running";
+"scheduler.status.succeeded" = "Succeeded";
+"scheduler.status.failed" = "Failed";
+"scheduler.status.timedOut" = "Timed out";
+"scheduler.status.aborted" = "Stopped";
+"scheduler.status.interrupted" = "Interrupted";
+
+/* Exit code */
+"scheduler.exitCode.none" = "no exit code";
+"scheduler.exitCode.value" = "exit %d";
+
+/* Skip / missed aggregate */
+"scheduler.skip.running" = "previous run still going";
+"scheduler.skip.offline" = "host was not running";
+"scheduler.skip.skippedCount" = "%d skipped";
+"scheduler.skip.missedCount" = "%d missed";
+
+/* History popover */
+"scheduler.history.empty" = "No runs yet";
+"scheduler.history.noSelection" = "Select a run";
+"scheduler.output.truncated" = "truncated";
+"scheduler.output.missing" = "Output no longer on disk";
+"scheduler.output.waiting" = "Running…";
+"scheduler.output.empty" = "No output";
+
+/* Task form */
+"scheduler.form.newTitle" = "New task";
+"scheduler.form.editTitle" = "Edit task";
+"scheduler.form.name" = "Name";
+"scheduler.form.namePlaceholder" = "Backup";
+"scheduler.form.command" = "Command";
+"scheduler.form.workdir" = "Working directory";
+"scheduler.form.env" = "Environment (KEY=VALUE per line)";
+"scheduler.form.schedule" = "Schedule";
+"scheduler.form.timeout" = "Guard timeout";
+"scheduler.form.enabled" = "Enabled";
+"scheduler.form.nextFire" = "Next run: %@";
+"scheduler.form.monthlyWarning" = "Months without this day are skipped.";
+"scheduler.form.save" = "Save";
+"scheduler.form.cancel" = "Cancel";
+"scheduler.form.delete" = "Delete";
+
+/* Schedule kinds */
+"scheduler.kind.everyMinutes" = "Every N minutes";
+"scheduler.kind.hourly" = "Every hour";
+"scheduler.kind.daily" = "Every day";
+"scheduler.kind.weekly" = "Every week";
+"scheduler.kind.monthly" = "Every month";
+
+/* Timeout modes */
+"scheduler.timeout.useDefault" = "Use default";
+"scheduler.timeout.off" = "No timeout";
+"scheduler.timeout.custom" = "Custom";
+
+/* Units */
+"scheduler.unit.minutes" = "min";
+"scheduler.unit.minuteOfHour" = "min past the hour";
+"scheduler.unit.minute" = "min";
+"scheduler.unit.hour" = "h";
+"scheduler.unit.day" = "day";
+"scheduler.unit.seconds" = "s";
+
+/* Plugin settings */
+"scheduler.settings.title" = "Settings";
+"scheduler.settings.description" = "Commands run inside the NotchCenter process. If NotchCenter is not running, nothing fires — missed times are counted, not replayed. The shell is a non-login /bin/zsh with an explicit PATH.";
+"scheduler.settings.defaultTimeout" = "Default guard timeout";
+"scheduler.settings.minutes" = "%d min";
+"scheduler.settings.defaultTimeoutHint" = "Applies to tasks that do not set their own. A stuck command holds its slot forever without one.";
+"scheduler.settings.taskCount" = "%d tasks";
+"scheduler.settings.revealOutput" = "Reveal output folder";
+"scheduler.settings.clearOutput" = "Clear all output";
+"scheduler.settings.cleared" = "Cleared";
+
+/* Activity summary */
+"scheduler.summary.running" = "%d commands running";
+"scheduler.summary.failed" = "Command failed";
+"scheduler.summary.failed.count" = "%d task(s) need attention";

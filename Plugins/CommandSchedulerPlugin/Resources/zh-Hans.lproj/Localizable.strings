@@ -1,0 +1,119 @@
+/* CommandSchedulerPlugin 简体中文文案 */
+
+/* 块 */
+"scheduler.block.title" = "定时命令";
+"scheduler.task.untitled" = "未命名任务";
+"scheduler.empty.title" = "还没有定时命令";
+"scheduler.empty.hint" = "点 + 新建一条。命令只在 NotchCenter 运行时执行。";
+
+/* 动作 */
+"scheduler.action.newTask" = "新建任务";
+"scheduler.action.runNow" = "立即运行";
+"scheduler.action.toggle" = "启用或暂停该任务";
+"scheduler.action.edit" = "编辑";
+"scheduler.action.close" = "关闭";
+"scheduler.action.settings" = "设置";
+
+/* 调度摘要 */
+"scheduler.rule.everyMinutes" = "每 %d 分钟";
+"scheduler.rule.hourly" = "每小时第 %02d 分";
+"scheduler.rule.daily" = "每天 %02d:%02d";
+"scheduler.rule.weekly" = "每周 %@ %02d:%02d";
+"scheduler.rule.monthly" = "每月 %d 日 %02d:%02d";
+
+/* 下次触发 */
+"scheduler.next.disabled" = "已暂停";
+"scheduler.next.imminent" = "下次：一分钟内";
+"scheduler.next.never" = "下次：永不";
+"scheduler.next.in" = "%@ 后触发";
+
+/* 时长 */
+"scheduler.duration.none" = "—";
+"scheduler.duration.seconds" = "%d 秒";
+"scheduler.duration.minutes" = "%d 分 %d 秒";
+"scheduler.duration.hours" = "%d 小时 %d 分";
+
+/* 相对时间 */
+"scheduler.relative.now" = "刚刚";
+"scheduler.relative.minutes" = "%d 分钟前";
+"scheduler.relative.hours" = "%d 小时前";
+"scheduler.relative.days" = "%d 天前";
+
+/* 执行状态 */
+"scheduler.status.running" = "运行中";
+"scheduler.status.succeeded" = "成功";
+"scheduler.status.failed" = "失败";
+"scheduler.status.timedOut" = "超时";
+"scheduler.status.aborted" = "已中止";
+"scheduler.status.interrupted" = "被中断";
+
+/* 退出码 */
+"scheduler.exitCode.none" = "无退出码";
+"scheduler.exitCode.value" = "退出码 %d";
+
+/* 跳过与错过（聚合留痕） */
+"scheduler.skip.running" = "上次还在跑";
+"scheduler.skip.offline" = "宿主未运行";
+"scheduler.skip.skippedCount" = "跳过 %d 次";
+"scheduler.skip.missedCount" = "错过 %d 次";
+
+/* 历史浮窗 */
+"scheduler.history.empty" = "还没有执行记录";
+"scheduler.history.noSelection" = "选一条记录";
+"scheduler.output.truncated" = "已截断";
+"scheduler.output.missing" = "输出文件已不在磁盘上";
+"scheduler.output.waiting" = "运行中…";
+"scheduler.output.empty" = "没有输出";
+
+/* 任务表单 */
+"scheduler.form.newTitle" = "新建任务";
+"scheduler.form.editTitle" = "编辑任务";
+"scheduler.form.name" = "名称";
+"scheduler.form.namePlaceholder" = "备份";
+"scheduler.form.command" = "命令";
+"scheduler.form.workdir" = "工作目录";
+"scheduler.form.env" = "环境变量（每行 KEY=VALUE）";
+"scheduler.form.schedule" = "调度";
+"scheduler.form.timeout" = "守卫超时";
+"scheduler.form.enabled" = "启用";
+"scheduler.form.nextFire" = "下次触发：%@";
+"scheduler.form.monthlyWarning" = "没有该日期的月份会被跳过。";
+"scheduler.form.save" = "保存";
+"scheduler.form.cancel" = "取消";
+"scheduler.form.delete" = "删除";
+
+/* 调度档位 */
+"scheduler.kind.everyMinutes" = "每 N 分钟";
+"scheduler.kind.hourly" = "每小时";
+"scheduler.kind.daily" = "每天";
+"scheduler.kind.weekly" = "每周";
+"scheduler.kind.monthly" = "每月";
+
+/* 超时档位 */
+"scheduler.timeout.useDefault" = "用全局默认";
+"scheduler.timeout.off" = "不超时";
+"scheduler.timeout.custom" = "自定义";
+
+/* 单位 */
+"scheduler.unit.minutes" = "分钟";
+"scheduler.unit.minuteOfHour" = "分（每小时的第几分）";
+"scheduler.unit.minute" = "分";
+"scheduler.unit.hour" = "时";
+"scheduler.unit.day" = "日";
+"scheduler.unit.seconds" = "秒";
+
+/* 插件设置 */
+"scheduler.settings.title" = "设置";
+"scheduler.settings.description" = "命令在 NotchCenter 进程内执行。宿主没运行时不会执行任何任务——错过的时刻只计数，不补跑。shell 是非登录的 /bin/zsh，PATH 由插件显式注入。";
+"scheduler.settings.defaultTimeout" = "默认守卫超时";
+"scheduler.settings.minutes" = "%d 分钟";
+"scheduler.settings.defaultTimeoutHint" = "对未单独设置超时的任务生效。没有超时的话，一个卡死的命令会永久占住自己的槽位。";
+"scheduler.settings.taskCount" = "共 %d 个任务";
+"scheduler.settings.revealOutput" = "在访达中打开输出目录";
+"scheduler.settings.clearOutput" = "清空全部输出";
+"scheduler.settings.cleared" = "已清空";
+
+/* 活动摘要 */
+"scheduler.summary.running" = "%d 条命令运行中";
+"scheduler.summary.failed" = "命令执行失败";
+"scheduler.summary.failed.count" = "%d 个任务需要处理";
