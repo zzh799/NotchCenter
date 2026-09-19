@@ -33,9 +33,9 @@
 /* 抽屉块无障碍 */
 "a11y.pomodoro" = "番茄钟";
 
-/* 抽屉块 */
+/* 抽屉块（drawer.start 块内专用；startFocus 留给整页 hero） */
+"drawer.start" = "开始";
 "drawer.startFocus" = "开始专注";
-"drawer.focusFor" = "专注 %d 分钟";
 "drawer.completed" = "今日完成 %d 个";
 
 /* 整页块：区块与今日节奏 */

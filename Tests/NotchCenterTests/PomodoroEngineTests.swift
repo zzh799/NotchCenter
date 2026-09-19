@@ -261,12 +261,26 @@ final class PomodoroEngineTests: XCTestCase {
 
     // MARK: 倒计时文本
 
+    /// 主视图固定 `HH:MM:SS`：不随剩余时间跨 1 小时切位数（宽度稳定是
+    /// 空闲态预告与运行中无缝续接的前提，见 Agent Note
+    /// 2026-09-20-pomodoro-idle-countdown-format-split）。
     func testCountdownTextFormatting() {
-        XCTAssertEqual(pomodoroCountdownText(0), "00:00")
-        XCTAssertEqual(pomodoroCountdownText(65), "01:05")
-        XCTAssertEqual(pomodoroCountdownText(1500), "25:00")
-        XCTAssertEqual(pomodoroCountdownText(-3), "00:00")
-        XCTAssertEqual(pomodoroCountdownText(3600), "1:00:00")
-        XCTAssertEqual(pomodoroCountdownText(3661), "1:01:01")
+        XCTAssertEqual(pomodoroCountdownText(0), "00:00:00")
+        XCTAssertEqual(pomodoroCountdownText(65), "00:01:05")
+        XCTAssertEqual(pomodoroCountdownText(1500), "00:25:00")
+        XCTAssertEqual(pomodoroCountdownText(2400), "00:40:00")
+        XCTAssertEqual(pomodoroCountdownText(-3), "00:00:00")
+        XCTAssertEqual(pomodoroCountdownText(3600), "01:00:00")
+        XCTAssertEqual(pomodoroCountdownText(3661), "01:01:01")
+    }
+
+    /// 摘要芯片固定 `MM:SS`：分钟允许超 60，不为省位数丢精度。
+    func testCountdownCompactFormatting() {
+        XCTAssertEqual(pomodoroCountdownCompact(0), "00:00")
+        XCTAssertEqual(pomodoroCountdownCompact(65), "01:05")
+        XCTAssertEqual(pomodoroCountdownCompact(2400), "40:00")
+        XCTAssertEqual(pomodoroCountdownCompact(3600), "60:00")
+        XCTAssertEqual(pomodoroCountdownCompact(3900), "65:00")
+        XCTAssertEqual(pomodoroCountdownCompact(-3), "00:00")
     }
 }

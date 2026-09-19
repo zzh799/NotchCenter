@@ -260,11 +260,21 @@ struct PomodoroEngine {
 
 // MARK: - 展示辅助（纯函数，测试覆盖）
 
-/// 秒数 → 倒计时文本：不足 1 小时 `mm:ss`，超过则 `h:mm:ss`。
+/// 秒数 → 主视图倒计时文本：**固定 `HH:MM:SS`**。
+///
+/// 抽屉块空闲态预告与运行中重绘共用同一个 `Text`，固定 8 字符才能做到
+/// 点「开始」只换数字、不换宽度（决策见 Agent Note
+/// docs/agent-notes/2026-09-20-pomodoro-idle-countdown-format-split.md）。
 func pomodoroCountdownText(_ seconds: Int) -> String {
     let total = max(seconds, 0)
-    if total >= 3600 {
-        return String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
-    }
+    return String(format: "%02d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+}
+
+/// 秒数 → 摘要芯片倒计时文本：**固定 `MM:SS`**，分钟允许超 60（`65:00`）。
+///
+/// 与上面分叉是**有意**的：刘海芯片带宽封顶 180pt，塞不下 8 字符；主视图求
+/// 宽度稳定，芯片求省带宽。动任一个前先读同一份 Agent Note。
+func pomodoroCountdownCompact(_ seconds: Int) -> String {
+    let total = max(seconds, 0)
     return String(format: "%02d:%02d", total / 60, total % 60)
 }

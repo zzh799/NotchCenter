@@ -28,8 +28,6 @@ private enum PomodoroBlockMetrics {
     static let controlDiameter: CGFloat = 24
     /// 控制钮之间的间距。
     static let controlSpacing: CGFloat = 12
-    /// 空闲态图标徽章直径。
-    static let idleBadgeDiameter: CGFloat = 40
     /// 评分脸直径（抽屉块档；整页用 `PomodoroPageMetrics.moodDiameter`）。
     static let moodDiameter: CGFloat = 26
 }
@@ -108,28 +106,26 @@ struct PomodoroDrawerBlockView: View {
 
     // MARK: 空闲
 
-    /// 垂直居中对称栈：徽章 → 开始按钮 → 时长副文案。
+    /// 垂直居中对称栈：倒计时预告 → 开始按钮。
+    ///
+    /// 倒计时与运行中**同字号/字重/等宽**，点「开始」只换数字、不换版式——
+    /// 这是本次瘦身成立的前提（决策见
+    /// docs/agent-notes/2026-09-20-pomodoro-idle-countdown-format-split.md）。
     private var idleContent: some View {
         VStack(spacing: PomodoroBlockMetrics.sectionSpacing) {
-            Image(systemName: PomodoroTheme.symbol(for: .idle))
-                .font(NotchTokens.Text.system(18, weight: .light))
-                .foregroundStyle(NotchTokens.Foreground.muted)
-                .frame(
-                    width: PomodoroBlockMetrics.idleBadgeDiameter,
-                    height: PomodoroBlockMetrics.idleBadgeDiameter)
-                .background(Circle().fill(NotchTokens.Surface.fillHighlighted))
+            Text(pomodoroCountdownText(store.config.focusMinutes * 60))
+                .font(NotchTokens.Text.system(28, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(NotchTokens.Foreground.body)
             Button {
                 store.start()
             } label: {
-                Label(L("drawer.startFocus"), systemImage: "play.fill")
+                Label(L("drawer.start"), systemImage: "play.fill")
                     .padding(.horizontal, 16)
                     .padding(.vertical, 7)
             }
             .buttonStyle(PomodoroPrimaryButtonStyle())
             .disabled(isPreview)
-            Text(LF("drawer.focusFor", store.config.focusMinutes))
-                .font(NotchTokens.Text.system(11))
-                .foregroundStyle(NotchTokens.Foreground.muted)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(PomodoroBlockMetrics.insets)

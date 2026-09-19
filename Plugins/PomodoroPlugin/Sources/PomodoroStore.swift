@@ -487,7 +487,8 @@ final class PomodoroStore: ObservableObject {
                 title: PomodoroTheme.phaseTitle(for: d),
                 subtitle: isAwaiting
                     ? L("summary.awaitingRating")
-                    : pomodoroCountdownText(d.remainingSeconds),
+                    // 芯片走短格式：刘海带宽封顶 180pt（见 pomodoroCountdownCompact）。
+                    : pomodoroCountdownCompact(d.remainingSeconds),
                 symbolName: PomodoroTheme.symbol(for: d.phase),
                 progress: d.progress
             )

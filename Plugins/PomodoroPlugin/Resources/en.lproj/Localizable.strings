@@ -33,9 +33,9 @@
 /* 抽屉块无障碍 */
 "a11y.pomodoro" = "Pomodoro timer";
 
-/* 抽屉块 */
+/* 抽屉块（drawer.start 块内专用；startFocus 留给整页 hero） */
+"drawer.start" = "Start";
 "drawer.startFocus" = "Start Focus";
-"drawer.focusFor" = "Focus for %d min";
 "drawer.completed" = "%d completed today";
 
 /* 整页块：区块与今日节奏 */
