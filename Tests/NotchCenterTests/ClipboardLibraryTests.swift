@@ -148,6 +148,12 @@ final class ClipboardLibraryTests: XCTestCase {
         XCTAssertTrue(entry.pinned)
         XCTAssertNil(entry.previewData)
         XCTAssertNil(entry.sourceApp)
+        // 富媒体四项同理：旧数据没有它们，必须落成"无载荷"而不是解码失败。
+        XCTAssertEqual(entry.fileURLs, [])
+        XCTAssertNil(entry.contentHash)
+        XCTAssertNil(entry.storedMediaName)
+        XCTAssertNil(entry.mediaByteSize)
+        XCTAssertNil(entry.mediaUTI)
         // 旧数据没有 kind：按正文重新推断，而不是一律记成 text。
         XCTAssertEqual(entry.kind, .link)
     }
@@ -176,6 +182,24 @@ final class ClipboardLibraryTests: XCTestCase {
     func testEmptyLegacyArrayDecodes() throws {
         let entries = try JSONDecoder().decode([ClipboardEntry].self, from: Data("[]".utf8))
         XCTAssertTrue(entries.isEmpty)
+    }
+
+    /// 富媒体载荷也必须原样往返——键名沿用 v1，编码器不得漏写任何一个。
+    func testRoundTripsMediaFieldsThroughCoding() throws {
+        let original = ClipboardEntry(
+            text: "/tmp/a.pdf",
+            kind: .file,
+            fileURLs: ["/tmp/a.pdf", "/tmp/b.pdf"],
+            contentHash: "deadbeef",
+            storedMediaName: "ABC.png",
+            mediaByteSize: 4096,
+            mediaUTI: "public.png"
+        )
+        let decoded = try JSONDecoder().decode(
+            [ClipboardEntry].self,
+            from: try JSONEncoder().encode([original])
+        )
+        XCTAssertEqual(decoded, [original])
     }
 
     func testSanitizedKeepsLegacyBehaviourWithKinds() {

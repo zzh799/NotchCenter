@@ -8,10 +8,10 @@ import Foundation
 
 /// 条目类型（剪贴板库页的分类维度）。
 ///
-/// 采集口径（2026-09-11）：本期仍只采集**纯文本**，类型由文本内容推断
-/// （链接 / 颜色 / 文本三态）。`image` / `file` 是**预留位**——富媒体采集涉及
-/// 落盘、去重与缩略图缓存，是独立一期的工作量；枚举先占位，使持久化格式与
-/// 筛选 UI 的形状定下来，二期接采集时不需要再动存储结构。
+/// 采集口径（2026-09-20 落地富媒体，决策记录 `2026-09-20-clipboard-media-types`）：
+/// 五类全部可采集。文本三态（链接 / 颜色 / 文本）仍由**正文推断**；`image` / `file`
+/// 由**剪贴板载荷**判定，不猜。归类优先级与"一次复制的多重表示归成哪一类"见
+/// `ClipboardCapture` 的文档注释。
 enum ClipboardEntryKind: String, Codable, CaseIterable, Sendable {
     case text
     case link
@@ -41,27 +41,54 @@ enum ClipboardEntryKind: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// 本期实际可出现的类型（富媒体未采集，筛选栏只列这三种）。
-    static let collectable: [ClipboardEntryKind] = [.text, .link, .color]
+    /// 本期实际可出现的类型：五类全部可采集，筛选栏照此列举。
+    static let collectable: [ClipboardEntryKind] = [.text, .link, .color, .image, .file]
+
+    /// 载荷是否落在磁盘上（而非只在正文里）。
+    ///
+    /// 媒体字节预算**只对落盘类型**计账。文件条目正文里存路径串、本身不占磁盘，
+    /// 所以口径按"是否落盘"划而非按"是否富媒体"划——后者会把文件路径也算进
+    /// 字节账，白白挤掉真实图片的额度。
+    var usesDiskStorage: Bool { self == .image }
 }
 
-/// 单条历史：正文 + 首次记录时间 + 置顶标记。
+/// 单条历史：正文 + 首次记录时间 + 置顶标记 + 类型相关载荷。
 ///
 /// **向后兼容契约**：`kind` / `previewData` / `sourceApp` 是 2026-09-11 新增字段，
-/// 解码走 `decodeIfPresent` + 默认值——旧 `history.entries.v1` 数组（只有
-/// id/text/capturedAt/pinned 四个键）必须能原样读出。因此**不要**把新字段改成
-/// 非可选且无默认值的形式，也不要依赖编码器补键。
+/// 富媒体四项（`fileURLs` / `contentHash` / `storedMediaName` / `mediaByteSize` /
+/// `mediaUTI`）是 2026-09-20 新增字段，解码一律走 `decodeIfPresent` + 默认值——
+/// 旧 `history.entries.v1` 数组（只有 id/text/capturedAt/pinned 四个键）必须能
+/// 原样读出。因此**不要**把新字段改成非可选且无默认值的形式，也不要依赖编码器
+/// 补键。
+///
+/// 键名沿用 `v1` 不升版：换键要写迁移与回滚处理，收益为零（决策记录
+/// `2026-09-20-clipboard-media-types` 的 D10）。
 struct ClipboardEntry: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
+    /// 正文。文本三态是真正的可搜索内容；文件条目存路径串（换行连接）；
+    /// 图片条目恒为空串——没有可搜的文本就是没有，不硬造描述串。
     var text: String
     var capturedAt: Date
     var pinned: Bool
     /// 条目类型（旧数据缺失 → 由正文重新推断，见 `init(from:)`）。
     var kind: ClipboardEntryKind
-    /// 富媒体缩略图原始数据（本期恒 nil，二期采集用；旧数据缺失 → nil）。
+    /// 历史遗留的内嵌缩略图字段：新数据不再写入（图片缩略图改为落盘，见
+    /// `ClipboardMediaStore`），保留解码只为旧数据兼容。
     var previewData: Data?
-    /// 来源应用标识（本期恒 nil，二期写入；旧数据缺失 → nil）。
+    /// 来源应用标识（本期仍恒 nil；1 秒轮询拿不到可靠的写入方）。
     var sourceApp: String?
+    /// 文件条目的路径集合。**只持有引用**——不复制、不移动用户原文件，
+    /// 因此原路径失效时条目会变成"失效态"而不是自动重定位。
+    var fileURLs: [String]
+    /// 图片条目的身份：原始字节的 SHA256 十六进制串。图片去重靠它，
+    /// 因为正文为空串、路径也不存在。
+    var contentHash: String?
+    /// 图片条目在 `Media/` 目录下的落盘文件名；非图片恒 nil。
+    var storedMediaName: String?
+    /// 图片条目原始字节数；媒体预算的唯一计账口径。
+    var mediaByteSize: Int?
+    /// 图片条目原始字节的 UTI，写回时按它挂表示。
+    var mediaUTI: String?
 
     init(
         id: UUID = UUID(),
@@ -70,7 +97,12 @@ struct ClipboardEntry: Codable, Equatable, Identifiable, Sendable {
         pinned: Bool = false,
         kind: ClipboardEntryKind? = nil,
         previewData: Data? = nil,
-        sourceApp: String? = nil
+        sourceApp: String? = nil,
+        fileURLs: [String] = [],
+        contentHash: String? = nil,
+        storedMediaName: String? = nil,
+        mediaByteSize: Int? = nil,
+        mediaUTI: String? = nil
     ) {
         self.id = id
         self.text = text
@@ -80,6 +112,11 @@ struct ClipboardEntry: Codable, Equatable, Identifiable, Sendable {
         self.kind = kind ?? ClipboardHistoryLogic.classify(text: text)
         self.previewData = previewData
         self.sourceApp = sourceApp
+        self.fileURLs = fileURLs
+        self.contentHash = contentHash
+        self.storedMediaName = storedMediaName
+        self.mediaByteSize = mediaByteSize
+        self.mediaUTI = mediaUTI
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -90,6 +127,11 @@ struct ClipboardEntry: Codable, Equatable, Identifiable, Sendable {
         case kind
         case previewData
         case sourceApp
+        case fileURLs
+        case contentHash
+        case storedMediaName
+        case mediaByteSize
+        case mediaUTI
     }
 
     init(from decoder: any Decoder) throws {
@@ -105,6 +147,11 @@ struct ClipboardEntry: Codable, Equatable, Identifiable, Sendable {
             ?? ClipboardHistoryLogic.classify(text: text)
         self.previewData = try container.decodeIfPresent(Data.self, forKey: .previewData)
         self.sourceApp = try container.decodeIfPresent(String.self, forKey: .sourceApp)
+        self.fileURLs = try container.decodeIfPresent([String].self, forKey: .fileURLs) ?? []
+        self.contentHash = try container.decodeIfPresent(String.self, forKey: .contentHash)
+        self.storedMediaName = try container.decodeIfPresent(String.self, forKey: .storedMediaName)
+        self.mediaByteSize = try container.decodeIfPresent(Int.self, forKey: .mediaByteSize)
+        self.mediaUTI = try container.decodeIfPresent(String.self, forKey: .mediaUTI)
     }
 }
 
@@ -150,7 +197,48 @@ enum ClipboardListItem: Equatable, Identifiable, Sendable {
     }
 }
 
-/// 历史变换纯函数集（共识 Q4/Q7/Q9）。
+/// 一次采集读到的载荷（纯值类型，无 AppKit 依赖）。
+///
+/// **归类优先级**：图像数据 > 文件路径（调用方已确认文件真实存在、且非缓存回写）> 颜色 >
+/// 链接 > 纯文本。
+///
+/// 这里看不到"图片文件"这种中间态：单个图片文件在**读端**就被 `SystemClipboardReader`
+/// 直接读成图像载荷了（它持有 UTI 判定与磁盘读取）。反过来把文件路径排在图像之前的写法
+/// 在 2026-09-20 被用户实测否决——复制一张 PNG 会得到一个文件名条目，既没有预览也认不出
+/// 是什么；当时的理由是"用户意图是那个文件"，但实际使用里意图就是那张图。
+struct ClipboardCapture: Equatable, Sendable {
+    /// 纯文本表示（`.string`）。
+    var text: String?
+    /// 已确认存在于磁盘的文件路径（调用方负责过滤）。
+    var filePaths: [String] = []
+    /// 图像原始字节（未重编码）。
+    var imageData: Data?
+    /// 图像原始字节的 UTI。
+    var imageUTI: String?
+    /// 图像内容哈希（调用方计算，本文件不依赖平台哈希库）。
+    var imageHash: String?
+
+    init(
+        text: String? = nil,
+        filePaths: [String] = [],
+        imageData: Data? = nil,
+        imageUTI: String? = nil,
+        imageHash: String? = nil
+    ) {
+        self.text = text
+        self.filePaths = filePaths
+        self.imageData = imageData
+        self.imageUTI = imageUTI
+        self.imageHash = imageHash
+    }
+
+    /// 只带文本的采集（单测与旧调用点的最常用形态）。
+    init(text: String) {
+        self.init(text: Optional(text))
+    }
+}
+
+/// 历史变换纯函数集（共识 Q4/Q7/Q9；富媒体见 2026-09-20 决策记录）。
 enum ClipboardHistoryLogic {
     /// 总容量（含置顶）。
     static let maxEntries = 50
@@ -158,6 +246,13 @@ enum ClipboardHistoryLogic {
     static let maxPinned = 5
     /// 单条上限：超长文本不记（base64 / 报错堆栈是体积爆炸主因）。
     static let maxSingleBytes = 100 * 1024
+    /// 媒体总字节预算。条数上限对文本够用、对图片完全失效（50 条 × 单条上限
+    /// 最坏到 GB 级），磁盘占用必须有独立上界。
+    static let maxMediaBytes = 200 * 1024 * 1024
+    /// 单条媒体上限：拦住"误复制了整个视频文件"。
+    static let maxMediaSingleBytes = 16 * 1024 * 1024
+    /// 一次复制的文件数上限：在 Finder 里选中整目录复制不该把历史撑爆。
+    static let maxFileCount = 20
     /// 允许的每实例显示条数档位（共识 Q10）。
     static let allowedDisplayCounts = [20, 50]
 
@@ -245,24 +340,143 @@ enum ClipboardHistoryLogic {
         return trimmed.utf8.count <= maxSingleBytes
     }
 
-    /// 记录一条新文本：返回新数组。
-    /// - 连续重复去重：与当前第一条正文相同 → 不新增（只是时间不变）。
+    // MARK: 采集载荷 → 条目（富媒体）
+
+    /// 由采集载荷判定类型；载荷里没有任何可用内容时返回 nil。
+    static func classify(_ capture: ClipboardCapture) -> ClipboardEntryKind? {
+        // 顺序与 `ClipboardCapture` 的文档注释一致：图像排在文件之前。
+        if capture.imageData?.isEmpty == false { return .image }
+        if !capture.filePaths.isEmpty { return .file }
+        guard let text = capture.text,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return classify(text: text)
+    }
+
+    /// 由采集载荷构造条目；nil 表示这份载荷不可入历史。
+    ///
+    /// `storedMediaName` **不在这里赋值**——它要等落盘成功才知道，由 store 回填；
+    /// 图片在此已带上内容哈希与字节数，两者都来自原始字节、与落盘无关。
+    static func makeEntry(from capture: ClipboardCapture, now: Date = Date()) -> ClipboardEntry? {
+        guard let kind = classify(capture) else { return nil }
+        switch kind {
+        case .file:
+            let paths = Array(capture.filePaths.prefix(maxFileCount))
+            guard !paths.isEmpty else { return nil }
+            // 正文存路径串（换行连接）：搜索能命中任一路径，多文件也是一条。
+            return ClipboardEntry(
+                text: paths.joined(separator: "\n"),
+                capturedAt: now,
+                kind: .file,
+                fileURLs: paths
+            )
+        case .image:
+            guard let data = capture.imageData, !data.isEmpty else { return nil }
+            // 超限整份丢弃，不截断——截断过的图片没有意义，写回还会变成坏数据。
+            guard data.count <= maxMediaSingleBytes else { return nil }
+            // 内容哈希由调用方给出：本文件刻意不依赖平台哈希库，以保证纯逻辑层
+            // 能在无 CryptoKit 的环境里编译与单测。缺哈希即视为不可记录，不退化
+            // 成"按正文去重"——图片正文恒为空串，那会让所有图片合成一条。
+            guard let hash = capture.imageHash, !hash.isEmpty else { return nil }
+            return ClipboardEntry(
+                text: "",
+                capturedAt: now,
+                kind: .image,
+                contentHash: hash,
+                mediaByteSize: data.count,
+                mediaUTI: capture.imageUTI
+            )
+        case .text, .link, .color:
+            guard let text = capture.text, isRecordable(text) else { return nil }
+            return ClipboardEntry(
+                text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                capturedAt: now
+            )
+        }
+    }
+
+    /// 去重身份：决定两份载荷"是不是同一条"。
+    ///
+    /// 正文可比的类型按正文；图片必须走内容哈希（正文恒空，靠正文会把所有图片
+    /// 合成一条）；文件按路径集合（同一个文件再复制一次应当顶到最前而非新增）。
+    static func matchKey(_ entry: ClipboardEntry) -> String {
+        switch entry.kind {
+        case .image: return "image:\(entry.contentHash ?? "")"
+        case .file: return "file:\(entry.fileURLs.joined(separator: "\n"))"
+        case .text, .link, .color: return "text:\(entry.text)"
+        }
+    }
+
+    /// 该条目是否已在历史里（同身份）。
+    ///
+    /// 与 `recording(_:into:now:)` 里的同款判断分开存在，是因为调用方需要在
+    /// **落盘之前**知道答案：命中已有图片时不该为它白写一份文件。
+    static func contains(_ entry: ClipboardEntry, in entries: [ClipboardEntry]) -> Bool {
+        let key = matchKey(entry)
+        return entries.contains { matchKey($0) == key }
+    }
+
+    /// 单条的磁盘占用。只有落盘类型计入；文件条目的路径串不计（它不占磁盘）。
+    static func mediaByteSize(of entry: ClipboardEntry) -> Int {
+        guard entry.kind.usesDiskStorage else { return 0 }
+        return entry.mediaByteSize ?? 0
+    }
+
+    /// 媒体预算准入：**只有"置顶自身就已超预算"这一种情况会拒收**。
+    ///
+    /// 未超预算时新条必定活下来：它插在未置顶区首位，而 `sanitized` 的预算淘汰
+    /// 从末尾（最老）开始，先被淘汰的永远轮不到它。所以这里不需要试算整轮淘汰。
+    static func admitsMedia(_ entry: ClipboardEntry, into entries: [ClipboardEntry]) -> Bool {
+        guard entry.kind.usesDiskStorage else { return true }
+        let pinnedBytes = entries.reduce(0) { total, item in
+            item.pinned ? total + mediaByteSize(of: item) : total
+        }
+        return pinnedBytes <= maxMediaBytes
+    }
+
+    /// 记录一次复制（只带文本的旧入口，等价于文本形态的采集）。
+    static func recording(_ text: String, into entries: [ClipboardEntry], now: Date = Date()) -> [ClipboardEntry] {
+        recording(ClipboardCapture(text: text), into: entries, now: now)
+    }
+
+    /// 记录一次采集：载荷先过 `makeEntry`，再走条目入口。nil 载荷不记录。
+    static func recording(
+        _ capture: ClipboardCapture,
+        into entries: [ClipboardEntry],
+        now: Date = Date()
+    ) -> [ClipboardEntry] {
+        guard let entry = makeEntry(from: capture, now: now) else { return entries }
+        return recording(entry, into: entries, now: now)
+    }
+
+    /// 记录一条**已构造好**的条目：返回新数组。
+    ///
+    /// 独立入口的存在理由是 `storedMediaName`：它要等磁盘写成功才知道，只能在
+    /// 条目构造之后由 store 回填，所以 store 拿到的是"条目"而不是"载荷"。
+    /// - 连续重复去重：与当前第一条**同身份** → 不新增（只是时间不变）。
     /// - 命中旧条（含置顶）：移到最前面并保持置顶标记，刷新时间。
     /// - 新条置顶位不变、插在置顶区之后、普通区之前。
     /// - 置顶溢出（> maxPinned）：最早置顶的一条自动解顶（保留在列表）。
     /// - 总量溢出：从末尾淘汰未置顶条；全置顶的极端情况淘汰最末置顶条。
-    static func recording(_ text: String, into entries: [ClipboardEntry], now: Date = Date()) -> [ClipboardEntry] {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isRecordable(trimmed) else { return entries }
-        if entries.first?.text == trimmed { return entries }
+    /// - 媒体预算溢出：见 `sanitized`；仅置顶就已超预算时由 `admitsMedia` 停收。
+    static func recording(
+        _ entry: ClipboardEntry,
+        into entries: [ClipboardEntry],
+        now: Date = Date()
+    ) -> [ClipboardEntry] {
+        let key = matchKey(entry)
+        if let first = entries.first, matchKey(first) == key { return entries }
         var next = entries
-        if let index = next.firstIndex(where: { $0.text == trimmed }) {
+        if let index = next.firstIndex(where: { matchKey($0) == key }) {
+            // 命中旧条：不新增字节，预算无需再过一遍（否则重新复制一条置顶图片
+            // 会因"置顶已超预算"被拒，而它其实什么都没多占）。
             var hit = next.remove(at: index)
             hit.capturedAt = now
             next.insert(hit, at: insertionIndex(forPinned: hit.pinned, in: next))
         } else {
-            let entry = ClipboardEntry(text: trimmed, capturedAt: now)
-            next.insert(entry, at: insertionIndex(forPinned: false, in: next))
+            guard admitsMedia(entry, into: entries) else { return entries }
+            var inserted = entry
+            inserted.capturedAt = now
+            next.insert(inserted, at: insertionIndex(forPinned: false, in: next))
         }
         return sanitized(next)
     }
@@ -379,7 +593,7 @@ enum ClipboardHistoryLogic {
         allowedDisplayCounts.min(by: { abs($0 - count) < abs($1 - count) }) ?? maxEntries
     }
 
-    /// 持久化净化：超长截断（防损坏文件撑爆内存）、总量与置顶双重封顶。
+    /// 持久化净化：总量与置顶双重封顶、媒体字节预算兜底。
     /// 置顶区保持原序、普通区保持原序后拼接，保证解码后仍满足不变量。
     static func sanitized(_ entries: [ClipboardEntry]) -> [ClipboardEntry] {
         var pinned = entries.filter(\.pinned)
@@ -409,7 +623,28 @@ enum ClipboardHistoryLogic {
                 combined = Array(combined.prefix(maxEntries))
             }
         }
-        return combined
+        return applyingMediaBudget(combined)
+    }
+
+    /// 媒体预算淘汰：从**最老**的未置顶落盘条目开始删，直到总字节回到预算内。
+    ///
+    /// 置顶条目永不因预算被淘汰——那等于让预算拥有"静默解顶"的权力，而置顶是
+    /// 用户的显式意图。所以仅置顶就已超预算时，本函数原样返回（超预算状态由
+    /// `admitsMedia` 在入口挡住新条目，不会再恶化）。淘汰顺序与条数淘汰同为
+    /// "从末尾、只动未置顶"，两条不变量方向一致。
+    private static func applyingMediaBudget(_ entries: [ClipboardEntry]) -> [ClipboardEntry] {
+        var remaining = entries.reduce(0) { $0 + mediaByteSize(of: $1) }
+        guard remaining > maxMediaBytes else { return entries }
+        var kept: [ClipboardEntry] = []
+        for entry in entries.reversed() {
+            let size = mediaByteSize(of: entry)
+            if remaining > maxMediaBytes, size > 0, !entry.pinned {
+                remaining -= size
+                continue
+            }
+            kept.append(entry)
+        }
+        return Array(kept.reversed())
     }
 
     /// 新条 / 重排条的插入位：置顶落置顶区末尾，普通落置顶区之后（普通区首位）。

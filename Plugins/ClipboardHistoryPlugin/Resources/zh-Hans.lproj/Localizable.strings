@@ -13,7 +13,7 @@
 "library.section.pinned" = "置顶";
 "library.section.recent" = "最近";
 "library.empty.title" = "还没有剪贴历史";
-"library.empty.hint" = "复制一些文本，它会出现在这里。";
+"library.empty.hint" = "复制一些文本、图片或文件，它们会出现在这里。";
 "library.noMatch.title" = "没有匹配项";
 "library.noMatch.hint" = "换个关键词，或清空类型筛选。";
 "library.kind.text" = "文本";
@@ -28,10 +28,19 @@
 "drawer.section.recent" = "最近";
 /* 行无障碍标签（容器扁平化后分组语义改挂在行上）：组名 + 正文 */
 "drawer.row.a11y" = "%1$@，%2$@";
+/* 多文件条目只报数量：逐条念路径会读很久 */
+"drawer.row.a11y.files" = "%1$@，%2$d 个文件";
+/* 文件行的展示文本：首个文件名 + 总数（整条路径太长且前缀是噪音） */
+"drawer.file.multiple" = "%1$@ 等 %2$d 个文件";
 "drawer.empty.title" = "还没有剪贴板历史";
-"drawer.empty.hint" = "复制文本后会显示在这里，点击条目可将其写回剪贴板。";
+"drawer.empty.hint" = "复制文本、图片或文件后会显示在这里，点击条目可将其写回剪贴板。";
 "drawer.paused.banner" = "记录已暂停";
 "drawer.search.empty" = "没有匹配结果";
+/* 写回被拒（文件条目的原路径已失效，见 README 的隐私与限制说明） */
+"drawer.copy.failed" = "文件已移动或删除";
+
+/* 悬浮预览（鼠标在条目上停稳后从光标下方浮出） */
+"hover.file.more" = "还有 %d 个文件";
 
 /* 顶部工具行（搜索按钮展开 / 清空按钮） */
 "drawer.button.search" = "搜索历史";

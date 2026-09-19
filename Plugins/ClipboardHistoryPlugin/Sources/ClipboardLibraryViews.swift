@@ -30,11 +30,15 @@ enum ClipboardLibraryPalette {
 // 渲染走宿主 BlockCard + 宿主抽屉 ScrollView；列表自身是页内 ScrollView，
 // 页不再被套一层。`.newPageWhenOccupied` 只是"添加那一刻"的落点偏好。
 //
-// 富媒体说明：本期只采集纯文本，图片/文件类型是预留位（见 ClipboardEntryKind），
-// 筛选栏因此只列实际可出现的三种类型。
+// 富媒体说明：五类都已可采集（决策记录 2026-09-20-clipboard-media-types），筛选栏
+// 列全五类。图标-only 的 chip 是**宽度约束逼出来的**——`minSize` 宽 300、内边距
+// 12×2，内容只有 276pt，五个"图标 + 文字"的 chip 放不下（英文文案更多）。
 
 /// 库页布局常量：**视图与打包期探针的唯一真源**（探针按这些常量推导区带，
 /// 改布局必须同步这里；见 `ClipboardHistoryPlugin.clipboardLibraryLayoutProbes`）。
+///
+/// 行高与缩略图尺寸**不在此列**：列表行高与抽屉块共用 `ClipboardRowMetrics`，
+/// 且它不进探针（列表在块内自管滚动），混进来会传下去"改行高也要动探针"的假约束。
 enum ClipboardLibraryMetricsProbe {
     static let padding: CGFloat = 12
     /// 顶部搜索行高。
@@ -46,8 +50,6 @@ enum ClipboardLibraryMetricsProbe {
     static let pinnedCardHeight: CGFloat = 54
     /// 看板/列表区块标题的行高。
     static let sectionTitleHeight: CGFloat = 16
-    /// 列表行高。
-    static let rowHeight: CGFloat = 30
     /// 区块间距。
     static let sectionGap: CGFloat = 12
 }
@@ -62,6 +64,8 @@ struct ClipboardLibraryView: View {
     @State private var query = ""
     @State private var selectedKinds: Set<ClipboardEntryKind> = []
     @FocusState private var searchFocused: Bool
+    /// 悬浮预览的计时与目标（组件见 `ClipboardHoverPreview.swift`）。
+    @StateObject private var hover = ClipboardHoverPreviewModel()
 
     /// 抽屉展开态：库页与抽屉块共享同一份"被观察"登记，收起即注销（幂等）。
     @Environment(\.isDrawerPresented) private var isDrawerPresented
@@ -101,11 +105,16 @@ struct ClipboardLibraryView: View {
         // 派生结果只算一次：`sections` 是计算属性，在 body 里多次访问会让一次渲染
         // 重复跑多轮「类型筛选 + 大小写不敏感全库扫描」。
         let sections = self.sections
-        return VStack(alignment: .leading, spacing: ClipboardLibraryMetrics.sectionGap) {
-            searchRow
-            filterRow
-            content(sections)
+        return ZStack(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: ClipboardLibraryMetrics.sectionGap) {
+                searchRow
+                filterRow
+                content(sections)
+            }
+            hoverPreviewLayer
         }
+        // 行与浮层共用这个名字空间：行的 hover 报出的光标位置直接就是浮层的摆放基准。
+        .coordinateSpace(name: ClipboardHoverSpace.list)
         .padding(ClipboardLibraryMetrics.padding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background { visibilityProbeLayer }
@@ -113,9 +122,29 @@ struct ClipboardLibraryView: View {
         .onDisappear { syncLibraryObservation(presented: false) }
         .onChange(of: isDrawerPresented) { _, presented in
             syncLibraryObservation(presented: presented)
+            // 抽屉收起后视图树仍在（温存），悬浮卡必须跟着"用户看不见了"这个事实收掉。
+            if !presented { hover.cancel() }
         }
+        // 列表内容一变，光标底下换的可能是另一条：收起比留在旧内容上诚实。
+        .onChange(of: query) { _, _ in hover.cancel() }
+        .onChange(of: selectedKinds) { _, _ in hover.cancel() }
+        .onChange(of: store.entries) { _, _ in hover.cancel() }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L("library.a11y"))
+    }
+
+    /// 悬浮预览层。挂在块内容盒里而不是走 `BlockPopover`：零窗口开销，且由构造保证
+    /// 不可能越出块矩形——卡片伸出抽屉可见矩形会让光标"离开停留区"，抽屉被收起
+    /// （见 `BlockPopover.cardInset` 那段注释）。理由与抽屉块同源。
+    @ViewBuilder
+    private var hoverPreviewLayer: some View {
+        // 条目可能在这期间被删掉：shown 里存的是值的副本，不核对会留下一张"幽灵卡"。
+        if let target = hover.shown, store.entries.contains(where: { $0.id == target.entry.id }) {
+            ClipboardHoverPreviewLayer(
+                target: target,
+                thumbnailURL: store.thumbnailURL(for: target.entry)
+            )
+        }
     }
 
     // MARK: 搜索与筛选
@@ -161,23 +190,41 @@ struct ClipboardLibraryView: View {
     }
 
     /// 类型筛选 chip 行：点击切换，全不选 = 不过滤。
+    ///
+    /// `ViewThatFits` 在两种排布里挑最富的一种——够宽时选中项展开成"图标 + 文字"，
+    /// 不够宽时全部退回纯图标。不做横向滚动：宿主把抽屉的横向滑动用作切页手势，
+    /// 被筛选行消费掉会打架（README 里那条"纵向列表不消费横向滑动"同理）。
     private var filterRow: some View {
         HStack(spacing: 6) {
-            ForEach(ClipboardEntryKind.collectable, id: \.self) { kind in
-                filterChip(kind)
+            ViewThatFits(in: .horizontal) {
+                chipStrip(showsLabels: true)
+                chipStrip(showsLabels: false)
             }
+            .layoutPriority(1)
             Spacer(minLength: 0)
             if !selectedKinds.isEmpty {
                 Text(LF("library.filtered", selectedKinds.count))
                     .font(NotchTokens.Text.system(10))
                     .foregroundStyle(NotchTokens.Foreground.muted)
+                    .lineLimit(1)
             }
         }
         .frame(height: ClipboardLibraryMetrics.filterRowHeight)
     }
 
-    private func filterChip(_ kind: ClipboardEntryKind) -> some View {
+    private func chipStrip(showsLabels: Bool) -> some View {
+        HStack(spacing: 5) {
+            ForEach(ClipboardEntryKind.collectable, id: \.self) { kind in
+                filterChip(kind, showsLabels: showsLabels)
+            }
+        }
+    }
+
+    private func filterChip(_ kind: ClipboardEntryKind, showsLabels: Bool) -> some View {
         let isOn = selectedKinds.contains(kind)
+        // 未选中一律只给图标；文字只在"够宽"且"已选中"时出现，用来回答
+        // "我到底筛了哪几个"——纯图标靠悬停猜太慢。
+        let showsText = showsLabels && isOn
         return Button {
             if isOn {
                 selectedKinds.remove(kind)
@@ -188,8 +235,12 @@ struct ClipboardLibraryView: View {
             HStack(spacing: 4) {
                 Image(systemName: kind.symbolName)
                     .font(NotchTokens.Text.system(9, weight: .medium))
-                Text(L(kind.localizationKey))
-                    .font(NotchTokens.Text.system(10, weight: .medium))
+                if showsText {
+                    Text(L(kind.localizationKey))
+                        .font(NotchTokens.Text.system(10, weight: .medium))
+                        .lineLimit(1)
+                        .fixedSize()
+                }
             }
             .foregroundStyle(isOn ? NotchTokens.Foreground.selected : NotchTokens.Foreground.secondary)
             .padding(.horizontal, 8)
@@ -257,7 +308,8 @@ struct ClipboardLibraryView: View {
     }
 
     private func pinnedCard(_ entry: ClipboardEntry) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let copyFailed = store.copyFailedID == entry.id
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: entry.kind.symbolName)
                     .font(NotchTokens.Text.system(9, weight: .medium))
@@ -275,12 +327,27 @@ struct ClipboardLibraryView: View {
                 .focusEffectDisabled(true)
                 .help(L("drawer.button.unpin"))
             }
-            Text(ClipboardHistoryLogic.diagnosticText(entry.text))
-                .font(NotchTokens.Text.system(11))
-                .foregroundStyle(NotchTokens.Foreground.body)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if entry.kind == .image {
+                HStack(spacing: 6) {
+                    ClipboardImageView(
+                        url: store.thumbnailURL(for: entry),
+                        width: ClipboardRowMetrics.thumbnailWidth,
+                        height: ClipboardRowMetrics.thumbnailHeight,
+                        contentMode: .fill
+                    )
+                    Text(L("library.kind.image"))
+                        .font(NotchTokens.Text.system(10))
+                        .foregroundStyle(NotchTokens.Foreground.secondary)
+                        .lineLimit(1)
+                }
+            } else {
+                Text(ClipboardHistoryLogic.diagnosticText(ClipboardEntryPresentation.displayText(for: entry)))
+                    .font(NotchTokens.Text.system(11))
+                    .foregroundStyle(copyFailed ? NotchTokens.Foreground.disabled : NotchTokens.Foreground.body)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(8)
         .frame(width: ClipboardLibraryMetrics.pinnedCardWidth,
@@ -292,20 +359,36 @@ struct ClipboardLibraryView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous)
-                .strokeBorder(NotchTokens.Hairline.drawerEdge, lineWidth: 1)
+                .strokeBorder(
+                    copyFailed ? NotchTokens.Semantic.unavailable : NotchTokens.Hairline.drawerEdge,
+                    lineWidth: 1
+                )
         )
         .contentShape(Rectangle())
         .blockPopoverTrigger(
-            onTap: { _ in store.copyBack(entry) },
-            onLongPress: { frame in presentPreview(frame, entry: entry) },
+            onTap: { _ in
+                hover.cancel()
+                store.copyBack(entry)
+            },
+            onLongPress: { frame in
+                // 长按期间光标静止，不停掉计时的话悬浮卡会在浮窗背后同时长出来。
+                hover.cancel()
+                presentPreview(frame, entry: entry)
+            },
             cornerRadius: NotchTokens.Radius.chip
         )
+        .onContinuousHover(coordinateSpace: .named(ClipboardHoverSpace.list)) { phase in
+            switch phase {
+            case .active(let location): hover.hover(entry: entry, at: location)
+            case .ended: hover.end(entry: entry)
+            }
+        }
         .contextMenu {
             Button(L("drawer.button.unpin")) { store.togglePin(id: entry.id) }
             Button(L("drawer.button.delete")) { store.delete(id: entry.id) }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(ClipboardHistoryLogic.diagnosticText(entry.text)))
+        .accessibilityLabel(Text(ClipboardEntryPresentation.accessibilityLabel(for: entry, section: .pinned)))
     }
 
     /// 最近列表：单行截断，行尾置顶/删除；点击写回、长按预览。
@@ -330,11 +413,21 @@ struct ClipboardLibraryView: View {
     }
 
     private func recentRow(_ entry: ClipboardEntry) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: entry.kind.symbolName)
-                .font(NotchTokens.Text.system(10, weight: .medium))
-                .foregroundStyle(NotchTokens.Foreground.placeholder)
-                .frame(width: 14)
+        let copyFailed = store.copyFailedID == entry.id
+        return HStack(spacing: 8) {
+            if entry.kind == .image {
+                ClipboardImageView(
+                    url: store.thumbnailURL(for: entry),
+                    width: ClipboardRowMetrics.thumbnailWidth,
+                    height: ClipboardRowMetrics.thumbnailHeight,
+                    contentMode: .fill
+                )
+            } else {
+                Image(systemName: entry.kind.symbolName)
+                    .font(NotchTokens.Text.system(10, weight: .medium))
+                    .foregroundStyle(NotchTokens.Foreground.placeholder)
+                    .frame(width: 14)
+            }
             if let swatch = colorSwatch(for: entry) {
                 RoundedRectangle(cornerRadius: NotchTokens.Radius.thumbnail, style: .continuous)
                     .fill(swatch)
@@ -344,12 +437,18 @@ struct ClipboardLibraryView: View {
                             .strokeBorder(NotchTokens.Hairline.thumbnail, lineWidth: 0.5)
                     )
             }
-            Text(ClipboardHistoryLogic.diagnosticText(entry.text))
+            Text(ClipboardHistoryLogic.diagnosticText(ClipboardEntryPresentation.displayText(for: entry)))
                 .font(NotchTokens.Text.system(11.5))
-                .foregroundStyle(NotchTokens.Foreground.body)
+                .foregroundStyle(copyFailed ? NotchTokens.Foreground.disabled : NotchTokens.Foreground.body)
                 .lineLimit(1)
-                .truncationMode(.middle)
+                .truncationMode(entry.kind == .file ? .middle : .tail)
             Spacer(minLength: 6)
+            if copyFailed {
+                Text(L("drawer.copy.failed"))
+                    .font(NotchTokens.Text.system(9.5, weight: .medium))
+                    .foregroundStyle(NotchTokens.Semantic.unavailable)
+                    .lineLimit(1)
+            }
             if store.justCopiedID == entry.id {
                 Image(systemName: "checkmark")
                     .font(NotchTokens.Text.system(9, weight: .semibold))
@@ -369,17 +468,29 @@ struct ClipboardLibraryView: View {
             }
         }
         .padding(.horizontal, 6)
-        .frame(height: ClipboardLibraryMetrics.rowHeight)
+        .frame(height: ClipboardRowMetrics.height(for: entry))
         .background(
             RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
                 .fill(store.justCopiedID == entry.id ? NotchTokens.Surface.fillHighlighted : .clear)
         )
         .contentShape(Rectangle())
         .blockPopoverTrigger(
-            onTap: { _ in store.copyBack(entry) },
-            onLongPress: { frame in presentPreview(frame, entry: entry) },
+            onTap: { _ in
+                hover.cancel()
+                store.copyBack(entry)
+            },
+            onLongPress: { frame in
+                hover.cancel()
+                presentPreview(frame, entry: entry)
+            },
             cornerRadius: NotchTokens.Radius.button
         )
+        .onContinuousHover(coordinateSpace: .named(ClipboardHoverSpace.list)) { phase in
+            switch phase {
+            case .active(let location): hover.hover(entry: entry, at: location)
+            case .ended: hover.end(entry: entry)
+            }
+        }
         .contextMenu {
             Button(entry.pinned ? L("drawer.button.unpin") : L("drawer.button.pin")) {
                 store.togglePin(id: entry.id)
@@ -387,7 +498,7 @@ struct ClipboardLibraryView: View {
             Button(L("drawer.button.delete")) { store.delete(id: entry.id) }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(ClipboardHistoryLogic.diagnosticText(entry.text)))
+        .accessibilityLabel(Text(ClipboardEntryPresentation.accessibilityLabel(for: entry, section: .recent)))
     }
 
     private func rowIconButton(
@@ -417,7 +528,10 @@ struct ClipboardLibraryView: View {
             anchoredTo: frameInWindow,
             cardSize: CGSize(width: 300, height: 220)
         ) {
-            ClipboardLibraryPreviewCard(entry: entry)
+            ClipboardLibraryPreviewCard(
+                entry: entry,
+                imageURL: store.thumbnailURL(for: entry)
+            )
         }
     }
 
@@ -472,9 +586,10 @@ struct ClipboardLibraryView: View {
     }
 }
 
-/// 库页长按预览：全文 + 色块（颜色条目）+ 内嵌滚动 + 可选中复制。
+/// 库页长按预览：图片给原图（不裁切），其余给全文 + 色块（颜色条目）+ 内嵌滚动 + 可选中复制。
 private struct ClipboardLibraryPreviewCard: View {
     let entry: ClipboardEntry
+    let imageURL: URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -496,12 +611,17 @@ private struct ClipboardLibraryPreviewCard: View {
                         )
                 }
             }
-            ScrollView(.vertical) {
-                Text(entry.text)
-                    .font(NotchTokens.Text.system(11.5))
-                    .foregroundStyle(NotchTokens.Foreground.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if entry.kind == .image {
+                ClipboardImageView(url: imageURL, width: 256, height: 160, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+            } else {
+                ScrollView(.vertical) {
+                    Text(entry.text)
+                        .font(NotchTokens.Text.system(11.5))
+                        .foregroundStyle(NotchTokens.Foreground.body)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .padding(12)

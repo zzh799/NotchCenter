@@ -13,7 +13,7 @@
 "library.section.pinned" = "Pinned";
 "library.section.recent" = "Recent";
 "library.empty.title" = "No Clipboard History Yet";
-"library.empty.hint" = "Copy some text and it will show up here.";
+"library.empty.hint" = "Copy some text, an image, or a file and it will show up here.";
 "library.noMatch.title" = "No Matches";
 "library.noMatch.hint" = "Try a different keyword or clear the type filters.";
 "library.kind.text" = "Text";
@@ -28,10 +28,19 @@
 "drawer.section.recent" = "Recent";
 /* Row a11y label (group semantics moved onto the row after flattening the list): group + text */
 "drawer.row.a11y" = "%1$@, %2$@";
+/* Multi-file entries report a count only: reading every path aloud takes forever */
+"drawer.row.a11y.files" = "%1$@, %2$d files";
+/* File row label: first file name plus the total (a full path is mostly prefix noise) */
+"drawer.file.multiple" = "%1$@ and %2$d more files";
 "drawer.empty.title" = "No Clipboard History Yet";
-"drawer.empty.hint" = "Copy some text and it will appear here. Click an entry to copy it back.";
+"drawer.empty.hint" = "Copy text, images, or files and they will appear here. Click an entry to copy it back.";
 "drawer.paused.banner" = "Recording paused";
 "drawer.search.empty" = "No matches";
+/* Write-back refused (a file entry's original path is gone; see the README limitations) */
+"drawer.copy.failed" = "File moved or deleted";
+
+/* Hover preview (appears under the cursor once it settles on an entry) */
+"hover.file.more" = "%d more files";
 
 /* 顶部工具行（搜索按钮展开 / 清空按钮） */
 "drawer.button.search" = "Search history";
