@@ -45,7 +45,8 @@ struct LocalizationTests {
         "Plugins/ClipboardHistoryPlugin",
         "Plugins/CameraPlugin",
         "Plugins/LidAngleDepthPlugin",
-        "Plugins/CommandSchedulerPlugin"
+        "Plugins/CommandSchedulerPlugin",
+        "Plugins/SystemMonitorPlugin"
     ]
 
     @Test(arguments: LocalizationTests.modules)
@@ -68,7 +69,7 @@ struct LocalizationTests {
         "NotesPlugin", "ScratchpadPlugin", "CaffeinatePlugin", "DshPlugin", "CalibrePlugin",
         "PomodoroPlugin", "DisplayPlugin",
         "ClipboardHistoryPlugin", "CameraPlugin",
-        "CommandSchedulerPlugin",
+        "CommandSchedulerPlugin", "SystemMonitorPlugin",
     ])
     func pluginPlistCarriesChineseMetadataLocales(plugin: String) throws {
         let url = repoRoot

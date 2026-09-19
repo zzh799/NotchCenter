@@ -1,0 +1,38 @@
+/* SystemMonitorPlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 块 */
+"block.cpu.name" = "CPU";
+"block.memory.name" = "Memory";
+"block.disk.name" = "Disk";
+"block.network.name" = "Network";
+"block.overview.name" = "System Overview";
+
+/* 状态 */
+"state.sampling" = "Sampling…";
+"state.unavailable" = "Unavailable";
+
+/* 内存压力（无障碍与语义） */
+"pressure.normal" = "Normal pressure";
+"pressure.warning" = "Warning pressure";
+"pressure.critical" = "Critical pressure";
+
+/* 实例设置 */
+"settings.section.general" = "General";
+"settings.section.thresholds" = "Thresholds";
+"settings.section.metrics" = "Metrics";
+"settings.window" = "History window";
+"settings.window.30" = "30 seconds";
+"settings.window.60" = "1 minute";
+"settings.window.120" = "2 minutes";
+"settings.window.300" = "5 minutes";
+"settings.threshold.yellow" = "Elevated at";
+"settings.threshold.red" = "High at";
+"settings.threshold.unit.percent" = "%";
+"settings.threshold.unit.rate" = "MB/s";
+"settings.unit" = "Rate unit";
+"settings.unit.auto" = "Auto";
+"settings.unit.kb" = "KB/s";
+"settings.unit.mb" = "MB/s";
+"settings.unit.gb" = "GB/s";
+"settings.network.exclusions" = "Excluded interface prefixes";
+"settings.network.exclusions.hint" = "Comma-separated prefixes. Default: lo, utun, awdl, llw, bridge, anpi, ap, gif, stf, xsc, demux, vmnet.";
