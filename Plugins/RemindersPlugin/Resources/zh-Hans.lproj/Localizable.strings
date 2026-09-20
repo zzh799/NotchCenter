@@ -1,0 +1,46 @@
+/* RemindersPlugin 简体中文文案（键集必须与 en.lproj 完全一致） */
+
+/* 块名 */
+"block.list.name" = "提醒事项";
+
+/* 数据源 */
+"source.section.smart" = "智能";
+"source.section.lists" = "清单";
+"source.smart.today" = "今天";
+"source.smart.scheduled" = "计划";
+"source.smart.important" = "优先级";
+"source.smart.all" = "全部";
+"source.unknownList" = "清单已缺失";
+"source.switch.help" = "切换清单";
+
+/* 权限引导 */
+"gate.title" = "需要提醒事项权限";
+"gate.message" = "授权后才能读取清单并勾选完成。";
+"gate.openSettings" = "权限设置";
+"gate.openSettings.help" = "打开 NotchCenter 的权限管理面板";
+
+/* 异常与空态 */
+"state.removed.title" = "清单已移除";
+"state.removed.hint" = "用右上角按钮另选一个清单。";
+"state.empty.list" = "这里没有待办";
+"state.empty.today" = "今天没有到期的";
+"state.empty.scheduled" = "没有已安排的事项";
+"state.empty.important" = "没有标了优先级的";
+"state.empty.all" = "全部完成了";
+"notice.readOnly" = "这个清单是只读的";
+"notice.itemMissing" = "那条提醒已不存在";
+"notice.writeFailed" = "改动没能保存";
+
+/* 行 */
+"row.untitled" = "无标题";
+"row.help" = "点击勾选完成";
+"row.a11y" = "%@，未完成";
+"row.a11y.repeating" = "%@，未完成，重复";
+
+/* 撤销与设置 */
+"undo.completed" = "已完成：%@";
+"undo.action" = "撤销";
+"undo.action.help" = "把这条提醒改回未完成";
+"settings.section.source" = "显示";
+"settings.source.hint" = "智能视图会跨全部清单聚合条目。右上角按钮也能切换。";
+"settings.outstanding" = "未完成 %ld 项";

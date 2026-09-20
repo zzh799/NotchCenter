@@ -66,6 +66,8 @@
 | 查找高亮 | `systemYellow` @ 0.55（当前命中 `systemYellow` 不透明） |
 | 文件不可用角标 | `orange.opacity(0.72)`（`exclamationmark.circle.fill`） |
 
+**数据语义色的豁免**：由**用户数据**决定、而非主题决定的颜色，比照上表的语义色处理——允许作为插件本地命名常量存在（收敛在插件自己的调色板文件里并注明豁免理由），不强制迁进 `NotchTokens`。当前适用者：提醒事项清单颜色（用户在 Reminders 里给清单指定的颜色，取自 `EKCalendar.cgColor`）、系统监控的方向色与等级色（`SystemMonitorPlugin`）。判定线：换一个用户、换一份数据，这个颜色就该变——那它是数据；否则它是主题，必须走 token。
+
 ---
 
 ## 3. 形状与圆角（Shapes & Radii）

@@ -48,7 +48,8 @@ struct LocalizationTests {
         "Plugins/ClockPlugin",
         "Plugins/LidAngleDepthPlugin",
         "Plugins/CommandSchedulerPlugin",
-        "Plugins/SystemMonitorPlugin"
+        "Plugins/SystemMonitorPlugin",
+        "Plugins/RemindersPlugin"
     ]
 
     @Test(arguments: LocalizationTests.modules)

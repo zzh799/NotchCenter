@@ -1,0 +1,46 @@
+/* RemindersPlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 块名 */
+"block.list.name" = "Reminders";
+
+/* 数据源 */
+"source.section.smart" = "Smart";
+"source.section.lists" = "Lists";
+"source.smart.today" = "Today";
+"source.smart.scheduled" = "Scheduled";
+"source.smart.important" = "Priority";
+"source.smart.all" = "All";
+"source.unknownList" = "Missing list";
+"source.switch.help" = "Switch list";
+
+/* 权限引导 */
+"gate.title" = "Reminders access";
+"gate.message" = "Allow access to read your lists and check items off.";
+"gate.openSettings" = "Permission settings";
+"gate.openSettings.help" = "Open NotchCenter's permission panel";
+
+/* 异常与空态 */
+"state.removed.title" = "List removed";
+"state.removed.hint" = "Pick another one from the button in the corner.";
+"state.empty.list" = "Nothing left here";
+"state.empty.today" = "Nothing due today";
+"state.empty.scheduled" = "Nothing scheduled";
+"state.empty.important" = "Nothing has a priority";
+"state.empty.all" = "Everything is done";
+"notice.readOnly" = "This list is read-only";
+"notice.itemMissing" = "That reminder is gone";
+"notice.writeFailed" = "Couldn't save the change";
+
+/* 行 */
+"row.untitled" = "Untitled";
+"row.help" = "Click to complete";
+"row.a11y" = "%@, incomplete";
+"row.a11y.repeating" = "%@, incomplete, repeats";
+
+/* 撤销与设置 */
+"undo.completed" = "Completed: %@";
+"undo.action" = "Undo";
+"undo.action.help" = "Mark this reminder incomplete again";
+"settings.section.source" = "Show";
+"settings.source.hint" = "Smart views gather items across all lists. The corner button switches this too.";
+"settings.outstanding" = "%ld outstanding";

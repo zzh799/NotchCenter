@@ -13,6 +13,7 @@ import XCTest
 @testable import NotesPlugin
 @testable import PomodoroPlugin
 @testable import QuickButtonBoxPlugin
+@testable import RemindersPlugin
 @testable import ScratchpadPlugin
 @testable import SystemMonitorPlugin
 
@@ -49,6 +50,7 @@ final class BlockMinSizeVerificationTests: XCTestCase {
             ("NotesPlugin", NotesPlugin.blocks),
             ("PomodoroPlugin", PomodoroPlugin.blocks),
             ("QuickButtonBoxPlugin", QuickButtonBoxPlugin.blocks),
+            ("RemindersPlugin", RemindersPlugin.blocks),
             ("ScratchpadPlugin", ScratchpadPlugin.blocks),
             ("SystemMonitorPlugin", SystemMonitorPlugin.blocks),
         ]
