@@ -6,7 +6,7 @@ import NotchCenterKit
 /// **与上游的差异(D4)**:上游 Mac-Duo 的 `Preferences` 直接写 `UserDefaults`,
 /// 那在本仓库是红线——插件状态一律走注入的 `StateStore`(按 pluginID 隔离、
 /// 原子写、核心里不暴露路径)。这里保持同一份键与同一组工厂默认值,只换落盘通道,
-/// 因此观感默认值与上游一致。
+/// 因此观感默认值与上游一致(唯一例外是总开关 `isEnabled` 默认关闭,见 `Factory`)。
 @MainActor
 public final class LidDepthPreferences: ObservableObject {
 
@@ -24,9 +24,12 @@ public final class LidDepthPreferences: ObservableObject {
         static let showsAngleInMenuBar = "showsAngleInMenuBar"
     }
 
-    /// 工厂默认值。与上游 `Preferences.factory` 逐项一致,保证开箱观感相同。
+    /// 工厂默认值。除 `isEnabled` 外与上游 `Preferences.factory` 逐项一致,保证开箱观感相同。
+    ///
+    /// `isEnabled` 刻意改为 `false`(上游为 `true`):效果是一层盖满内置屏的全屏覆盖且需要
+    /// 屏幕录制权限,首次启动就默认接管过于突兀,改为由用户在控制台或设置里主动开启。
     private enum Factory {
-        static let isEnabled = true
+        static let isEnabled = false
         static let thresholdAngle = 90.0
         static let blurSpan = 60.0
         static let maxBlurRadius = 135.0

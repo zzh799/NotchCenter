@@ -55,8 +55,7 @@ PluginID     com.notchcenter.lidangledepth
 
 1. **覆盖窗层级**：上游用私有 `CGShieldingWindowLevel()`（屏保/屏蔽层级），会盖住
    NotchCenter 自己的刘海面板与插件管理窗口。这里改用**屏保层级之下、状态栏之上**的一档，效果依然盖住普通应用与菜单栏，但宿主面板仍在最上面，用户随时能把抽屉拉出来关掉效果。
-2. **设置落盘**：上游直写 `UserDefaults`；这里走宿主注入的 `StateStore`
-   （按 pluginID 隔离、原子写），键名与出厂默认值与上游逐项一致，观感不变。
+2. **设置落盘**：上游直写 `UserDefaults`；这里走宿主注入的 `StateStore`（按 pluginID 隔离、原子写），键名与出厂默认值与上游逐项一致，观感不变。唯一例外是**总开关默认关闭**（上游默认开启）：全屏效果 + 屏幕录制权限不宜开箱即用，需用户主动开启。
 3. **权限降级**：上游只有实时档；这里增加静帧档与引导态（见上）。
 4. **盖角状态**：上游只有裸读数，合盖判定散在 `LidController` 的速度阈值里；这里
    下沉到 `LidAngleKit` 的 `LidAngleMonitor`，暴露 `open` / `closing` / `closed`。
