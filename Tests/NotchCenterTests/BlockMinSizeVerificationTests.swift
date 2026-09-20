@@ -2,6 +2,7 @@ import CoreGraphics
 import NotchCenterKit
 import XCTest
 @testable import CalibrePlugin
+@testable import CalendarPlugin
 @testable import CameraPlugin
 @testable import ClipboardHistoryPlugin
 @testable import CommandSchedulerPlugin
@@ -36,6 +37,7 @@ final class BlockMinSizeVerificationTests: XCTestCase {
     private static let officialBlocks: [(plugin: String, block: NotchBlock)] = {
         [
             ("CalibrePlugin", CalibrePlugin.blocks),
+            ("CalendarPlugin", CalendarPlugin.blocks),
             ("CameraPlugin", CameraPlugin.blocks),
             ("ClipboardHistoryPlugin", ClipboardHistoryPlugin.blocks),
             ("CommandSchedulerPlugin", CommandSchedulerPlugin.blocks),

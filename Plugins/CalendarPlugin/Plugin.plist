@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PluginID</key>
+  <string>com.notchcenter.calendar</string>
+  <key>Version</key>
+  <string>1.0.0</string>
+  <key>DisplayName</key>
+  <string>Calendar</string>
+  <key>Description</key>
+  <string>Current-month glance with today's lunar date; click opens Calendar.</string>
+  <key>DisplayNameLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>日历</string>
+  </dict>
+  <key>DescriptionLocales</key>
+  <dict>
+    <key>zh-Hans</key>
+    <string>当月速览与今日农历，点击打开日历.app。</string>
+  </dict>
+</dict>
+</plist>

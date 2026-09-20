@@ -1,0 +1,11 @@
+/* CalendarPlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 块名 */
+"block.month.name" = "Calendar";
+
+/* 交互提示 */
+"calendar.help.open" = "Click to open Calendar, long-press for today's details";
+"calendar.popover.hint" = "Click the block to open Calendar";
+
+/* 无障碍 */
+"calendar.a11y.today" = "%1$@ %2$@, lunar %3$@";

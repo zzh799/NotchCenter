@@ -1,0 +1,11 @@
+/* CalendarPlugin 中文文案 */
+
+/* 块名 */
+"block.month.name" = "日历";
+
+/* 交互提示 */
+"calendar.help.open" = "点击打开日历.app，长按查看今日详情";
+"calendar.popover.hint" = "点击块打开日历";
+
+/* 无障碍 */
+"calendar.a11y.today" = "%1$@ %2$@，农历%3$@";
