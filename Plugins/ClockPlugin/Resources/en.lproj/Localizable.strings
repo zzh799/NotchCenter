@@ -1,0 +1,10 @@
+/* ClockPlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 块名 */
+"block.analog.name" = "Clock";
+
+/* 交互提示 */
+"clock.help.open" = "Click to open Clock";
+
+/* 无障碍 */
+"clock.a11y.time" = "Analog clock, %@";

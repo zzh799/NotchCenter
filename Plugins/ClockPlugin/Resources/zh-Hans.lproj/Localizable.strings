@@ -1,0 +1,10 @@
+/* ClockPlugin 中文文案 */
+
+/* 块名 */
+"block.analog.name" = "时钟";
+
+/* 交互提示 */
+"clock.help.open" = "点击打开时钟.app";
+
+/* 无障碍 */
+"clock.a11y.time" = "指针时钟，%@";

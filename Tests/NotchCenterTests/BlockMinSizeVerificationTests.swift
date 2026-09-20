@@ -5,6 +5,7 @@ import XCTest
 @testable import CalendarPlugin
 @testable import CameraPlugin
 @testable import ClipboardHistoryPlugin
+@testable import ClockPlugin
 @testable import CommandSchedulerPlugin
 @testable import DisplayPlugin
 @testable import DshPlugin
@@ -40,6 +41,7 @@ final class BlockMinSizeVerificationTests: XCTestCase {
             ("CalendarPlugin", CalendarPlugin.blocks),
             ("CameraPlugin", CameraPlugin.blocks),
             ("ClipboardHistoryPlugin", ClipboardHistoryPlugin.blocks),
+            ("ClockPlugin", ClockPlugin.blocks),
             ("CommandSchedulerPlugin", CommandSchedulerPlugin.blocks),
             ("DisplayPlugin", DisplayPlugin.blocks),
             ("DshPlugin", DshPlugin.blocks),
