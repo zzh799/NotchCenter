@@ -35,16 +35,37 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 
 ## 使用
 
-启动后，将鼠标移到或点击屏幕顶部中央展开抽屉。已启用插件的块显示在刘海下方的 3 个紧凑槽位与抽屉网格中；点击状态栏图标可进入“插件管理…”启用/禁用插件、安装第三方 `.bundle`，或通过“编辑布局”拖拽重排、缩放与添加块。
+启动后，将鼠标移到或点击屏幕顶部中央展开抽屉。已启用插件的块显示在刘海下方的紧凑区（槽位数随图标增减，不固定）与抽屉网格中；点击状态栏图标可进入“插件管理…”启用/禁用插件、安装第三方 `.bundle`，或通过“编辑布局”拖拽重排、缩放与添加块。
 
-官方插件（6 个，随 `Contents/PlugIns/` 内置）：
+官方插件（16 个，随 `Contents/PlugIns/` 内置）：
 
-- **Notes**：多标签 Markdown 笔记（TextKit 2 编辑器，支持内嵌图片、待办与代码块）。
-- **Scratchpad**：文件暂存区，只保留文件引用，不会移动或删除原文件，支持拖拽进出与 QuickLook。
-- **Keep Awake（Caffeinate）**：一键防止 Mac 休眠（`pmset` + `caffeinate`，需管理员权限）。
-- **DSH Service**：`dsh-web` 服务控制卡（`LaunchdControlKit`），开关服务、切换自启、查看 PID/端口/状态、重启。
-- **Calibre Server**：`calibre-server` 服务控制卡，能力与 DSH Service 一致，管理本地书库服务。
-- **OpenCode Usage**：OpenCode Go 用量卡，抓取 `opencode.ai` SSR 页，展示 5h / Weekly / Monthly 同心环与 Zen 余额。
+**信息与记录**
+
+- **Notes（笔记）**：基于 TextKit 2 渲染的 Markdown 笔记，支持内嵌图片、待办与代码块。
+- **Scratchpad（暂存区）**：引用你可能稍后需要的文件的暂存架，只保留文件引用，不会移动或删除原文件，支持拖拽进出与 QuickLook。
+- **ClipboardHistory（剪贴板历史）**：记住最近复制的文本、图片与文件，点击条目即可写回剪贴板。
+- **Calendar（日历）**：当月速览与今日农历，点击打开日历.app。
+- **Reminders（提醒事项）**：抽屉里的提醒事项清单，可就地勾选完成。
+- **Clock（时钟）**：指针表盘一瞥即知时间，点击打开时钟.app。
+
+**专注与健康**
+
+- **Pomodoro（番茄钟）**：刘海中的专注计时器，按随机间隔提醒你微休息。
+- **Caffeinate（保持唤醒）**：按需保持你的 Mac 不休眠。
+- **LidAngleDepth（合盖透视）**：合上 MacBook 时屏幕内容随之倾斜、模糊并淡出（默认关闭）。
+
+**系统与设备**
+
+- **SystemMonitor（系统监控）**：CPU、内存、磁盘、网络负载块与四合一总览块。
+- **Display（显示器亮度）**：内建屏走系统亮度通道，外接屏走 DDC/CI。
+- **Camera（镜子）**：开会前照一眼的摄像头镜像预览。
+- **Dsh（DSH 服务）**：管理 `dsh-web` 的 launchd 服务。
+- **Calibre（Calibre 服务）**：控制 `calibre-server` launchd 服务。
+
+**效率**
+
+- **CommandScheduler（定时命令）**：按计划自动执行本机命令，并保留每次执行的输出历史。
+- **QuickButtonBox（快捷按钮盒）**：把其他插件的快捷动作收纳进一个抽屉网格。
 
 笔记和暂存记录保存在本机，不会因覆盖安装应用而删除。
 
@@ -73,9 +94,9 @@ NOTARY_PROFILE="notary-profile" \
 ## 自动发布
 
 - 每次推送 `main`，GitHub Actions 会先运行测试，再构建通用应用，并自动覆盖 `latest` Release。
-- 官网下载按钮固定指向 `releases/latest`，因此不需要手动修改下载地址。
+- 若有独立的下载页，把按钮固定指向 `releases/latest`，就不必随版本手动改地址。
 - 推送 `v*` 版本标签时，仍会生成对应的版本快照 Release。
-- 官网由 GitHub Pages 读取 `main` 分支的 `docs` 目录，页面修改推送后会自动部署。
+- 目前**没有独立官网页面**：`docs/` 目录只有开发者文档，不含站点文件，下载入口以本仓库的 Releases 页为准。
 
 如果测试或构建失败，Release 不会被覆盖，用户仍会下载上一份验证通过的版本。
 
@@ -93,3 +114,7 @@ NOTARY_PROFILE="notary-profile" \
 - **迁移说明**：架构与数据不自动迁移旧版 `NotchNotes` 数据（见 `docs/NotchCenter 架构设计文档.md` §决策 C）；视觉与交互沿用 `docs/DESIGN.md`，原项目信息在此以引用形式保留，不再正文中展开。
 
 [oil-oil/NotchNotes]: https://github.com/oil-oil/NotchNotes
+
+## 路线图
+
+产品生命周期的缺口、里程碑排序与待拍板决策见 [`docs/产品路线图.md`](docs/产品路线图.md)。

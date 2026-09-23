@@ -1,0 +1,33 @@
+name: 构建与测试
+
+# PR 级门禁：合入之前就拿到编译与测试结论。
+#
+# 为什么单独一个 workflow：docs.yml 只跑文档脚本，release.yml 只在 push main
+# 之后运行——两者都拦不住「能编译但测试挂了」的改动，结果是 main 成了第一道关，
+# 坏代码先合入再在发布阶段暴露（发布流水线曾因此连续多日失败）。
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v5
+
+      - name: 安装 Tuist（按 mise.toml 固定版本）
+        uses: jdx/mise-action@v2
+
+      - name: 使用 Xcode 16.4
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+
+      - name: 编译并运行测试
+        run: ./scripts/build.sh test
