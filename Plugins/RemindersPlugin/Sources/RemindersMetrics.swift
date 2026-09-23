@@ -20,7 +20,7 @@ enum RemindersLayoutState: String, CaseIterable, Sendable {
     /// 宽 ≥ 阈值且高 < 阈值：顶部「徽章 + 大计数 + 名称」同行，其下纯行列表。
     case wide
     /// 宽高均 ≥ 阈值：头部「大计数在上 + 名称在下」，其下是从顶部起排、
-    /// 带虚线分隔的行列表，右上角标放大并对齐内容盒。
+    /// 带虚线分隔的行列表。
     case large
 }
 
@@ -33,7 +33,7 @@ struct RemindersLayout: Equatable, Sendable {
     let topBand: CGRect
     /// 行列表区带（块内滚动视口），三态底边都直达块底。
     let listBand: CGRect
-    /// 顶部区带内容盒（去掉内边距、并让出角标占位后的实际可用矩形）。
+    /// 顶部区带内容盒（去掉内边距后的实际可用矩形）。
     let topContentRect: CGRect
     let rowHeight: CGFloat
     /// 行内容左右缩进（行分隔线只画在缩进内，与截图一致）。
@@ -56,9 +56,6 @@ struct RemindersLayout: Equatable, Sendable {
     let repeatIconSize: CGFloat
     /// 顶部区带底边的头部线高度（0 = 不画）。仅大态画，宽度即内容盒全宽。
     let headerRuleHeight: CGFloat
-    /// 块内悬浮角标（切换数据源）的直径与距块边缘距离。大态放大并对齐内容盒。
-    let cornerControlDiameter: CGFloat
-    let cornerControlInset: CGFloat
 
     /// 列表区带在给定高度下能完整容纳的行数（下限 1）。
     var visibleRowCount: Int {
@@ -140,14 +137,8 @@ enum RemindersMetrics {
     /// 大态行内元素间距（实测圈 → 标题 10.5）。
     static let rowSpacingLarge: CGFloat = 10.5
 
-    // MARK: 角标、撤销条、节流
+    // MARK: 撤销条、节流
 
-    /// 块内悬浮角标距块边缘的距离：与宿主编辑角标同一环（DESIGN.md §9）。
-    static let cornerControlInset: CGFloat = 6
-    static let cornerControlDiameter: CGFloat = 22
-    /// 大态角标：放大并对齐内容盒（复刻图实测 ⌀34、距块边 16）。
-    static let cornerControlInsetLarge: CGFloat = 16
-    static let cornerControlDiameterLarge: CGFloat = 34
     /// 撤销条高度。
     static let undoBarHeight: CGFloat = 26
     /// 撤销条可见时长（决策 D10：起算点是"条目移出列表"的那一刻）。
@@ -162,18 +153,6 @@ enum RemindersMetrics {
         return size.height >= tallHeightThreshold ? .large : .wide
     }
 
-    /// 顶部区带内容在**尾部**需要让出的宽度：角标恒悬浮在右上角，不让出就会在
-    /// 悬停瞬间盖住计数/清单名。窄态与宽态同款——宽态的计数/名称上移进顶行后
-    /// 同样占顶行；大态角标放大且对齐内容盒，让位相应变大。
-    static func topTrailingReserve(for state: RemindersLayoutState) -> CGFloat {
-        switch state {
-        case .narrow, .wide:
-            return cornerControlInset + cornerControlDiameter + rowSpacing
-        case .large:
-            return paddingLarge + cornerControlDiameterLarge + rowSpacing
-        }
-    }
-
     /// 该态的内容内边距（大态 16，其余 10）。
     static func padding(for state: RemindersLayoutState) -> CGFloat {
         state == .large ? paddingLarge : padding
@@ -181,7 +160,6 @@ enum RemindersMetrics {
 
     static func layout(for size: CGSize) -> RemindersLayout {
         let state = Self.state(for: size)
-        let reserve = topTrailingReserve(for: state)
         let inset = padding(for: state)
 
         switch state {
@@ -196,8 +174,7 @@ enum RemindersMetrics {
                     x: 0, y: topBand.maxY,
                     width: size.width, height: max(size.height - topHeight, 0)),
                 topContentRect: contentRect(
-                    in: topBand, padding: inset, contentHeight: narrowHeaderContentHeight,
-                    trailingReserve: reserve),
+                    in: topBand, padding: inset, contentHeight: narrowHeaderContentHeight),
                 rowHeight: rowHeightNarrow,
                 rowInset: inset,
                 checklistDiameter: checklistDiameterNarrow,
@@ -210,9 +187,7 @@ enum RemindersMetrics {
                 dividerLeadingInset: 0,
                 rowSpacing: rowSpacing,
                 repeatIconSize: repeatIconSize,
-                headerRuleHeight: 0,
-                cornerControlDiameter: cornerControlDiameter,
-                cornerControlInset: cornerControlInset)
+                headerRuleHeight: 0)
         case .wide:
             // 顶行 = 徽章与「大计数 + 名称」同盒：内容高取二者较大值（都是 28），
             // 区带高 48 与 footer 上移前一致，列表因此净增一个旧 footer 区带高。
@@ -226,8 +201,7 @@ enum RemindersMetrics {
                     x: 0, y: topBand.maxY,
                     width: size.width, height: max(size.height - topHeight, 0)),
                 topContentRect: contentRect(
-                    in: topBand, padding: inset, contentHeight: wideHeaderContentHeight,
-                    trailingReserve: reserve),
+                    in: topBand, padding: inset, contentHeight: wideHeaderContentHeight),
                 rowHeight: rowHeightRegular,
                 rowInset: inset,
                 checklistDiameter: checklistDiameterRegular,
@@ -240,9 +214,7 @@ enum RemindersMetrics {
                 dividerLeadingInset: 0,
                 rowSpacing: rowSpacing,
                 repeatIconSize: repeatIconSize,
-                headerRuleHeight: 0,
-                cornerControlDiameter: cornerControlDiameter,
-                cornerControlInset: cornerControlInset)
+                headerRuleHeight: 0)
         case .large:
             // 区带 = 上内边距 + 内容（计数 31 + 名称 16 两行）+ 内容→头部线间距
             // + 头部线本身。头部线画在区带**底边**、其下再无下内边距：行列表紧贴其后
@@ -257,8 +229,7 @@ enum RemindersMetrics {
                     x: 0, y: topBand.maxY,
                     width: size.width, height: max(size.height - topHeight, 0)),
                 topContentRect: contentRect(
-                    in: topBand, padding: inset, contentHeight: largeHeaderContentHeight,
-                    trailingReserve: reserve),
+                    in: topBand, padding: inset, contentHeight: largeHeaderContentHeight),
                 rowHeight: rowHeightLarge,
                 rowInset: inset,
                 checklistDiameter: checklistDiameterLarge,
@@ -271,23 +242,20 @@ enum RemindersMetrics {
                 dividerLeadingInset: checklistDiameterLarge + rowSpacingLarge,
                 rowSpacing: rowSpacingLarge,
                 repeatIconSize: repeatIconSizeLarge,
-                headerRuleHeight: headerRuleHeight,
-                cornerControlDiameter: cornerControlDiameterLarge,
-                cornerControlInset: cornerControlInsetLarge)
+                headerRuleHeight: headerRuleHeight)
         }
     }
 
-    /// 区带 → 内容盒：上下左右各让出 `padding`，尾部再让出角标占位。
+    /// 区带 → 内容盒：上下左右各让出 `padding`。
     private static func contentRect(
         in band: CGRect,
         padding: CGFloat,
-        contentHeight: CGFloat,
-        trailingReserve: CGFloat
+        contentHeight: CGFloat
     ) -> CGRect {
         CGRect(
             x: band.minX + padding,
             y: band.minY + padding,
-            width: max(band.width - padding - trailingReserve, 0),
+            width: max(band.width - padding * 2, 0),
             height: max(contentHeight, 0))
     }
 
@@ -305,22 +273,7 @@ enum RemindersMetrics {
         ]
     }
 
-    /// 块内悬浮角标（切换数据源）的矩形。**不单列 `BlockProbe`**：角标默认隐藏、
-    /// 悬停才浮出，落位必然叠在顶部区带探针上，单列会被互不重叠判定判错
-    /// （见 docs/agents/插件开发约定.md）。这里只用于单测核对它落在 `minSize`
-    /// 内容盒内、且落在顶部区带探针内。
-    static func cornerControlRect(in size: CGSize) -> CGRect {
-        let state = Self.state(for: size)
-        let inset = state == .large ? cornerControlInsetLarge : cornerControlInset
-        let diameter = state == .large ? cornerControlDiameterLarge : cornerControlDiameter
-        return CGRect(
-            x: size.width - inset - diameter,
-            y: inset,
-            width: diameter,
-            height: diameter)
-    }
-
-    /// 底部撤销条的矩形（纯叠加层，同样不单列探针）。
+    /// 底部撤销条的矩形（纯叠加层，不单列探针——它必然叠在行列表区带上）。
     static func undoBarRect(in size: CGSize) -> CGRect {
         CGRect(
             x: padding,

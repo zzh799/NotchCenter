@@ -15,10 +15,6 @@ struct RemindersBlockView: View {
     @ObservedObject var instance: RemindersInstanceModel
 
     @Environment(\.isDrawerPresented) private var isDrawerPresented
-    @State private var isHovering = false
-    /// 块在宿主窗口坐标系中的矩形（`IconCircleButton` 只给点击、不给 frame，
-    /// 浮窗锚点得自己追踪）。**不能用 `context.layoutInfo.frame`**：那是网格本地坐标。
-    @State private var blockFrame: CGRect = .zero
 
     var body: some View {
         let size = context.layoutInfo.frame.size
@@ -27,11 +23,7 @@ struct RemindersBlockView: View {
         BlockCard(hoverEffect: true) { _ in
             content(layout: layout)
         }
-        .background(RemindersGlobalFrameReader { blockFrame = $0 })
-        .overlay(alignment: .topTrailing) { sourceSwitchControl }
         .overlay(alignment: .bottom) { bottomLayer }
-        .onHover { isHovering = $0 }
-        .animation(NotchTokens.Motion.hover, value: isHovering)
         .task { instance.activate() }
         .onChange(of: isDrawerPresented) { _, presented in
             // 温存契约：抽屉收起不卸载视图树，`.onDisappear` 只表达挂载/卸载。
@@ -276,29 +268,6 @@ struct RemindersBlockView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    // MARK: 右上角切换角标
-
-    /// 块内动作角标的统一落位：默认隐藏、指针悬浮本块才浮出（DESIGN.md §9）。
-    @ViewBuilder
-    private var sourceSwitchControl: some View {
-        if isHovering, instance.permission.isUsable {
-            let layout = RemindersMetrics.layout(for: context.layoutInfo.frame.size)
-            IconCircleButton(
-                systemImage: "list.bullet.rectangle",
-                helpText: L("source.switch.help"),
-                // 直径与落位随版式：大态放大并对齐内容盒，其余态沿用块边 6pt 那一环。
-                diameter: layout.cornerControlDiameter
-            ) {
-                RemindersSourcePicker.present(
-                    instance: instance,
-                    blockSize: context.layoutInfo.frame.size,
-                    frameInWindow: blockFrame)
-            }
-            .padding(layout.cornerControlInset)
-            .transition(.opacity)
-        }
-    }
-
     // MARK: 底部浮层（撤销条 / 一次性错误提示，同一个位置二选一）
 
     @ViewBuilder
@@ -349,8 +318,8 @@ struct RemindersBlockView: View {
         RemindersSourceText.title(for: instance.source, lists: instance.lists)
     }
 
-    /// 区带 → 实际内边距：上下左右由版式给定，尾部让出角标占位（否则悬停时
-    /// 角标会盖住计数 / 清单名）。
+    /// 区带 → 实际内边距：四边都由版式给定。内容盒左右对称——块内已没有需要
+    /// 让位的悬浮角标（换源入口 2026-09-21 起只在块齿轮的设置浮窗里）。
     private func edgeInsets(_ band: CGRect, content: CGRect) -> EdgeInsets {
         EdgeInsets(
             top: content.minY - band.minY,

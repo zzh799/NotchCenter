@@ -65,21 +65,3 @@ struct RemindersSmallButtonStyle: ButtonStyle {
             pressedForegroundOpacity: 0.60)
     }
 }
-
-// MARK: - 块在宿主窗口里的 frame（浮窗锚点）
-
-/// 追踪块在 SwiftUI `.global` 空间（= 宿主窗口坐标）中的矩形。
-///
-/// **不能用 `context.layoutInfo.frame`**：宿主在正常渲染路径填的是网格本地坐标，
-/// 只有编辑模式的设置路径才传真全局 frame，同一字段两义。浮窗锚点必须用这里。
-struct RemindersGlobalFrameReader: View {
-    let onChange: (CGRect) -> Void
-
-    var body: some View {
-        GeometryReader { proxy in
-            Color.clear
-                .onAppear { onChange(proxy.frame(in: .global)) }
-                .onChange(of: proxy.frame(in: .global)) { _, frame in onChange(frame) }
-        }
-    }
-}

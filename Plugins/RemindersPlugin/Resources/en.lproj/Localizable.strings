@@ -11,7 +11,6 @@
 "source.smart.important" = "Priority";
 "source.smart.all" = "All";
 "source.unknownList" = "Missing list";
-"source.switch.help" = "Switch list";
 
 /* 权限引导 */
 "gate.title" = "Reminders access";
@@ -21,7 +20,7 @@
 
 /* 异常与空态 */
 "state.removed.title" = "List removed";
-"state.removed.hint" = "Pick another one from the button in the corner.";
+"state.removed.hint" = "Hover the block and pick another list from its settings.";
 "state.empty.list" = "Nothing left here";
 "state.empty.today" = "Nothing due today";
 "state.empty.scheduled" = "Nothing scheduled";
@@ -37,10 +36,7 @@
 "row.a11y" = "%@, incomplete";
 "row.a11y.repeating" = "%@, incomplete, repeats";
 
-/* 撤销与设置 */
+/* 撤销 */
 "undo.completed" = "Completed: %@";
 "undo.action" = "Undo";
 "undo.action.help" = "Mark this reminder incomplete again";
-"settings.section.source" = "Show";
-"settings.source.hint" = "Smart views gather items across all lists. The corner button switches this too.";
-"settings.outstanding" = "%ld outstanding";

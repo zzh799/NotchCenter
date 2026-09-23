@@ -22,8 +22,8 @@ public final class RemindersPlugin: NSObject, NotchCenterPlugin, NotchCenterPlug
 
     // MARK: 块声明
 
-    /// `reminders.list`：一块一源（具体清单或智能视图），源可在实例设置与块内
-    /// 右上角角标两处切换。
+    /// `reminders.list`：一块一源（具体清单或智能视图），换源的唯一入口是块齿轮
+    /// （实例设置）——块内右上角角标已于 2026-09-21 删除。
     ///
     /// 尺寸三档：`min 150×150`（窄态下限，网格上取整后是 1×2 格）、
     /// `recommended 300×360`（大态，2×3 格）、`max 900×600`。三态与网格的对应
@@ -37,7 +37,7 @@ public final class RemindersPlugin: NSObject, NotchCenterPlugin, NotchCenterPlug
         recommendedSize: BlockPixelSize(width: 300, height: 360),
         symbolName: "checklist",
         instanceSettingsView: { context in
-            AnyView(RemindersInstanceSettingsView(instance: instance(for: context)))
+            AnyView(RemindersSourceList(instance: instance(for: context)))
         },
         probes: { info in
             RemindersMetrics.probes(for: info.frame.size)

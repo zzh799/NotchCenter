@@ -56,64 +56,40 @@ enum RemindersSourceText {
     }
 }
 
-// MARK: - 切换数据源浮窗（块内右上角角标）
+// MARK: - 数据源列表（块齿轮设置浮窗的内容）
 
-@MainActor
-enum RemindersSourcePicker {
-    /// 卡片尺寸夹在块矩形内：卡片一旦伸出块矩形，伸出的部分收不到鼠标——光标
-    /// 离开抽屉的"停留区"会触发收起，收起又会让浮窗自动关闭（见
-    /// `BlockPopover.cardInset` 的说明）。因此只做「理想尺寸与可用空间取小」，
-    /// 不做「固定大卡片」。
-    static func cardSize(for blockSize: CGSize) -> CGSize {
-        let available = CGSize(
-            width: max(blockSize.width - BlockPopover.cardInset, 0),
-            height: max(blockSize.height - BlockPopover.cardInset, 0))
-        return CGSize(width: min(236, available.width), height: min(260, available.height))
-    }
-
-    static func present(
-        instance: RemindersInstanceModel,
-        blockSize: CGSize,
-        frameInWindow: CGRect
-    ) {
-        BlockPopover.shared.present(
-            anchoredTo: frameInWindow,
-            cardSize: cardSize(for: blockSize)
-        ) {
-            RemindersSourcePickerCard(instance: instance)
-        }
-    }
-}
-
-struct RemindersSourcePickerCard: View {
+/// 「智能 / 清单」分组列表，当前源打勾——块的**唯一**换源入口
+/// （块内右上角角标已于 2026-09-21 删除，见决策
+/// `2026-09-21-reminders-source-into-settings`）。
+///
+/// **不自带滚动与外框**：它渲染在 `SettingPopoverCard` 的内容区里，那里已经是滚动
+/// 容器，再套一层会成嵌套滚动。选择即写 placementStore（`updateSource`）并关掉浮窗。
+struct RemindersSourceList: View {
     @ObservedObject var instance: RemindersInstanceModel
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 1) {
-                sectionLabel(L("source.section.smart"))
-                ForEach(RemindersSource.SmartList.allCases, id: \.self) { smart in
+        VStack(alignment: .leading, spacing: 1) {
+            sectionLabel(L("source.section.smart"))
+            ForEach(RemindersSource.SmartList.allCases, id: \.self) { smart in
+                optionRow(
+                    source: .smart(smart),
+                    symbol: RemindersSourceText.symbol(for: smart),
+                    tint: nil,
+                    title: RemindersSourceText.title(for: smart))
+            }
+            if !instance.lists.isEmpty {
+                sectionLabel(L("source.section.lists"))
+                    .padding(.top, 6)
+                ForEach(instance.lists) { list in
                     optionRow(
-                        source: .smart(smart),
-                        symbol: RemindersSourceText.symbol(for: smart),
-                        tint: nil,
-                        title: RemindersSourceText.title(for: smart))
-                }
-                if !instance.lists.isEmpty {
-                    sectionLabel(L("source.section.lists"))
-                        .padding(.top, 6)
-                    ForEach(instance.lists) { list in
-                        optionRow(
-                            source: .list(list.id),
-                            symbol: "checklist",
-                            tint: Color(remindersTint: list.color),
-                            title: list.title)
-                    }
+                        source: .list(list.id),
+                        symbol: "checklist",
+                        tint: Color(remindersTint: list.color),
+                        title: list.title)
                 }
             }
-            .padding(8)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -132,7 +108,7 @@ struct RemindersSourcePickerCard: View {
         let isSelected = instance.source == source
         return Button {
             instance.updateSource(source)
-            BlockPopover.shared.dismiss()
+            SettingPopover.shared.dismiss()
         } label: {
             HStack(spacing: 6) {
                 leadingMark(symbol: symbol, tint: tint)

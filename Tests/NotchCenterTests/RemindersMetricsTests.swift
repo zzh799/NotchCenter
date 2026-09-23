@@ -71,17 +71,6 @@ struct RemindersMetricsTests {
         #expect(wide.dividerLeadingInset == 0)
     }
 
-    /// 大态角标放大并对齐内容盒，且仍完整落在顶部区带内（不单列探针，
-    /// 只能这样核它放得下）。
-    @Test func largeCornerControlFitsTopBand() {
-        let size = CGSize(width: 336, height: 336)
-        let corner = RemindersMetrics.cornerControlRect(in: size)
-        #expect(corner.width == 34)
-        #expect(corner.minX == size.width - 16 - 34)
-        #expect(corner.minY == 16)
-        #expect(RemindersMetrics.layout(for: size).topBand.contains(corner))
-    }
-
     /// 三档声明必须与三态对上：min 落窄态、recommended 落大态、max 落大态。
     /// 这条锁的是"改断点时忘了同步尺寸声明"这类回归。
     @Test func declaredSizesLandInExpectedStates() {
@@ -146,36 +135,17 @@ struct RemindersMetricsTests {
         #expect(layout.visibleRowCount >= 3)
     }
 
-    /// 角标：完整落在 `minSize` 内容盒内，且落在顶部区带探针内。
-    /// 角标**不单列探针**（悬停才浮出、落位必然叠在顶部区带上，单列会被互不重叠
-    /// 判定判错），所以"它放得下"只能这样核。
+    /// 顶部内容盒必须完整落在顶部区带内、左右内边距对称（大态 16，其余 10）。
+    /// 内容盒是头部内容的可见边界：越出区带会被相邻区带压掉，不对称则说明
+    /// 又混进了"为某个悬浮控件让位"的隐形预留——块内角标已于 2026-09-21 删除
+    /// （决策 `2026-09-21-reminders-source-into-settings`），这里把它锁住。
     @Test(arguments: RemindersMetricsTests.sizes)
-    func cornerControlSitsInsideTopBand(size: CGSize) {
-        let corner = RemindersMetrics.cornerControlRect(in: size)
-        let contentBox = CGRect(origin: .zero, size: size)
-        #expect(contentBox.contains(corner), "\(size) 下角标越出内容盒：\(corner)")
-
-        let topBand = RemindersMetrics.probes(for: size)
-            .first { $0.id.hasSuffix(".top") }?.rect
-        #expect(topBand?.contains(corner) == true, "\(size) 下角标不在顶部区带内")
-    }
-
-    /// 三态的顶部**内容**都不能伸到角标底下：否则悬停浮出角标的瞬间会盖住
-    /// 计数（窄/宽态）或清单名（大态）。宽态的计数/名称上移进顶行后与窄态
-    /// 同款让位（尾侧预留 36）。
-    @Test(arguments: [
-        CGSize(width: 150, height: 150),
-        CGSize(width: 150, height: 240),
-        CGSize(width: 300, height: 240),
-        CGSize(width: 336, height: 162),
-        CGSize(width: 336, height: 249),
-        CGSize(width: 300, height: 360),
-        CGSize(width: 900, height: 600),
-    ])
-    func topContentAvoidsCornerControl(size: CGSize) {
+    func topContentRectSitsInsideTopBand(size: CGSize) {
         let layout = RemindersMetrics.layout(for: size)
-        let corner = RemindersMetrics.cornerControlRect(in: size)
-        #expect(!layout.topContentRect.intersects(corner), "\(size) 顶部内容与角标相撞")
+        let inset = RemindersMetrics.padding(for: layout.state)
+        #expect(layout.topBand.contains(layout.topContentRect), "\(size) 内容盒越出顶部区带")
+        #expect(layout.topContentRect.minX == inset)
+        #expect(layout.topBand.maxX - layout.topContentRect.maxX == inset)
     }
 
     /// 宽态顶行装下徽章与「大计数 + 名称」同盒：区带高 48、内容盒高 28，
@@ -190,7 +160,7 @@ struct RemindersMetricsTests {
         #expect(layout.listBand.maxY == 162)
     }
 
-    /// 宽态徽章贴着顶部内容盒左缘，且与角标无交集。
+    /// 宽态徽章贴着顶部内容盒左缘，且完整装得下。
     @Test func wideBadgeSitsAtLeadingEdge() {
         let size = CGSize(width: 300, height: 240)
         let layout = RemindersMetrics.layout(for: size)
@@ -201,7 +171,6 @@ struct RemindersMetricsTests {
             width: RemindersMetrics.badgeDiameter,
             height: RemindersMetrics.badgeDiameter)
         #expect(badge.maxX <= layout.topContentRect.maxX)
-        #expect(!badge.intersects(RemindersMetrics.cornerControlRect(in: size)))
     }
 
     /// 撤销条放在底部内边距里，且不越出内容盒。
