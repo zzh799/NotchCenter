@@ -1,6 +1,27 @@
 import XCTest
 @testable import LidAngleKit
 
+// MARK: - 硬件前置条件
+//
+// 盖角传感器是 Apple 内建硬件的私有 HID 接触面:虚拟机上没有,CI runner 上也没有。
+// 需要真实读数的用例一律先经下面这个门跳过,而**不要断言「本机有传感器」**——后者只
+// 能证明跑测试的这台机器恰好有传感器,在无传感器的机器上就变成假红灯(发布流水线曾
+// 因此自 2026-09-10 起连续多日失败,与代码质量无关)。开发机有传感器,这些用例在
+// 本地照常真实执行,不损失覆盖。领域约定见 docs/agents/测试指南.md「注意事项」。
+
+/// 无盖角传感器时跳过当前用例(虚拟机 / CI runner)。
+func skipUnlessLidAngleSensorAvailable(
+    file: StaticString = #filePath,
+    line: UInt = #line
+) throws {
+    try XCTSkipUnless(
+        LidAngleSensor().isAvailable,
+        "本机无盖角传感器(虚拟机 / CI runner),跳过真实读数用例",
+        file: file,
+        line: line
+    )
+}
+
 // MARK: - 盖角状态机
 //
 // `LidAngleMonitor` 的阈值判定是本库相对上游 LidAngleKit 的**新增能力**
@@ -27,16 +48,17 @@ final class LidThresholdsTests: XCTestCase {
 @MainActor
 final class LidAngleMonitorTests: XCTestCase {
 
-    /// 本机(开发机)有传感器;没有传感器的机器上这条断言会失败,那正是它要报告的
-    /// 事实——效果本身也依赖它。
-    func testSensorIsAvailableOnThisMachine() {
+    /// 传感器在位时必须优先选中 0.01° 的 report 7 档位——档位探测错了,精度会整档
+    /// 降级而不报错,所以这条要钉住。无传感器时跳过(见文件头「硬件前置条件」)。
+    func testPrefersHundredthsResolutionWhenSensorIsPresent() throws {
+        try skipUnlessLidAngleSensorAvailable()
         let monitor = LidAngleMonitor()
-        XCTAssertTrue(monitor.isAvailable, "开发机应具备 AppleSPUHIDDevice 盖角传感器")
         XCTAssertEqual(monitor.resolution, .hundredthsOfADegree, "应优先使用 0.01° 的 report 7")
     }
 
     /// 真实读数必须落在合法区间,并给出一个确定的状态。
     func testRealReadingIsSane() throws {
+        try skipUnlessLidAngleSensorAvailable()
         let monitor = LidAngleMonitor()
         let reading = monitor.sampleNow()
         let angle = try XCTUnwrap(reading.angle, "传感器可用时 sampleNow 必须给出读数")
@@ -47,6 +69,7 @@ final class LidAngleMonitorTests: XCTestCase {
 
     /// 盖子不动时不得被判成"正在合":静止读数的速度应在阈值以内。
     func testIdleLidIsNotReportedAsClosing() throws {
+        try skipUnlessLidAngleSensorAvailable()
         let monitor = LidAngleMonitor()
         _ = monitor.sampleNow()
         Thread.sleep(forTimeInterval: 0.3)
@@ -61,6 +84,7 @@ final class LidAngleMonitorTests: XCTestCase {
     /// `resetBaseline` 后速度归零,状态由当前角度直接推出——系统唤醒后必须如此,
     /// 否则"几乎合着醒过来"会被误判成正在合盖。
     func testResetBaselineRecomputesStateFromTheAngle() throws {
+        try skipUnlessLidAngleSensorAvailable()
         let monitor = LidAngleMonitor()
         let reading = monitor.sampleNow()
         let angle = try XCTUnwrap(reading.angle)
@@ -103,12 +127,9 @@ final class LidAngleMonitorTests: XCTestCase {
 final class LidAngleSensorTests: XCTestCase {
 
     /// 越界读数必须被丢弃:设备刚打开与系统唤醒瞬间会给垃圾值。
-    func testRejectedValuesLeaveTheAngleNil() {
+    func testRejectedValuesLeaveTheAngleNil() throws {
+        try skipUnlessLidAngleSensorAvailable()
         let sensor = LidAngleSensor()
-        guard sensor.isAvailable else {
-            XCTFail("开发机应具备盖角传感器")
-            return
-        }
         // 正常读数必须是有限值且在量程内。
         let angle = sensor.angle()
         if let angle {
