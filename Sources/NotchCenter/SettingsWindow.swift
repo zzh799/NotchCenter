@@ -272,7 +272,7 @@ struct SettingsRootView: View {
         case .layout:
             LayoutSettingsPage(controller: controller, settingsStore: settingsStore)
         case .plugins:
-            PluginManagerView(pluginManager: controller.pluginManager)
+            PluginManagerView(controller: controller)
         case .debug:
             DebugSettingsPage(controller: controller, settingsStore: settingsStore)
         }

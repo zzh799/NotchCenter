@@ -293,6 +293,31 @@ enum CompactSlotOrder {
         }
         return result
     }
+
+    /// 批量移除若干屏幕图标后的数组内容：其余图标保持屏幕相对顺序，等价于按
+    /// 屏幕位置逐个 `removing`，只是一次重映射。无命中时原样返回。
+    ///
+    /// **必须走这里，不能直接 `filter` 数组**：数组下标决定左右分列
+    /// （`screenOrder` 只依赖总数），长度一变映射就变——被删项之后的图标会
+    /// 整体换列，屏幕上表现为"删一个、其余好几个跳边"。
+    static func removingAll(
+        _ slots: [CompactSlotReference?],
+        where shouldRemove: (CompactSlotReference?) -> Bool
+    ) -> [CompactSlotReference?] {
+        let count = slots.count
+        let screenItems = screenOrder(slotCount: count)
+            .map { slots[$0] }
+            .filter { !shouldRemove($0) }
+        let newCount = screenItems.count
+        guard newCount < count else { return slots }
+
+        let newOrder = screenOrder(slotCount: newCount)
+        var result: [CompactSlotReference?] = Array(repeating: nil, count: newCount)
+        for (position, slotIndex) in newOrder.enumerated() {
+            result[slotIndex] = screenItems[position]
+        }
+        return result
+    }
 }
 
 extension NSScreen {

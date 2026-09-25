@@ -3,6 +3,8 @@
 /* 通用 */
 "common.ok" = "好";
 "common.cancel" = "取消";
+/* 列表连接符（插件停用确认弹窗列举组件名） */
+"common.listSeparator" = "、";
 
 /* 设置窗口 */
 "settings.window.title" = "NotchCenter 设置";
@@ -85,6 +87,7 @@
 "manager.badge.builtIn" = "内置";
 "manager.badge.user" = "用户";
 "manager.badge.incompatible" = "不兼容";
+"manager.badge.inUse" = "使用中";
 "manager.uninstall" = "卸载";
 "manager.version.api" = "版本 %@ · API %@";
 "manager.loadFailed" = "该插件加载失败：%@";
@@ -93,6 +96,11 @@
 "manager.alert.title" = "插件错误";
 "manager.uninstall.confirmTitle" = "卸载“%@”？";
 "manager.uninstall.confirmBody" = "插件包将从你的插件目录中移除。";
+"manager.disable.confirmTitle" = "停用“%@”？";
+"manager.disable.confirmBody" = "该插件的 %d 个组件正在使用中：%@。停用后这些摆放将被移除。";
+"manager.disable.confirmBodyTruncated" = "该插件有 %d 个组件正在使用中，包括 %@。停用后这些摆放将被移除。";
+"manager.disable.confirmStale" = "另有 %d 个已失效的摆放将被一并清除。";
+"manager.disable.confirmAction" = "停用";
 "manager.openPanel.title" = "选择插件包";
 "manager.openPanel.message" = "选择要为所有用户安装的 .bundle 插件。";
 

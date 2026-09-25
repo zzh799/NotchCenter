@@ -1708,6 +1708,119 @@ final class LayoutEngineTests: XCTestCase {
         XCTAssertEqual(restored.drawerBlocks.map(\.pluginID), ["com.live"])
         try? FileManager.default.removeItem(at: directory)
     }
+
+    // MARK: 「使用中」判据与按插件移除摆放
+    //      （Agent Note 2026-09-25-plugin-in-use-placement-criterion）
+
+    /// 判据与清理同源：失效摆放不算"使用中"；抽屉或紧凑槽任一处有可用摆放即算，
+    /// 两处都有也只出现一次。
+    func testInUsePluginIDsCountsOnlyLivePlacements() throws {
+        let (engine, directory, _) = try makeEngine(liveness: { pluginID, _ in
+            pluginID != "com.gone"
+        })
+        var model = engine.modelForTesting
+        model.drawerBlocks = [
+            placed("com.drawer", "shelf", column: 0, row: 0),
+            placed("com.gone", "shelf", column: 1, row: 0),
+        ]
+        model.compactSlots = [
+            CompactSlotReference(pluginID: "com.compact", blockID: "notes", placementID: "c1"),
+            CompactSlotReference(pluginID: "com.drawer", blockID: "notes", placementID: "c2"),
+        ]
+        engine.modelForTesting = model
+
+        XCTAssertEqual(engine.inUsePluginIDs, ["com.drawer", "com.compact"])
+        XCTAssertFalse(engine.inUsePluginIDs.contains("com.gone"), "失效摆放不算使用中")
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// "使用中"看的是**被摆上了**，不是**被启用了**：只启用、没摆任何东西的插件
+    /// 不在集合里——否则徽章与行末开关表达同一件事。
+    func testInUsePluginIDsIgnoresEnabledButUnplacedPlugins() throws {
+        let (engine, directory, _) = try makeEngine(liveness: { _, _ in true })
+        var model = engine.modelForTesting
+        model.enabledPluginIDs = ["com.enabled.only"]
+        engine.modelForTesting = model
+
+        XCTAssertTrue(engine.inUsePluginIDs.isEmpty)
+        XCTAssertEqual(engine.enabledPluginIDs, ["com.enabled.only"], "启用 ≠ 使用中")
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 按插件删除：抽屉与紧凑槽一起清、别的插件不动、返回值等于实际删除数（弹窗
+    /// 的计数口径与删除范围必须同源，否则会出现"弹窗说 N 个、实际删掉更多"）。
+    func testRemovePlacementsForPluginDropsBothDrawerAndCompact() throws {
+        let (engine, directory, _) = try makeEngine(liveness: { _, _ in true })
+        var model = engine.modelForTesting
+        model.drawerBlocks = [
+            placed("com.target", "shelf", column: 0, row: 0),
+            placed("com.other", "shelf", column: 1, row: 0),
+        ]
+        model.compactSlots = [
+            CompactSlotReference(pluginID: "com.target", blockID: "notes", placementID: "c1"),
+            CompactSlotReference(pluginID: "com.other", blockID: "notes", placementID: "c2"),
+        ]
+        engine.modelForTesting = model
+
+        XCTAssertEqual(engine.removePlacements(forPluginID: "com.target"), 2, "抽屉 1 + 紧凑 1")
+        XCTAssertEqual(engine.drawerBlocks.map(\.pluginID), ["com.other"])
+        XCTAssertEqual(engine.compactSlots.compactMap { $0?.pluginID }, ["com.other"])
+        XCTAssertEqual(
+            engine.removePlacements(forPluginID: "com.target"), 0,
+            "幂等：已无摆放时不动布局"
+        )
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 批量删紧凑槽必须保持其余图标的**屏幕相对顺序**：数组下标决定左右分列，
+    /// 直接 `filter` 会让被删项之后的图标整体换列（屏幕上"删一个、其余跳边"）。
+    func testRemovePlacementsKeepsRemainingCompactScreenOrder() throws {
+        let (engine, directory, _) = try makeEngine(liveness: { _, _ in true })
+        var model = engine.modelForTesting
+        // 四个图标，屏幕顺序 A、B、C、D；删掉中间的 B。
+        model.compactSlots = compactSlotsInScreenOrder(["A", "B", "C", "D"])
+        engine.modelForTesting = model
+        XCTAssertEqual(screenPluginIDs(engine), ["com.A", "com.B", "com.C", "com.D"])
+
+        XCTAssertEqual(engine.removePlacements(forPluginID: "com.B"), 1)
+        XCTAssertEqual(screenPluginIDs(engine), ["com.A", "com.C", "com.D"], "其余图标相对顺序不变")
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 同款顺序保证也适用于失效清理（`purgeInvalidPlacements` 走同一条
+    /// `CompactSlotOrder.removingAll`）：删中间的失效项不能让旁边的图标换列。
+    func testPurgeInvalidPlacementsKeepsRemainingCompactScreenOrder() throws {
+        let (engine, directory, _) = try makeEngine(liveness: { pluginID, _ in
+            pluginID != "com.B"
+        })
+        var model = engine.modelForTesting
+        model.compactSlots = compactSlotsInScreenOrder(["A", "B", "C", "D"])
+        engine.modelForTesting = model
+
+        XCTAssertEqual(engine.purgeInvalidPlacements(), 1)
+        XCTAssertEqual(screenPluginIDs(engine), ["com.A", "com.C", "com.D"], "其余图标相对顺序不变")
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 屏幕从左到右的插件 id 序列（数组下标 → 屏幕位置的既有映射）。
+    private func screenPluginIDs(_ engine: LayoutEngine) -> [String] {
+        CompactSlotOrder.screenOrder(slotCount: engine.compactSlots.count)
+            .compactMap { engine.compactSlot(at: $0)?.pluginID }
+    }
+
+    /// 按**屏幕顺序**依次追加出的紧凑槽位数组。用生产侧的 `inserting` 建，避免在
+    /// 测试里手写"数组下标 ≠ 屏幕次序"那层映射（4 个图标时数组是 A、C、B、D）。
+    private func compactSlotsInScreenOrder(_ ids: [String]) -> [CompactSlotReference?] {
+        var slots: [CompactSlotReference?] = []
+        for id in ids {
+            slots = CompactSlotOrder.inserting(
+                CompactSlotReference(pluginID: "com.\(id)", blockID: "notes", placementID: id),
+                into: slots,
+                atScreenPosition: slots.count
+            )
+        }
+        return slots
+    }
 }
 
 @MainActor

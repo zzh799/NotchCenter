@@ -1585,6 +1585,32 @@ extension NotchPanelController {
             .placementWasRemoved(blockID: blockID, placementID: placementID)
     }
 
+    /// 停用插件，并连同它在布局里的全部摆放一起移除（插件管理页的关闭动作；
+    /// 判据、呈现与原因见 Agent Note 2026-09-25-plugin-in-use-placement-criterion）。
+    ///
+    /// 顺序是刻意的：**先通知再停用**——`placementWasRemoved` 要靠
+    /// `entry.instance` 才送得出去，而停用会把实例置 nil，之后再通知就到不了
+    /// 插件，各放置实例在 `placementStore` 里的数据会变成孤儿文件。
+    func disablePlugin(pluginID: String) throws {
+        let doomed = layoutEngine.placements(ofPluginID: pluginID)
+        for item in doomed {
+            notifyPlacementRemoved(
+                pluginID: pluginID,
+                blockID: item.blockID,
+                placementID: item.placementID
+            )
+        }
+
+        try pluginManager.setEnabled(false, pluginID: pluginID)
+
+        // 摆放数量变了抽屉自然高度就变，只 `rebuildContent` 会留一截空白
+        // （停用路径自身的重建由 `onEnabledPluginIDsChanged` 触发）。
+        layoutEngine.removePlacements(forPluginID: pluginID)
+        if !doomed.isEmpty {
+            refreshAfterEdit()
+        }
+    }
+
     // MARK: - 插件设置浮窗（编辑模式齿轮按钮的统一入口）
 
     /// 经 Kit 的 SettingPopover 展示设置：优先块的实例级 `instanceSettingsView`

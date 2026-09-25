@@ -57,6 +57,11 @@ final class LayoutEngine: ObservableObject {
     /// 宿主的路径）。**插件只是被停用（已发现但未加载）时必须为 true**——停用可逆，
     /// 删掉用户的摆放不可逆；而 `blockResolver` 在插件停用时恰好返回 nil（实例已释放），
     /// 所以两者不能互相替代。见 Agent Note 2026-09-11-invalid-component-visibility。
+    ///
+    /// 注意别把这条判据与"停用会连带移除摆放"混为一谈：后者是插件管理里用户
+    /// **确认过的显式动作**（走 `removePlacements(forPluginID:)`），不是本判据
+    /// 推出的结论；从文件/外部改回来的"停用但仍被摆放"依旧算有效、不自动清理。
+    /// 见 Agent Note 2026-09-25-plugin-in-use-placement-criterion。
     let placementLiveness: (@MainActor (String, String) -> Bool)?
 
     private let fileURL: URL
@@ -117,8 +122,41 @@ final class LayoutEngine: ObservableObject {
         Set(model.enabledPluginIDs)
     }
 
+    /// 布局里"正在使用中"的插件：至少有一条**可用**的摆放（抽屉块或刘海快捷
+    /// 按钮）。插件管理列表据此标「使用中」。
+    ///
+    /// "可用"复用 `isLivePlacement`——与 `invalidPlacementCount()` /
+    /// `purgeInvalidPlacements()` **同源**：失效摆放渲染成「组件已失效」占位，
+    /// 把它算作"使用中"是自相矛盾。判据与呈现的来龙去脉见 Agent Note
+    /// 2026-09-25-plugin-in-use-placement-criterion。
+    var inUsePluginIDs: Set<String> {
+        let drawer = model.drawerBlocks
+            .filter { isLivePlacement(pluginID: $0.pluginID, blockID: $0.blockID) }
+            .map(\.pluginID)
+        let compact = model.compactSlots
+            .compactMap { $0 }
+            .filter { isLivePlacement(pluginID: $0.pluginID, blockID: $0.blockID) }
+            .map(\.pluginID)
+        return Set(drawer + compact)
+    }
+
     var compactSlots: [CompactSlotReference?] {
         model.compactSlots
+    }
+
+    /// 某插件在布局里的全部摆放。`blockID` 供调用方解析显示名与回调插件，
+    /// `placementID` 供补 `NotchCenterPluginServices.placementWasRemoved`
+    /// （引擎只负责删，通知插件清实例数据是调用方的义务——与
+    /// `removeDrawerPage` 同款约定）。抽屉块在前、紧凑槽在后。
+    func placements(ofPluginID pluginID: String) -> [(blockID: String, placementID: String)] {
+        let drawer = model.drawerBlocks
+            .filter { $0.pluginID == pluginID }
+            .map { (blockID: $0.blockID, placementID: $0.placementID) }
+        let compact = model.compactSlots
+            .compactMap { $0 }
+            .filter { $0.pluginID == pluginID }
+            .map { (blockID: $0.blockID, placementID: $0.placementID) }
+        return drawer + compact
     }
 
     var drawerBlocks: [PlacedBlock] {

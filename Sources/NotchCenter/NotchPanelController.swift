@@ -139,6 +139,14 @@ final class NotchPanelController: NSObject {
             seedDefaultLayout()
         }
 
+        // 启动维护：release 清掉失效摆放，debug 留给调试页手动删。必须在这里
+        // ——晚于 restoreEnabledState（否则快捷动作未注册，合法槽位会被误判
+        // 失效），早于下面的几何刷新（清完由常规重建对齐画面）。
+        LaunchMaintenance.run(
+            layoutEngine: layoutEngine,
+            purgeInvalidPlacements: LaunchMaintenance.purgesInvalidPlacements
+        )
+
         // 先同步紧凑区几何（带宽随图标数伸缩），再重建内容。
         refreshCompactGeometry()
         rebuildContent()

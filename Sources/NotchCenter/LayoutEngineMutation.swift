@@ -196,15 +196,54 @@ extension LayoutEngine {
             }
         }
         if deadCompactCount > 0 {
-            model.compactSlots = model.compactSlots.filter {
+            // 走 `removingAll` 而不是 `filter`：数组下标决定左右分列，直接过滤
+            // 会让被删项之后的图标整体换列（屏幕上"删一个、其余跳边"）。
+            model.compactSlots = CompactSlotOrder.removingAll(model.compactSlots) {
                 guard let slot = $0 else { return false }
-                return isLivePlacement(pluginID: slot.pluginID, blockID: slot.blockID)
+                return !isLivePlacement(pluginID: slot.pluginID, blockID: slot.blockID)
             }
         }
         compactEmptyRows()
         compactEmptyColumns()
         saveToDisk()
         return deadDrawerCount + deadCompactCount
+    }
+
+    // MARK: 按插件移除摆放（停用插件时连带清理）
+
+    /// 移除某插件在布局中的**全部**摆放（抽屉块 + 刘海快捷按钮），压实空洞并
+    /// 落盘，返回移除数量。停用插件的二次确认确认后由宿主调用（判据与呈现见
+    /// Agent Note 2026-09-25-plugin-in-use-placement-criterion）。
+    ///
+    /// **不复用 `purgeInvalidPlacements()`**：那条的动机是"清理失效"、判据是注入的
+    /// `placementLiveness`；这条的动机是"用户主动停用"、判据是明确的 pluginID。
+    /// 合并成同一个闭包 API 会让"停用不算失效"这口径变含糊（见 2026-09-11 与
+    /// 2026-09-25 两份 Agent Note）。
+    ///
+    /// **失效的摆放也一并移除**：它们渲染成「组件已失效」占位，留着没有意义。
+    /// 调用方（停用确认弹窗）必须按"全部摆放"计数，否则会出现"弹窗说 N 个、
+    /// 实际删掉更多"。
+    @discardableResult
+    func removePlacements(forPluginID pluginID: String) -> Int {
+        let drawerCount = model.drawerBlocks.filter { $0.pluginID == pluginID }.count
+        // 紧凑槽位数组长度即图标数、元素恒非空（空槽在加载时已被剥除）。
+        let compactCount = model.compactSlots.compactMap { $0 }
+            .filter { $0.pluginID == pluginID }
+            .count
+        guard drawerCount > 0 || compactCount > 0 else { return 0 }
+
+        if drawerCount > 0 {
+            model.drawerBlocks.removeAll { $0.pluginID == pluginID }
+        }
+        if compactCount > 0 {
+            model.compactSlots = CompactSlotOrder.removingAll(model.compactSlots) {
+                $0?.pluginID == pluginID
+            }
+        }
+        compactEmptyRows()
+        compactEmptyColumns()
+        saveToDisk()
+        return drawerCount + compactCount
     }
 
     // MARK: 紧凑槽位（文档 §5.2：数组长度即图标数，宽度随其动态伸缩）

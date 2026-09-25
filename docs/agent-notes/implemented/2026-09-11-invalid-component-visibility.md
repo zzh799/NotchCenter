@@ -4,7 +4,7 @@ status: implemented
 date: 2026-09-11
 deciders: zhouzihang
 replaces: <无>
-superseded-by: <无>
+superseded-by: [2026-09-25-plugin-in-use-placement-criterion](2026-09-25-plugin-in-use-placement-criterion.md)（仅"清理只走手动"与"停用一律保留摆放"两条被取代；三态判据、占位渲染、调试页手动删依旧有效）
 
 ## Context(背景与约束)
 

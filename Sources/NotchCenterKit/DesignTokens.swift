@@ -64,7 +64,7 @@ public enum NotchTokens {
         /// 卡片/条目悬停填充。
         public static let fillHover: Color = .white.opacity(0.04)
         /// 卡片/条目强调（拖入高亮、框选、行复制成功）填充。
-        public static let fillHighlighted: Color = .white.opacity(0.055)
+        public static let fillHighlighted: Color = .white.opacity(0.065)
         /// 进度条/量表轨道底色（块内数据可视化的通用底）。
         public static let track: Color = .white.opacity(0.08)
     }

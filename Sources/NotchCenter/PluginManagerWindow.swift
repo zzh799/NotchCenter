@@ -7,11 +7,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class PluginManagerWindowController: NSWindowController {
-    private let pluginManager: PluginManager
-
-    init(pluginManager: PluginManager) {
-        self.pluginManager = pluginManager
-
+    init(controller: NotchPanelController) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -23,7 +19,7 @@ final class PluginManagerWindowController: NSWindowController {
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.contentView = NSHostingView(
-            rootView: PluginManagerView(pluginManager: pluginManager)
+            rootView: PluginManagerView(controller: controller)
         )
         window.center()
     }
@@ -37,10 +33,23 @@ final class PluginManagerWindowController: NSWindowController {
 /// 插件管理视图：发现列表 + 启用开关 + 安装/卸载 + 说明文档展示（文档 §8.1 / §8.2 / 附录 A-29）。
 /// 插件设置不在这里内嵌：统一走编辑模式齿轮触发的 SettingPopover 浮窗。
 struct PluginManagerView: View {
+    /// 宿主控制器：移除摆放后要它重裁抽屉（`refreshAfterEdit`）——摆放数量变了
+    /// 抽屉自然高度就变，只 `rebuildContent` 会留一截空白。
+    let controller: NotchPanelController
     @ObservedObject var pluginManager: PluginManager
+    @ObservedObject var layoutEngine: LayoutEngine
 
     @State private var selectedPluginID: String?
     @State private var errorMessage: String?
+    /// Toggle 的影子值：停用要过二次确认，用户取消时不能指望"真值没变、SwiftUI
+    /// 自己会把开关拨回去"——开关已经动过了，得显式回滚。
+    @State private var enabledOverride: [String: Bool] = [:]
+
+    init(controller: NotchPanelController) {
+        self.controller = controller
+        self.pluginManager = controller.pluginManager
+        self.layoutEngine = controller.layoutEngine
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -69,7 +78,9 @@ struct PluginManagerView: View {
     // MARK: 列表
 
     private var pluginList: some View {
-        VStack(spacing: 0) {
+        // 一次算完传给每行：逐行读 `inUsePluginIDs` 会让列表做 N 次全量遍历。
+        let inUse = layoutEngine.inUsePluginIDs
+        return VStack(spacing: 0) {
             HStack {
                 Text(L("manager.header.plugins"))
                     .font(NotchTokens.Text.system(12, weight: .semibold))
@@ -88,7 +99,7 @@ struct PluginManagerView: View {
             ScrollView {
                 LazyVStack(spacing: 2) {
                     ForEach(pluginManager.entries) { entry in
-                        pluginRow(entry)
+                        pluginRow(entry, isInUse: inUse.contains(entry.id))
                     }
                 }
                 .padding(.horizontal, 8)
@@ -97,7 +108,7 @@ struct PluginManagerView: View {
         }
     }
 
-    private func pluginRow(_ entry: PluginEntry) -> some View {
+    private func pluginRow(_ entry: PluginEntry, isInUse: Bool) -> some View {
         let isSelected = selectedPluginID == entry.id
         return HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
@@ -108,6 +119,10 @@ struct PluginManagerView: View {
                         .lineLimit(1)
 
                     badge(entry.metadata.isBuiltIn ? L("manager.badge.builtIn") : L("manager.badge.user"), tint: NotchTokens.Foreground.unavailable)
+
+                    if isInUse {
+                        badge(L("manager.badge.inUse"), tint: NotchTokens.Semantic.accentGreen)
+                    }
 
                     if !entry.metadata.isAPICompatible {
                         badge(L("manager.badge.incompatible"), tint: .red.opacity(0.9))
@@ -123,7 +138,7 @@ struct PluginManagerView: View {
             Spacer(minLength: 4)
 
             Toggle("", isOn: Binding(
-                get: { entry.isEnabled },
+                get: { enabledOverride[entry.id] ?? entry.isEnabled },
                 set: { newValue in toggleEnabled(newValue, for: entry) }
             ))
             .toggleStyle(.switch)
@@ -222,11 +237,77 @@ struct PluginManagerView: View {
     // MARK: 操作
 
     private func toggleEnabled(_ enabled: Bool, for entry: PluginEntry) {
+        // 开关已经动过了：先记进影子值让这一帧显示与用户操作一致，随后无论
+        // 成功、失败还是被取消都清掉——回到 `entry.isEnabled` 这个真值。
+        enabledOverride[entry.id] = enabled
+        defer { enabledOverride[entry.id] = nil }
+
+        guard enabled || confirmDisable(entry) else { return }
         do {
-            try pluginManager.setEnabled(enabled, pluginID: entry.id)
+            if enabled {
+                try pluginManager.setEnabled(true, pluginID: entry.id)
+            } else {
+                // 停用即放弃它在布局里的全部摆放（确认弹窗已把代价说清）：
+                // 留着会渲染成「插件已停用」占位，而插件列表里它已经是"没在用"。
+                try controller.disablePlugin(pluginID: entry.id)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: 停用前二次确认
+
+    /// 组件名预览条数：全列会把弹窗撑成一堵墙，列几个足够让用户认出来。
+    private static let namePreviewLimit = 3
+
+    /// 该插件在布局里的全部摆放，附带"是否可用"（判据同 `LayoutEngine.isLivePlacement`）。
+    private func placements(ofPluginID pluginID: String) -> [(blockID: String, isLive: Bool)] {
+        layoutEngine.placements(ofPluginID: pluginID).map {
+            (
+                blockID: $0.blockID,
+                isLive: layoutEngine.isLivePlacement(pluginID: pluginID, blockID: $0.blockID)
+            )
+        }
+    }
+
+    /// 组件显示名：块目录 → 快捷动作注册表（紧凑槽位里也可能是动作 id）→
+    /// 回退 `blockID`（正常路径前两者必有一中，兜底只为不显示空白）。
+    private func placementName(pluginID: String, blockID: String) -> String {
+        if let name = pluginManager.block(pluginID: pluginID, blockID: blockID)?.displayName {
+            return name
+        }
+        return pluginManager.quickActionStore.action(id: blockID)?.displayName ?? blockID
+    }
+
+    /// 停用前二次确认：只有该插件确有**正在使用**的摆放时才弹——确认后这些
+    /// 摆放会被移除，用户必须看见代价。返回 true = 可以继续停用。
+    ///
+    /// 计数与文案分两句：正在使用的按 `placementAvailability` 的 live 口径数，
+    /// 失效残骸单独一句（它们会被一并删掉，但说成"正在使用中"就是撒谎）。
+    private func confirmDisable(_ entry: PluginEntry) -> Bool {
+        let all = placements(ofPluginID: entry.id)
+        let live = all.filter(\.isLive)
+        guard !live.isEmpty else { return true }
+
+        let names = live.map { placementName(pluginID: entry.id, blockID: $0.blockID) }
+        let preview = names.prefix(Self.namePreviewLimit)
+            .joined(separator: L("common.listSeparator"))
+        let alert = NSAlert()
+        alert.messageText = LF("manager.disable.confirmTitle", entry.metadata.displayName)
+        alert.informativeText = names.count > Self.namePreviewLimit
+            ? LF("manager.disable.confirmBodyTruncated", names.count, preview)
+            : LF("manager.disable.confirmBody", names.count, preview)
+        if all.count > live.count {
+            alert.informativeText += "\n\n"
+                + LF("manager.disable.confirmStale", all.count - live.count)
+        }
+        alert.alertStyle = .warning
+        // 破坏性动作不做默认按钮（与卸载确认的按钮序刻意相反）：卸载删的是插件
+        // 文件、可以从别处重装；这里删的是用户攒出来的摆放，没有备份也重建不出来。
+        alert.addButton(withTitle: L("common.cancel"))
+        alert.addButton(withTitle: L("manager.disable.confirmAction"))
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     private func uninstall(_ entry: PluginEntry) {
@@ -308,7 +389,7 @@ extension NotchPanelController {
     /// 打开插件管理窗口（懒加载，缓存实例）。
     func showPluginManager() {
         let controller = pluginManagerWindowController ?? {
-            let controller = PluginManagerWindowController(pluginManager: pluginManager)
+            let controller = PluginManagerWindowController(controller: self)
             pluginManagerWindowController = controller
             return controller
         }()

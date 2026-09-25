@@ -3,6 +3,8 @@
 /* 通用 */
 "common.ok" = "OK";
 "common.cancel" = "Cancel";
+/* List separator (plugin-disable confirmation lists component names). */
+"common.listSeparator" = ", ";
 
 /* 设置窗口 */
 "settings.window.title" = "NotchCenter Settings";
@@ -85,6 +87,7 @@
 "manager.badge.builtIn" = "Built-in";
 "manager.badge.user" = "User";
 "manager.badge.incompatible" = "Incompatible";
+"manager.badge.inUse" = "In Use";
 "manager.uninstall" = "Uninstall";
 "manager.version.api" = "Version %@ · API %@";
 "manager.loadFailed" = "This plugin failed to load: %@";
@@ -93,6 +96,11 @@
 "manager.alert.title" = "Plugin Error";
 "manager.uninstall.confirmTitle" = "Uninstall “%@”?";
 "manager.uninstall.confirmBody" = "The plugin bundle will be removed from your plugin folder.";
+"manager.disable.confirmTitle" = "Disable “%@”?";
+"manager.disable.confirmBody" = "%d components are in use: %@. Disabling removes these placements.";
+"manager.disable.confirmBodyTruncated" = "%d components are in use, including %@. Disabling removes these placements.";
+"manager.disable.confirmStale" = "%d stale placements will also be cleared.";
+"manager.disable.confirmAction" = "Disable";
 "manager.openPanel.title" = "Choose a Plugin Bundle";
 "manager.openPanel.message" = "Select a .bundle plugin to install for all users of NotchCenter.";
 
