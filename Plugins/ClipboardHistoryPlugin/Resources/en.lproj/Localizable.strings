@@ -47,7 +47,6 @@
 "drawer.button.search.collapse" = "Collapse search";
 
 /* 行按钮（图标按钮的无障碍标签与悬停提示） */
-"drawer.button.copied" = "Copied";
 "drawer.button.pin" = "Pin entry";
 "drawer.button.unpin" = "Unpin entry";
 "drawer.button.delete" = "Delete entry";

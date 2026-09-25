@@ -47,7 +47,6 @@
 "drawer.button.search.collapse" = "收起搜索";
 
 /* 行按钮（图标按钮的无障碍标签与悬停提示） */
-"drawer.button.copied" = "已复制";
 "drawer.button.pin" = "置顶条目";
 "drawer.button.unpin" = "取消置顶";
 "drawer.button.delete" = "删除条目";

@@ -7,6 +7,9 @@ import SwiftUI
 //
 // 交互（2026-09-06 重构，推翻原共识 Q8/Q9，见 agent-note 同日记录）：
 // 条目主体点击 = 写回剪贴板（单行截断显示），长按 = BlockPopover 全文预览浮窗；
+// 高亮是状态追踪不是点击反馈：内容等于当前剪贴板的条目持续高亮（2026-09-25
+// 决策记录 clipboard-current-highlight，取代旧的 1.5s 绿色 ✓ 闪示），见
+// `ClipboardHistoryStore.currentClipboardEntryID`。
 // 「置顶 / 删除」图标按钮同行放行尾。清空经卡片内 InlineConfirmOverlay 浮层
 // 确认——模态弹窗抢焦点，鼠标移过去抽屉就会收回。
 // 顶部「搜索 / 清空」两颗组件默认圆形按钮（Kit IconCircleButton，与编辑模式
@@ -456,7 +459,7 @@ struct ClipboardHistoryBlockView: View {
             ClipboardRowView(
                 entry: entry,
                 section: section,
-                justCopied: store.justCopiedID == entry.id,
+                isCurrent: store.currentClipboardEntryID == entry.id,
                 copyFailed: store.copyFailedID == entry.id,
                 thumbnailURL: store.thumbnailURL(for: entry),
                 onCopy: {
@@ -518,7 +521,9 @@ private struct ClipboardRowView: View {
     let entry: ClipboardEntry
     /// 所属分组：容器已扁平化，分组语义只能由行自己带上（见下方 accessibilityLabel）。
     let section: ClipboardSectionKind
-    let justCopied: Bool
+    /// 持续高亮：本条内容等于当前剪贴板内容（状态追踪，见
+    /// `ClipboardHistoryStore.currentClipboardEntryID`），不是点击反馈。
+    let isCurrent: Bool
     /// 上一次点击被拒（文件原路径已失效）：行内出一次提示，不弹窗打断。
     let copyFailed: Bool
     /// 缩略图：行内 32×20 用 `fill`、长按预览与悬浮预览用 `fit`，读的是同一份文件。
@@ -532,12 +537,6 @@ private struct ClipboardRowView: View {
     var body: some View {
         HStack(spacing: 8) {
             HStack(spacing: 6) {
-                if justCopied {
-                    Image(systemName: "checkmark")
-                        .font(NotchTokens.Text.system(9, weight: .semibold))
-                        .foregroundStyle(NotchTokens.Semantic.accentGreen)
-                        .accessibilityLabel(Text(L("drawer.button.copied")))
-                }
                 if entry.kind == .image {
                     ClipboardImageView(
                         url: thumbnailURL,
@@ -582,7 +581,7 @@ private struct ClipboardRowView: View {
         .frame(height: ClipboardRowMetrics.height(for: entry))
         .background(
             RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
-                .fill(justCopied ? NotchTokens.Surface.fillHighlighted : NotchTokens.Surface.fill)
+                .fill(isCurrent ? NotchTokens.Surface.fillHighlighted : NotchTokens.Surface.fill)
         )
         .overlay {
             RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
@@ -591,7 +590,7 @@ private struct ClipboardRowView: View {
                     lineWidth: 1
                 )
         }
-        .animation(NotchTokens.Motion.hover, value: justCopied)
+        .animation(NotchTokens.Motion.hover, value: isCurrent)
         // 主体点击 = 写回、长按 = 全文预览：单手势管线（blockPopoverTrigger，
         // TapGesture 与长按并存真机不触发的红线结论），行尾图标按钮自行消费点击。
         .blockPopoverTrigger(
@@ -605,6 +604,7 @@ private struct ClipboardRowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(ClipboardEntryPresentation.accessibilityLabel(for: entry, section: section)))
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 
     private func iconButton(

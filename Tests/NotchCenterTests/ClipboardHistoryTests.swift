@@ -285,10 +285,71 @@ final class ClipboardHistoryTests: XCTestCase {
         let entry = try! XCTUnwrap(store.entries.first)
         store.copyBack(entry)
         XCTAssertEqual(clipboard.writtenTexts, ["hello"])
-        XCTAssertEqual(store.justCopiedID, entry.id)
+        // 持续高亮：写回后该条即"当前剪贴板内容"，不定时清除。
+        XCTAssertEqual(store.currentClipboardEntryID, entry.id)
         // 写回产生的 changeCount 跳变：下一轮 ingest 只认领、不记录。
         ingest(store, clipboard)
         XCTAssertEqual(store.entries.count, 1)
+    }
+
+    /// 高亮是状态追踪：随记录转移到新条、随写回指回旧条、未记录的变化清空。
+    func testHighlightTracksCurrentClipboardContent() {
+        let (store, clipboard, root) = makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        clipboard.externalCopy("a")
+        ingest(store, clipboard)
+        let entryA = try! XCTUnwrap(store.entries.first(where: { $0.text == "a" }))
+        XCTAssertEqual(store.currentClipboardEntryID, entryA.id, "记录成功即高亮新条")
+
+        clipboard.externalCopy("b")
+        ingest(store, clipboard)
+        let entryB = try! XCTUnwrap(store.entries.first(where: { $0.text == "b" }))
+        XCTAssertEqual(store.currentClipboardEntryID, entryB.id, "外部复制后高亮跟到新条")
+
+        XCTAssertTrue(store.copyBack(entryA))
+        XCTAssertEqual(store.currentClipboardEntryID, entryA.id, "写回旧条后高亮指回旧条")
+
+        // 密码管理器类 transient 复制：不记录也不读，剪贴板内容不可知 → 无高亮。
+        clipboard.externalCopy("secret", types: ["org.nspasteboard.TransientType"])
+        ingest(store, clipboard)
+        XCTAssertNil(store.currentClipboardEntryID)
+    }
+
+    /// 再复制历史里已有的内容：去重命中旧条，高亮的是旧条 id（不新增条目）。
+    func testReCopyExistingEntryHighlightsTheExistingOne() {
+        let (store, clipboard, root) = makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        clipboard.externalCopy("a")
+        ingest(store, clipboard)
+        clipboard.externalCopy("b")
+        ingest(store, clipboard)
+        let entryA = try! XCTUnwrap(store.entries.first(where: { $0.text == "a" }))
+        clipboard.externalCopy("a")
+        ingest(store, clipboard)
+        XCTAssertEqual(store.entries.count, 2, "去重不新增条目")
+        XCTAssertEqual(store.currentClipboardEntryID, entryA.id, "高亮命中旧条而非新造 id")
+    }
+
+    /// attach 启动对齐：剪贴板里是历史已有内容时直接高亮该条；过期快照不落地。
+    func testAttachAlignsHighlightWithCurrentClipboard() {
+        let clipboard = FakeClipboard()
+        let entries = [ClipboardEntry(text: "a"), ClipboardEntry(text: "b")]
+        let (store, _, root) = makeStore(clipboard: clipboard, preloaded: entries)
+        defer { try? FileManager.default.removeItem(at: root) }
+        // attach 只认领计数：预置历史里没有 b，外部剪贴板此刻是 b → 先补记一次。
+        clipboard.externalCopy("b")
+        ingest(store, clipboard)
+        let entryB = try! XCTUnwrap(store.entries.first(where: { $0.text == "b" }))
+        XCTAssertEqual(store.currentClipboardEntryID, entryB.id)
+        // 同一计数的载荷再对齐：幂等。
+        store.applyCurrentEntryMatch(from: clipboard.readPayload(), changeCount: clipboard.changeCount)
+        XCTAssertEqual(store.currentClipboardEntryID, entryB.id)
+        // 剪贴板又变了且已被 ingest 认领：旧计数的快照过期，不得覆盖当前高亮。
+        clipboard.externalCopy("c")
+        ingest(store, clipboard)
+        let entryC = try! XCTUnwrap(store.entries.first(where: { $0.text == "c" }))
+        store.applyCurrentEntryMatch(from: ClipboardPayload(text: "b"), changeCount: clipboard.changeCount - 1)
+        XCTAssertEqual(store.currentClipboardEntryID, entryC.id)
     }
 
     func testPinDeleteClearPersist() {
@@ -518,7 +579,7 @@ final class ClipboardHistoryTests: XCTestCase {
         let entry = try XCTUnwrap(store.entries.first)
         XCTAssertTrue(store.copyBack(entry))
         XCTAssertEqual(clipboard.writtenFileGroups, [paths])
-        XCTAssertEqual(store.justCopiedID, entry.id)
+        XCTAssertEqual(store.currentClipboardEntryID, entry.id)
     }
 
     /// 任一原路径失效即拒写并显示失效态——不复制副本保活（项目红线），也不静默丢。
@@ -533,7 +594,8 @@ final class ClipboardHistoryTests: XCTestCase {
         XCTAssertFalse(store.copyBack(entry))
         XCTAssertTrue(clipboard.writtenFileGroups.isEmpty, "失效时一个文件都不该写")
         XCTAssertEqual(store.copyFailedID, entry.id)
-        XCTAssertNil(store.justCopiedID)
+        // 写回被拒不改持续高亮：剪贴板内容没变，仍是这条文件组。
+        XCTAssertEqual(store.currentClipboardEntryID, entry.id)
     }
 
     /// 图片写回放的是**原始字节**，不是重编码产物。

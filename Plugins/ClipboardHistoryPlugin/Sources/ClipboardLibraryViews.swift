@@ -309,6 +309,9 @@ struct ClipboardLibraryView: View {
 
     private func pinnedCard(_ entry: ClipboardEntry) -> some View {
         let copyFailed = store.copyFailedID == entry.id
+        // 持续高亮（见 `ClipboardHistoryStore.currentClipboardEntryID`）：卡片底色
+        // 常显 fillHighlighted、无处再亮，改用选中描边表达（与筛选 chip 选中态同款）。
+        let isCurrent = store.currentClipboardEntryID == entry.id
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: entry.kind.symbolName)
@@ -360,7 +363,9 @@ struct ClipboardLibraryView: View {
         .overlay(
             RoundedRectangle(cornerRadius: NotchTokens.Radius.chip, style: .continuous)
                 .strokeBorder(
-                    copyFailed ? NotchTokens.Semantic.unavailable : NotchTokens.Hairline.drawerEdge,
+                    copyFailed ? NotchTokens.Semantic.unavailable
+                        : isCurrent ? NotchTokens.Hairline.chipSelected
+                        : NotchTokens.Hairline.drawerEdge,
                     lineWidth: 1
                 )
         )
@@ -389,6 +394,7 @@ struct ClipboardLibraryView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(ClipboardEntryPresentation.accessibilityLabel(for: entry, section: .pinned)))
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 
     /// 最近列表：单行截断，行尾置顶/删除；点击写回、长按预览。
@@ -414,6 +420,9 @@ struct ClipboardLibraryView: View {
 
     private func recentRow(_ entry: ClipboardEntry) -> some View {
         let copyFailed = store.copyFailedID == entry.id
+        // 持续高亮：本条内容等于当前剪贴板内容（状态追踪，见
+        // `ClipboardHistoryStore.currentClipboardEntryID`），不是点击反馈。
+        let isCurrent = store.currentClipboardEntryID == entry.id
         return HStack(spacing: 8) {
             if entry.kind == .image {
                 ClipboardImageView(
@@ -449,11 +458,6 @@ struct ClipboardLibraryView: View {
                     .foregroundStyle(NotchTokens.Semantic.unavailable)
                     .lineLimit(1)
             }
-            if store.justCopiedID == entry.id {
-                Image(systemName: "checkmark")
-                    .font(NotchTokens.Text.system(9, weight: .semibold))
-                    .foregroundStyle(NotchTokens.Semantic.accentGreen)
-            }
             HStack(spacing: 2) {
                 rowIconButton(
                     systemName: entry.pinned ? "pin.fill" : "pin",
@@ -471,7 +475,7 @@ struct ClipboardLibraryView: View {
         .frame(height: ClipboardRowMetrics.height(for: entry))
         .background(
             RoundedRectangle(cornerRadius: NotchTokens.Radius.button, style: .continuous)
-                .fill(store.justCopiedID == entry.id ? NotchTokens.Surface.fillHighlighted : .clear)
+                .fill(isCurrent ? NotchTokens.Surface.fillHighlighted : .clear)
         )
         .contentShape(Rectangle())
         .blockPopoverTrigger(
@@ -499,6 +503,7 @@ struct ClipboardLibraryView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(ClipboardEntryPresentation.accessibilityLabel(for: entry, section: .recent)))
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 
     private func rowIconButton(

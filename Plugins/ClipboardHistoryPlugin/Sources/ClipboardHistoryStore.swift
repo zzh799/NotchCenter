@@ -273,8 +273,10 @@ final class ClipboardHistoryStore: ObservableObject {
     @Published private(set) var isPaused = false
     /// 自动清理档位（**全局设置**：历史是插件级共享的，不按放置实例区分）。
     @Published private(set) var autoCleanupPeriod: ClipboardAutoCleanupPeriod = .defaultPeriod
-    /// 最近一次写回的条目 id（视图短暂高亮 ✓ 用，数秒后自动清除）。
-    @Published private(set) var justCopiedID: UUID?
+    /// 当前剪贴板内容对应的历史条目 id（持续高亮语义：高亮始终标记"内容等于
+    /// 当前剪贴板的那条"，对不上任何条目时为 nil）。由离散事件维护，见
+    /// `copyBack` / `ingest` / `attach`；不做内容级轮询（两段式轮询红线）。
+    @Published private(set) var currentClipboardEntryID: UUID?
     /// 最近一次**写回被拒**的条目 id（文件条目的原路径已失效；视图据此显示失效态）。
     @Published private(set) var copyFailedID: UUID?
 
@@ -301,7 +303,7 @@ final class ClipboardHistoryStore: ObservableObject {
     /// 所以它证明不了"这一次变化被放行了"。少了这张票，暂停期间或 transient 的载荷
     /// 会在恢复记录后被补记进来，正好违反"暂停期不补记"的既定契约。
     private var pendingRecordChangeCount: Int?
-    /// 高亮清除任务。
+    /// 失效闪示（copyFailedID）的清除任务。
     private var highlightTask: Task<Void, Never>?
 
     /// 活跃放置实例（视图 appear 登记 / disappear 注销 / 移除回调强制注销）。
@@ -346,6 +348,9 @@ final class ClipboardHistoryStore: ObservableObject {
         pendingRecordChangeCount = nil
         isActive = true
         recomputeTimer()
+        // 启动对齐：把"当前剪贴板内容"对上历史条目（持续高亮语义），见
+        // `syncCurrentEntryMatch`。
+        syncCurrentEntryMatch()
         // 清理检查与"用户看不看得到"无关：起表 + 启动补算（进程退出期间跨过到期点
         // 的情况靠这一下收敛）。
         startCleanupTimer()
@@ -454,8 +459,16 @@ final class ClipboardHistoryStore: ObservableObject {
             return
         }
         guard probe.changeCount != lastSeenChangeCount else { return }
-        guard !isPaused else { return }
-        guard !Self.isTransient(typeNames: probe.typeNames) else { return }
+        // 剪贴板变了但这次变化不会被记录（暂停 / transient）：当前内容已不可知、
+        // 不再对应任何条目，持续高亮随之消失（自循环认领在上面已提前返回，不误清）。
+        guard !isPaused else {
+            currentClipboardEntryID = nil
+            return
+        }
+        guard !Self.isTransient(typeNames: probe.typeNames) else {
+            currentClipboardEntryID = nil
+            return
+        }
         pendingRecordChangeCount = probe.changeCount
         readPayload(changeCount: probe.changeCount)
     }
@@ -488,7 +501,11 @@ final class ClipboardHistoryStore: ObservableObject {
         if let data = payload.imageData {
             capture.imageHash = ClipboardMediaStore.contentHash(of: data)
         }
-        guard var entry = ClipboardHistoryLogic.makeEntry(from: capture) else { return }
+        guard var entry = ClipboardHistoryLogic.makeEntry(from: capture) else {
+            // 载荷无可用内容（如剪贴板被清空）：当前内容不对应任何条目。
+            currentClipboardEntryID = nil
+            return
+        }
         var writtenMediaName: String?
         if entry.kind == .image, !ClipboardHistoryLogic.contains(entry, in: entries) {
             // 先落盘再入库：反过来会留下指向不存在文件的条目。重复内容不进这一步
@@ -502,24 +519,83 @@ final class ClipboardHistoryStore: ObservableObject {
         guard next != entries else {
             // 被去重或预算停收：刚写的文件没有任何条目引用，就地回收，不等下次启动。
             if let writtenMediaName { mediaStore?.remove(storedNames: [writtenMediaName]) }
+            // 去重命中（含"与第一条同身份"的原样返回）：剪贴板内容就在那条上，
+            // 高亮命中条；预算停收则匹配不到，置 nil。
+            currentClipboardEntryID = currentEntryID(matching: entry, in: next)
             return
         }
         commit(next)
+        // 本次记录的内容此刻就在剪贴板上：高亮随之转移到对应条（新条或被顶前的旧条）。
+        currentClipboardEntryID = currentEntryID(matching: entry, in: next)
+    }
+
+    /// 与给定条目**同内容身份**（`matchKey`）的历史条目 id；对不上返回 nil。
+    ///
+    /// 匹配身份与去重同源（文本按正文 / 图片按内容哈希 / 文件按路径集合），不另造
+    /// 第二套"内容是否相同"的判定——两套判定必然漂移。
+    private func currentEntryID(matching entry: ClipboardEntry, in list: [ClipboardEntry]) -> UUID? {
+        let key = ClipboardHistoryLogic.matchKey(entry)
+        return list.first(where: { ClipboardHistoryLogic.matchKey($0) == key })?.id
+    }
+
+    /// attach 时的启动对齐：把当前剪贴板内容匹配到历史条目上。
+    ///
+    /// 启动时剪贴板里大概率是历史里已有的内容（上次会话复制的），不读一次载荷的
+    /// 话，直到下一次复制前都没有高亮，违背"始终高亮当前内容"的语义。只读这一次：
+    /// 常规轮询仍是两段式（每 tick 只读计数）。transient / concealed 内容刻意不读
+    /// （隐私红线与轮询同源），直接无高亮。
+    private func syncCurrentEntryMatch() {
+        let probe = reader.probe()
+        guard !Self.isTransient(typeNames: probe.typeNames) else {
+            currentClipboardEntryID = nil
+            return
+        }
+        let captured = reader
+        let count = probe.changeCount
+        Task.detached(priority: .utility) { [weak self] in
+            let payload = captured.readPayload()
+            await MainActor.run { [weak self] in
+                self?.applyCurrentEntryMatch(from: payload, changeCount: count)
+            }
+        }
+    }
+
+    /// 由载荷对齐"当前剪贴板内容"的高亮条（internal 供测试直注；生产走
+    /// `syncCurrentEntryMatch` 的异步壳）。`changeCount` 是发起读取时见到的计数：
+    /// 读载荷期间剪贴板又变了的话，这份快照过期，直接丢弃，交给后续 ingest 收口。
+    func applyCurrentEntryMatch(from payload: ClipboardPayload, changeCount: Int) {
+        guard lastSeenChangeCount == changeCount else { return }
+        var capture = ClipboardCapture(
+            text: payload.text,
+            filePaths: payload.filePaths,
+            imageData: payload.imageData,
+            imageUTI: payload.imageUTI
+        )
+        if let data = payload.imageData {
+            capture.imageHash = ClipboardMediaStore.contentHash(of: data)
+        }
+        guard let entry = ClipboardHistoryLogic.makeEntry(from: capture) else {
+            currentClipboardEntryID = nil
+            return
+        }
+        currentClipboardEntryID = currentEntryID(matching: entry, in: entries)
     }
 
     // MARK: 用户操作
 
-    /// 点击写回：按类型把内容放回剪贴板 + 记快照跳过自循环 + 短暂反馈。
+    /// 点击写回：按类型把内容放回剪贴板 + 记快照跳过自循环 + 高亮该条。
     /// 返回 false 表示写回被拒（文件条目的原路径已全部失效）。
     @discardableResult
     func copyBack(_ entry: ClipboardEntry) -> Bool {
         guard let count = writeToPasteboard(entry) else {
-            flashCopyFeedback(copied: nil, failed: entry.id)
+            flashCopyFailure(entry.id)
             return false
         }
         writeBackSnapshot = count
         lastSeenChangeCount = count
-        flashCopyFeedback(copied: entry.id, failed: nil)
+        copyFailedID = nil
+        // 持续高亮：写回成功后该条就是"当前剪贴板内容"，直到内容再变。
+        currentClipboardEntryID = entry.id
         return true
     }
 
@@ -653,17 +729,17 @@ final class ClipboardHistoryStore: ObservableObject {
         mediaStore?.remove(storedNames: removed)
     }
 
-    /// 写回反馈：成功打 ✓、被拒打失效态，1.5 秒后自动清除（两种互斥）。
-    private func flashCopyFeedback(copied: UUID?, failed: UUID?) {
-        justCopiedID = copied
+    /// 写回被拒的失效闪示：1.5 秒后自动清除。仅错误反馈走定时清除——成功侧的
+    /// 持续高亮（currentClipboardEntryID）是状态追踪，不参与。
+    private func flashCopyFailure(_ failed: UUID) {
         copyFailedID = failed
         highlightTask?.cancel()
         highlightTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
-                self?.justCopiedID = nil
-                self?.copyFailedID = nil
+                guard let self, self.copyFailedID == failed else { return }
+                self.copyFailedID = nil
             }
         }
     }
@@ -697,9 +773,12 @@ final class ClipboardHistoryStore: ObservableObject {
         try? stateStore?.setObject(lastAutoCleanupAt, forKey: Self.autoCleanupLastRunStoreKey)
     }
 
-    /// 写回反馈的两个 id 若已不在列表里就地清空（删除单条与批量清理共用）。
+    /// 条目引用型反馈/状态的 id 若已不在列表里就地清空（删除单条与批量清理共用）。
     private func pruneCopyFeedback(keeping next: [ClipboardEntry]) {
-        if let id = justCopiedID, !next.contains(where: { $0.id == id }) { justCopiedID = nil }
+        if let id = currentClipboardEntryID, !next.contains(where: { $0.id == id }) {
+            // 高亮条目被删：内容虽可能还在剪贴板上，但历史里已无对应条目。
+            currentClipboardEntryID = nil
+        }
         if let id = copyFailedID, !next.contains(where: { $0.id == id }) { copyFailedID = nil }
     }
 
