@@ -502,6 +502,23 @@ enum ClipboardHistoryLogic {
         entries.filter(\.pinned)
     }
 
+    // MARK: 自动清理
+
+    /// 自动清理是否已到点。
+    ///
+    /// `lastRunAt` 为 nil（首次启用 / 从无此设置的老版本升上来）时**从此刻起算**：
+    /// 判定必然为"未到点"，因此首装与升级都不会立刻清掉存量历史；时间戳由 store
+    /// 在同一个判定点落盘（决策记录 `2026-09-25-clipboard-auto-cleanup` 的 D4）。
+    static func isCleanupDue(
+        period: ClipboardAutoCleanupPeriod,
+        lastRunAt: Date?,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let due = period.nextDue(from: lastRunAt ?? now, calendar: calendar) else { return false }
+        return now >= due
+    }
+
     /// 搜索过滤：大小写不敏感 substring，范围含置顶；空查询返回全部。
     static func filtered(_ entries: [ClipboardEntry], query: String) -> [ClipboardEntry] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -650,6 +667,62 @@ enum ClipboardHistoryLogic {
     /// 新条 / 重排条的插入位：置顶落置顶区末尾，普通落置顶区之后（普通区首位）。
     private static func insertionIndex(forPinned _: Bool, in entries: [ClipboardEntry]) -> Int {
         entries.prefix(while: \.pinned).count
+    }
+}
+
+// MARK: - 自动清理档位（纯逻辑，可单测）
+//
+// 档位语义见决策记录 2026-09-25-clipboard-auto-cleanup：周期是**清理频率**而不是
+// 保留时长（每周 = 每周清一次，清掉当时全部未置顶），判定用日历加法，「关闭」档
+// 让不想被自动删数据的人有出口。
+
+enum ClipboardAutoCleanupPeriod: String, Codable, CaseIterable, Sendable {
+    case off
+    case daily
+    case weekly
+    case monthly
+
+    /// 未设置过（新装 / 从无此设置的老版本升上来）时的档位。
+    static let defaultPeriod: ClipboardAutoCleanupPeriod = .weekly
+
+    /// 设置界面的档位顺序：先给"不想要"的人一个出口，再按周期由短到长。
+    static let selectable: [ClipboardAutoCleanupPeriod] = [.off, .daily, .weekly, .monthly]
+
+    /// 档位文案键。
+    var localizationKey: String { "settings.autoCleanup.\(rawValue)" }
+
+    /// 周期长度（**日历单位**，不是固定秒数）；关闭档为 nil。
+    private var components: DateComponents? {
+        switch self {
+        case .off: return nil
+        case .daily: return DateComponents(day: 1)
+        case .weekly: return DateComponents(day: 7)
+        case .monthly: return DateComponents(month: 1)
+        }
+    }
+
+    /// 日历加法返回 nil 时的回落秒数（正常路径不走到，纯兜底）。
+    private var fallbackInterval: TimeInterval {
+        switch self {
+        case .off: return 0
+        case .daily: return 86_400
+        case .weekly: return 604_800
+        case .monthly: return 2_592_000
+        }
+    }
+
+    /// 从 `date` 起算一个周期后的到期时刻；关闭档返回 nil（永不到期）。
+    ///
+    /// 用日历加法：「每月」按日历月走，跨 2 月、跨夏令时才不会漂。
+    func nextDue(from date: Date, calendar: Calendar = .current) -> Date? {
+        guard let components else { return nil }
+        return calendar.date(byAdding: components, to: date) ?? date.addingTimeInterval(fallbackInterval)
+    }
+
+    /// 持久化字符串 → 档位。缺失或非法一律回**默认档**：既不是"静默变关闭"
+    /// （那会让自动清理神秘失灵），也不是"抛错让 store 崩"。
+    static func sanitize(_ rawValue: String?) -> ClipboardAutoCleanupPeriod {
+        rawValue.flatMap(ClipboardAutoCleanupPeriod.init(rawValue:)) ?? defaultPeriod
     }
 }
 

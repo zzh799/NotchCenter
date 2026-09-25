@@ -246,6 +246,9 @@ final class SystemClipboardReader: ClipboardReading, @unchecked Sendable {
 // 或插件禁用 → 停表。可见性经块视图内嵌的 ClipboardVisibilityProbe 上报
 // （SystemMonitorStore.WindowVisibilityProbe 同款 occlusion 机制）。
 //
+// 另有**不随可见性起伏**的自动清理检查表（60s 一次日期比较，attach → suspend），
+// 理由见 `startCleanupTimer`。
+//
 // 隐私（共识 Q2）：transient 启发式跳过 + 全局暂停 + 暂停期不补记；暂停态持久化，
 // 重启后保持暂停（避免重启瞬间把用户不想记的内容记下来）。
 
@@ -258,9 +261,18 @@ final class ClipboardHistoryStore: ObservableObject {
     /// 落盘键（插件级 stateStore，单文件有序数组）。
     static let historyStoreKey = "history.entries.v1"
     static let pausedStoreKey = "history.paused"
+    /// 自动清理档位键（存 `ClipboardAutoCleanupPeriod` 的 rawValue）。
+    static let autoCleanupPeriodStoreKey = "cleanup.period"
+    /// 上次自动清理时刻键。首次启用只落"起算时刻"、不清理（见 attach）。
+    static let autoCleanupLastRunStoreKey = "cleanup.lastRunAt"
+    /// 自动清理检查节拍：清理粒度是天，60s 一次的日期比较成本可忽略，
+    /// 但让"到点"最多晚一分钟生效。
+    static let cleanupCheckInterval: TimeInterval = 60
 
     @Published private(set) var entries: [ClipboardEntry] = []
     @Published private(set) var isPaused = false
+    /// 自动清理档位（**全局设置**：历史是插件级共享的，不按放置实例区分）。
+    @Published private(set) var autoCleanupPeriod: ClipboardAutoCleanupPeriod = .defaultPeriod
     /// 最近一次写回的条目 id（视图短暂高亮 ✓ 用，数秒后自动清除）。
     @Published private(set) var justCopiedID: UUID?
     /// 最近一次**写回被拒**的条目 id（文件条目的原路径已失效；视图据此显示失效态）。
@@ -272,6 +284,10 @@ final class ClipboardHistoryStore: ObservableObject {
     private var mediaStore: ClipboardMediaStore?
     private var tickTimer: Timer?
     private var isActive = false
+    /// 自动清理检查表（独立于可见性 tick，见 startCleanupTimer）。
+    private var cleanupTimer: Timer?
+    /// 上次自动清理时刻；nil 表示本次会话尚未起算（attach 会落到"此刻起算"）。
+    private var lastAutoCleanupAt: Date?
 
     /// 上次见到的 changeCount：只在"消费了一次变化"后更新；自循环跳过靠
     /// writeBackSnapshot（写回后记快照，本轮 tick 见到相同 count 直接认领）。
@@ -311,6 +327,16 @@ final class ClipboardHistoryStore: ObservableObject {
             stateStore.object([ClipboardEntry].self, forKey: Self.historyStoreKey) ?? []
         )
         isPaused = stateStore.object(Bool.self, forKey: Self.pausedStoreKey) ?? false
+        autoCleanupPeriod = ClipboardAutoCleanupPeriod.sanitize(
+            stateStore.object(String.self, forKey: Self.autoCleanupPeriodStoreKey)
+        )
+        lastAutoCleanupAt = stateStore.object(Date.self, forKey: Self.autoCleanupLastRunStoreKey)
+        if lastAutoCleanupAt == nil {
+            // 首次启用（新装 / 从无此设置的老版本升上来）**只起算、不清理**：否则
+            // 升级当天就会把存量历史清掉，是最坏的意外删除。
+            lastAutoCleanupAt = Date()
+            persistAutoCleanupLastRun()
+        }
         // 孤儿对账必须在 entries 定型之后：净化可能淘汰掉带媒体的条目，那些文件
         // 此刻正好变成无人引用的孤儿。顺序反了会把仍被引用的文件删掉。
         mediaStore?.reconcile(referenced: Set(entries.compactMap(\.storedMediaName)))
@@ -320,11 +346,16 @@ final class ClipboardHistoryStore: ObservableObject {
         pendingRecordChangeCount = nil
         isActive = true
         recomputeTimer()
+        // 清理检查与"用户看不看得到"无关：起表 + 启动补算（进程退出期间跨过到期点
+        // 的情况靠这一下收敛）。
+        startCleanupTimer()
+        runAutoCleanupIfDue()
     }
 
     func suspend() {
         isActive = false
         stopTicking()
+        stopCleanupTimer()
         livePlacements.removeAll()
         probeCounts.removeAll()
         visibleWindows.removeAll()
@@ -525,8 +556,7 @@ final class ClipboardHistoryStore: ObservableObject {
     func delete(id: UUID) {
         guard let next = ClipboardHistoryLogic.removing(id: id, from: entries) else { return }
         commit(next)
-        if justCopiedID == id { justCopiedID = nil }
-        if copyFailedID == id { copyFailedID = nil }
+        pruneCopyFeedback(keeping: next)
     }
 
     func clearUnpinned() {
@@ -545,6 +575,46 @@ final class ClipboardHistoryStore: ObservableObject {
             pendingRecordChangeCount = nil
             lastSeenChangeCount = reader.probe().changeCount
         }
+    }
+
+    // MARK: 自动清理（档位语义见 ClipboardAutoCleanupPeriod）
+
+    /// 改档：落盘并**从此刻重新起算**，不立刻清一次。
+    ///
+    /// "改完立刻执行"会把这一项变成隐形删除按钮（用户顺手试一下档位就丢历史），
+    /// 代价只是新档位的首次执行晚一个周期。
+    func setAutoCleanupPeriod(_ period: ClipboardAutoCleanupPeriod) {
+        guard autoCleanupPeriod != period else { return }
+        autoCleanupPeriod = period
+        try? stateStore?.setObject(period.rawValue, forKey: Self.autoCleanupPeriodStoreKey)
+        lastAutoCleanupAt = Date()
+        persistAutoCleanupLastRun()
+    }
+
+    /// 到点则清一次。定时器每个节拍调一次，测试可直注 `now`。
+    func runAutoCleanupIfDue(now: Date = Date()) {
+        guard ClipboardHistoryLogic.isCleanupDue(
+            period: autoCleanupPeriod,
+            lastRunAt: lastAutoCleanupAt,
+            now: now
+        ) else { return }
+        performAutoCleanup(now: now)
+    }
+
+    /// 执行一次清理：删除全部**未置顶**条目（置顶恒保留）、落盘、记时刻。
+    ///
+    /// 走 `clearingUnpinned` + `commit`——与手工「清空未置顶」是同一套实现，
+    /// 被清图片的文件由 `commit` 连带回收；另写一条删除路径会留下孤儿图片文件。
+    /// internal 供测试直调。
+    func performAutoCleanup(now: Date = Date()) {
+        // 先记时刻再删：两个副作用彼此独立，"这次到期已被消费"必须无条件落盘。
+        // 反过来写的话，"没有未置顶可删"的早退会跳过时间戳，于是每个节拍都重判到期。
+        lastAutoCleanupAt = now
+        persistAutoCleanupLastRun()
+        let next = ClipboardHistoryLogic.clearingUnpinned(entries)
+        guard next != entries else { return }
+        commit(next)
+        pruneCopyFeedback(keeping: next)
     }
 
     // MARK: 视图支撑
@@ -600,6 +670,37 @@ final class ClipboardHistoryStore: ObservableObject {
 
     private func persist() {
         try? stateStore?.setObject(entries, forKey: Self.historyStoreKey)
+    }
+
+    /// 自动清理检查表：挂在 attach → suspend 之间，与 `isObserved` **无关**。
+    ///
+    /// 刻意不走 `recomputeTimer` 那条可见性驱动的路：清理是全局房间整理，不该等
+    /// 用户把抽屉打开；也没有"没有放置实例就不需要清"这一说（历史还在磁盘上）。
+    private func startCleanupTimer() {
+        guard cleanupTimer == nil else { return }
+        let timer = Timer(timeInterval: Self.cleanupCheckInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.runAutoCleanupIfDue()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        cleanupTimer = timer
+    }
+
+    private func stopCleanupTimer() {
+        cleanupTimer?.invalidate()
+        cleanupTimer = nil
+    }
+
+    private func persistAutoCleanupLastRun() {
+        guard let lastAutoCleanupAt else { return }
+        try? stateStore?.setObject(lastAutoCleanupAt, forKey: Self.autoCleanupLastRunStoreKey)
+    }
+
+    /// 写回反馈的两个 id 若已不在列表里就地清空（删除单条与批量清理共用）。
+    private func pruneCopyFeedback(keeping next: [ClipboardEntry]) {
+        if let id = justCopiedID, !next.contains(where: { $0.id == id }) { justCopiedID = nil }
+        if let id = copyFailedID, !next.contains(where: { $0.id == id }) { copyFailedID = nil }
     }
 
     /// transient 启发式：类型名含 transient / concealed / password / secret 即跳过。

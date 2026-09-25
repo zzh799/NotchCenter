@@ -4,8 +4,10 @@ import SwiftUI
 // MARK: - ClipboardHistoryPlugin（官方剪贴板历史插件）
 //
 // 共识见 Agent Note 2026-09-05-clipboard-history-plugin：纯文本起步、点击写回
-// 无模拟粘贴、全局共享历史 + placement 独立显示偏好。第一版不实现插件级
-// settingsView（返回 nil）；状态栏菜单贡献暂停 / 清空两项。
+// 无模拟粘贴、全局共享历史 + placement 独立显示偏好。状态栏菜单贡献暂停 / 清空两项。
+// 插件级 settingsView 到 2026-09-25 才有内容：全局的「自动清理」档位——库页块
+// （`clipboard.library`）本身没有实例设置，没有它这个入口就够不到这一项
+// （决策记录 2026-09-25-clipboard-auto-cleanup 的 D8）。
 
 @objc(ClipboardHistoryPlugin) @MainActor
 public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
@@ -102,6 +104,14 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
                 }
             ),
         ]
+    }
+
+    /// 插件级设置：全局的自动清理档位（历史是插件级共享的，档位只有一份）。
+    /// 抽屉块因声明了 `instanceSettingsView` 走实例浮窗，那一份里也含同一行。
+    public var settingsView: (@MainActor (PluginSettingsContext) -> AnyView)? {
+        { _ in
+            AnyView(ClipboardPluginSettingsView())
+        }
     }
 
     public var menuItems: [PluginMenuItem] {

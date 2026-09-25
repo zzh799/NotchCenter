@@ -691,24 +691,37 @@ struct ClipboardTrayView: View {
     }
 }
 
-// MARK: - 实例设置（显示条数）
+// MARK: - 实例设置（本组件：显示条数 / 全局：自动清理）
 
+/// 抽屉块齿轮开的就是这一份。显示条数按实例走（每实例存储），自动清理是全局设置，
+/// 用「全局」小节标题把作用域写在明面上（决策记录 2026-09-25-clipboard-auto-cleanup D8）。
 struct ClipboardInstanceSettingsView: View {
     @ObservedObject var instance: ClipboardInstanceModel
 
     var body: some View {
-        HStack {
-            Text(L("settings.displayCount"))
-                .font(NotchTokens.Text.system(11, weight: .medium))
-                .foregroundStyle(NotchTokens.Foreground.secondary)
-            Spacer()
-            Picker(L("settings.displayCount"), selection: displayCountBinding) {
-                ForEach(ClipboardHistoryLogic.allowedDisplayCounts, id: \.self) { count in
-                    Text("\(count)").tag(count)
+        VStack(alignment: .leading, spacing: 14) {
+            ClipboardSettingsSection(title: L("settings.section.instance")) {
+                HStack {
+                    Text(L("settings.displayCount"))
+                        .font(NotchTokens.Text.system(11, weight: .medium))
+                        .foregroundStyle(NotchTokens.Foreground.secondary)
+                    Spacer()
+                    Picker(L("settings.displayCount"), selection: displayCountBinding) {
+                        ForEach(ClipboardHistoryLogic.allowedDisplayCounts, id: \.self) { count in
+                            Text("\(count)").tag(count)
+                        }
+                    }
+                    .labelsHidden()
+                    .controlSize(.small)
                 }
             }
-            .labelsHidden()
-            .controlSize(.small)
+
+            ClipboardSettingsSection(title: L("settings.section.global")) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ClipboardAutoCleanupSettingsRow()
+                    ClipboardAutoCleanupNote()
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

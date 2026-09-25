@@ -65,3 +65,13 @@
 
 /* 实例设置 */
 "settings.displayCount" = "显示条数";
+"settings.section.instance" = "本组件";
+"settings.section.global" = "全局";
+
+/* 自动清理（全局设置） */
+"settings.autoCleanup" = "自动清理";
+"settings.autoCleanup.off" = "关闭";
+"settings.autoCleanup.daily" = "每天";
+"settings.autoCleanup.weekly" = "每周";
+"settings.autoCleanup.monthly" = "每月";
+"settings.autoCleanup.note" = "到点自动清空未置顶条目，置顶条目始终保留；改档后从此刻重新起算。";

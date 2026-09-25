@@ -65,3 +65,13 @@
 
 /* 实例设置 */
 "settings.displayCount" = "Entries to show";
+"settings.section.instance" = "This block";
+"settings.section.global" = "Global";
+
+/* 自动清理（全局设置） */
+"settings.autoCleanup" = "Auto cleanup";
+"settings.autoCleanup.off" = "Off";
+"settings.autoCleanup.daily" = "Daily";
+"settings.autoCleanup.weekly" = "Weekly";
+"settings.autoCleanup.monthly" = "Monthly";
+"settings.autoCleanup.note" = "Unpinned entries are cleared when due; pinned entries are always kept. Changing the option restarts the timer from now.";
