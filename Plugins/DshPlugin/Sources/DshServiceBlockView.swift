@@ -36,9 +36,11 @@ struct DshServiceBlockView: View {
         )
         // setActive 只切档不停表（停表归插件禁用路径的 suspend）：收起时回落
         // idle 而非停轮询，展开瞬间开关才有新鲜状态可渲染。
+        // 刻意不挂 onDisappear：切页会卸载旧页块视图（页带按 placementID 差分，
+        // 见 DrawerPanelView.pageSlide），若此刻压回 idle 会与目标页 onAppear
+        // 抢时序，可能把活跃档误关；档位只认 `isDrawerPresented` 这一真源。
         .onAppear { monitor.setActive(isDrawerPresented) }
         .onChange(of: isDrawerPresented) { _, presented in monitor.setActive(presented) }
-        .onDisappear { monitor.setActive(false) }
     }
 
     private var dotColor: Color {
