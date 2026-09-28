@@ -68,7 +68,8 @@ final class PomodoroStore: ObservableObject {
     private struct ActiveFocus {
         let id: String
         let plannedSeconds: Int
-        let startedAt: Date
+        /// 会话起点。睡眠顺延时会被推后，使 `endedAt - startedAt` 不含睡眠时长。
+        var startedAt: Date
         /// 本次专注内已结束的微休息明细——随会话一起落库，避免孤儿记录。
         var microBreaks: [PomodoroMicroBreak] = []
     }
@@ -117,6 +118,7 @@ final class PomodoroStore: ObservableObject {
         // 重启后若还挂着一条早该作废的待评分记录，立刻自愈：否则闸门会冻住
         // `start()`，而发出待评分的那次会话可能已经是几个小时前的事。
         healPendingRatingIfExpired(now: Date())
+        installSleepObserversIfNeeded()
     }
 
     /// 旧 `stats` 键（单条 `{day, completed}`）→ 日汇总兜底。
@@ -140,6 +142,61 @@ final class PomodoroStore: ObservableObject {
         discardActiveFocus()
         engine.stop()
         stopTicking()
+        publishDisplay(now: Date())
+    }
+
+    // MARK: 系统睡眠（暂停顺延）
+
+    /// 睡眠观察者 token（幂等注册，单例全程存活）。
+    private var sleepObserverTokens: [NSObjectProtocol] = []
+    /// 本次睡眠的开始时刻；不在睡眠中为 nil。
+    private var sleepStartedAt: Date?
+    /// 当前这次暂停是睡眠造成的（唤醒时才由我们恢复）。
+    private var pausedBySleep = false
+
+    /// 注册 `NSWorkspace` 睡眠观察（幂等）。
+    ///
+    /// 引擎锚 wall clock `Date`：睡眠期间时间照走，若不处理，唤醒后 `tick` 会把睡眠
+    /// 时长算进本次专注（25min 可记成数小时），跨多阶段时还会靠 0.5s tick 逐拍补演
+    /// 并连播各阶段音效。这里改「暂停顺延」——锁盖 ≈ 暂停，唤醒从冻结处继续。
+    private func installSleepObserversIfNeeded() {
+        guard sleepObserverTokens.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        sleepObserverTokens.append(center.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { PomodoroStore.shared.handleWillSleep() }
+        })
+        sleepObserverTokens.append(center.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { PomodoroStore.shared.handleDidWake() }
+        })
+    }
+
+    private func handleWillSleep() {
+        sleepStartedAt = Date()
+        // 已有暂停（用户手动按的）不接管，唤醒后也不擅自恢复。
+        guard engine.phase != .idle,
+              engine.phase != .awaitingRating,
+              engine.pausedRemaining == nil else { return }
+        engine.togglePause(now: Date())
+        pausedBySleep = true
+        publishDisplay(now: Date())
+    }
+
+    private func handleDidWake() {
+        guard let sleepStart = sleepStartedAt else { return }
+        sleepStartedAt = nil
+        let sleepDuration = Date().timeIntervalSince(sleepStart)
+        guard sleepDuration > 0 else { return }
+        // 顺延进行中会话的起点：endedAt - startedAt 因此不含睡眠时长。
+        if activeFocus != nil {
+            activeFocus?.startedAt += sleepDuration
+        }
+        guard pausedBySleep else { return }
+        pausedBySleep = false
+        engine.togglePause(now: Date())
         publishDisplay(now: Date())
     }
 
