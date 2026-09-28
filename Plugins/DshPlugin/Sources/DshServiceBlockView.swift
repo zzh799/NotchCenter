@@ -13,6 +13,10 @@ struct DshServiceBlockView: View {
     /// 当前真实状态起渲染，而不是每次都从“关”起步重播打开动画。
     @ObservedObject private var monitor = DshServiceMonitor.shared
 
+    /// 抽屉是否展开。温存让 `onDisappear` 不再等于“用户看不到了”，所以轮询档位
+    /// 必须由本值驱动：展开 2s / 收起 10s / 卸载回落 idle。
+    @Environment(\.isDrawerPresented) private var isDrawerPresented
+
     var body: some View {
         ServiceBlockView(
             name: "DSH Web",
@@ -30,6 +34,11 @@ struct DshServiceBlockView: View {
             },
             refresh: { await monitor.refreshOnce() }
         )
+        // setActive 只切档不停表（停表归插件禁用路径的 suspend）：收起时回落
+        // idle 而非停轮询，展开瞬间开关才有新鲜状态可渲染。
+        .onAppear { monitor.setActive(isDrawerPresented) }
+        .onChange(of: isDrawerPresented) { _, presented in monitor.setActive(presented) }
+        .onDisappear { monitor.setActive(false) }
     }
 
     private var dotColor: Color {

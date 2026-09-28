@@ -57,10 +57,14 @@ import SwiftUI
         // 预热共享监视器：App 启动即开始轮询，首次展开抽屉前状态已就绪，
         // 开关不会在首屏再播一次“从关到开”的动画。
         _ = DshServiceMonitor.shared
+        // 重新启用（或首次）时恢复轮询：suspend 后表是停的，这里再起。
+        DshServiceMonitor.shared.resume()
     }
 
     public func pluginWasDisabled() {
         DshPopover.dismiss()
+        // 只关浮窗不够：轮询不停会在插件禁用后继续每 10s 起一次 shell 探测。
+        DshServiceMonitor.shared.suspend()
     }
 
     // MARK: 快捷动作

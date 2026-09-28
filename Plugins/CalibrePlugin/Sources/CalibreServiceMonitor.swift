@@ -63,8 +63,26 @@ final class CalibreServiceMonitor: ObservableObject {
 
     // MARK: 轮询
 
+    /// 切换轮询档位：只改间隔，轮询循环每拍读 `isActive` 决定 2s（展开）/ 10s
+    /// （收起），因此**不重启**当前任务。要停表用 `suspend()`。
     func setActive(_ active: Bool) {
         isActive = active
+    }
+
+    /// 停表（插件被禁用时调用）：取消轮询循环。`resume()` 可再起。
+    func suspend() {
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+
+    /// 重新起表（插件被重新启用时调用）。幂等：已在跑则不动。
+    ///
+    /// 起表前把档位重置为 idle——冷启那一刻还不知道抽屉是否展开，视图
+    /// `.onAppear` 会按真实可见性立刻调 `setActive` 校正。
+    func resume() {
+        guard pollingTask == nil else { return }
+        isActive = false
+        startPolling()
     }
 
     private func startPolling() {
