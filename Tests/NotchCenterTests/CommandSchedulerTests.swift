@@ -161,6 +161,35 @@ struct ScheduleModelTests {
     }
 }
 
+@Suite("命令调度 · 排期 arm")
+struct SchedulerArmTests {
+    private let shanghai = calendar("Asia/Shanghai")
+
+    /// 同一时刻的两条任务都必须被 arm——旧实现只把 `min` 的那一条写进
+    /// `expectedFire`，另一条当天永不触发、连 skip 留痕都没有。
+    @Test("同刻任务全部进入排期，不只最近的一条")
+    func armsAllTasksSharingTheSameFireMoment() {
+        let now = moment(2026, 3, 10, 8, 0, in: shanghai)
+        let first = ScheduledTask.make(name: "a", command: "true", rule: .dailyAt(hour: 9, minute: 0))
+        let second = ScheduledTask.make(name: "b", command: "true", rule: .dailyAt(hour: 9, minute: 0))
+        let fires = SchedulerCore.nextFires(tasks: [first, second], now: now)
+        #expect(fires.count == 2)
+        #expect(fires[first.id] == fires[second.id], "同规则同 now 必须算出同一触发时刻")
+    }
+
+    @Test("停用任务不进排期")
+    func excludesDisabledTasks() {
+        let now = moment(2026, 3, 10, 8, 0, in: shanghai)
+        let enabled = ScheduledTask.make(name: "a", command: "true", rule: .dailyAt(hour: 9, minute: 0))
+        var disabled = ScheduledTask.make(name: "b", command: "true", rule: .dailyAt(hour: 9, minute: 0))
+        disabled.isEnabled = false
+        let fires = SchedulerCore.nextFires(tasks: [enabled, disabled], now: now)
+        #expect(fires.count == 1)
+        #expect(fires[enabled.id] != nil)
+        #expect(fires[disabled.id] == nil)
+    }
+}
+
 @Suite("命令调度 · 执行环境")
 struct ExecutionEnvironmentTests {
     @Test("注入目录在继承 PATH 之后追加且不重复")

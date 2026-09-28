@@ -162,22 +162,30 @@ final class SchedulerCore: ObservableObject {
         ScheduleModel.next(after: now, rule: task.rule)
     }
 
+    /// 全部启用任务各自的下一次触发时刻（taskID → at）。
+    ///
+    /// 独立成 `nonisolated` 静态纯函数是为了能被单测直接喂时间穷举：`reschedule`
+    /// 依赖 Timer 与单例状态，无法断言"两条同刻任务是否都被 arm"。
+    nonisolated static func nextFires(tasks: [ScheduledTask], now: Date) -> [String: Date] {
+        var fires: [String: Date] = [:]
+        for task in tasks where task.isEnabled {
+            guard let at = ScheduleModel.next(after: now, rule: task.rule) else { continue }
+            fires[task.id] = at
+        }
+        return fires
+    }
+
     private func reschedule() {
         tickTask?.cancel()
         tickTask = nil
         let now = Date()
-        // 只排"最近的一个"：不做全局队列（一个卡死任务不该阻塞所有任务），
-        // 触发后再重排即可。
-        let upcoming = tasks
-            .filter(\.isEnabled)
-            .compactMap { task -> (id: String, at: Date)? in
-                guard let at = nextFireDate(for: task, now: now) else { return nil }
-                return (task.id, at)
-            }
-            .min { $0.at < $1.at }
-        guard let upcoming else { return }
-        expectedFire[upcoming.id] = upcoming.at
-        let delay = max(upcoming.at.timeIntervalSince(now), 0.05)
+        // Timer 只等"最近的一个"（不做全局队列，一个卡死任务不该阻塞所有任务），
+        // 但**每个启用任务都被 arm**：同刻任务各自写进 `expectedFire`，下一次 tick
+        // 会把到点的全部触发（`tick` 遍历全部到点任务）。整体重算也顺带清掉停用/
+        // 删除任务留在 `expectedFire` 里的陈旧项。
+        expectedFire = Self.nextFires(tasks: tasks, now: now)
+        guard let nearest = expectedFire.values.min() else { return }
+        let delay = max(nearest.timeIntervalSince(now), 0.05)
         tickTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
