@@ -44,8 +44,9 @@ final class SchedulerCore: ObservableObject {
     private var expectedFire: [String: Date] = [:]
     private var cancellations: [String: ProcessCancellation] = [:]
     private var wakeObserver: NSObjectProtocol?
-    /// 全局默认守卫超时（设置浮窗可改）。
-    private(set) var defaultTimeout: Int = SchedulerCore.defaultTimeoutSeconds
+    /// 全局默认守卫超时（设置浮窗可改）。`@Published`：设置页的 Stepper 直接读写它，
+    /// 否则重开设置页会用静态默认值盖掉用户存过的值。
+    @Published private(set) var defaultTimeout: Int = SchedulerCore.defaultTimeoutSeconds
 
     private init() {}
 

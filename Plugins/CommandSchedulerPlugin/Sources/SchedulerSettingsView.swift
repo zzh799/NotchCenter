@@ -9,8 +9,16 @@ import SwiftUI
 // 这里只放跨任务的东西。
 struct SchedulerSettingsView: View {
     @ObservedObject private var core = SchedulerCore.shared
-    @State private var timeoutMinutes: Int = max(SchedulerCore.defaultTimeoutSeconds / 60, 1)
     @State private var cleared = false
+
+    /// 直接读写 `core.defaultTimeout`（分钟展示），不另存一份 `@State`：
+    /// 否则重开设置页会拿静态默认值把用户持久化的超时盖掉。
+    private var timeoutMinutes: Binding<Int> {
+        Binding(
+            get: { max(core.defaultTimeout / 60, 1) },
+            set: { core.setDefaultTimeout($0 * 60) }
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -24,17 +32,8 @@ struct SchedulerSettingsView: View {
                     .font(NotchTokens.Text.caption)
                     .foregroundStyle(NotchTokens.Foreground.muted)
                 HStack(spacing: 4) {
-                    Stepper(
-                        value: Binding(
-                            get: { timeoutMinutes },
-                            set: { newValue in
-                                timeoutMinutes = newValue
-                                core.setDefaultTimeout(newValue * 60)
-                            }
-                        ),
-                        in: 1...1440
-                    ) {
-                        Text(LF("scheduler.settings.minutes", timeoutMinutes))
+                    Stepper(value: timeoutMinutes, in: 1...1440) {
+                        Text(LF("scheduler.settings.minutes", timeoutMinutes.wrappedValue))
                             .font(NotchTokens.Text.system(11))
                     }
                     .controlSize(.small)
