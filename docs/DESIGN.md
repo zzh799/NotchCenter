@@ -134,7 +134,7 @@
   - 圆角在 12↔18 间插值；
   - 内容不透明度在 `progress > 0.42` 后淡入（`(progress - 0.42) / 0.34` 限幅到 1），避免展开早期内容穿帮。
 - **窗口定位**：`topCenteredFrame` —— 以屏幕中点在刘海正下方居中放置，全部由 `NotchGeometry` 决定；屏幕参数变化（`didChangeScreenParametersNotification`）时重建布局。
-- **窗口层级**：`.level = .statusBar`，`collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]`。
+- **窗口层级**：`HostWindowLevel.drawer`（`.statusBar`=25，Kit 的层级阶梯是唯一真源），`collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]`。
 
 ---
 

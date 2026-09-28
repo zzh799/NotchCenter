@@ -43,5 +43,7 @@
   <string>NotchCenter shows a camera mirror preview and reports when the camera is in use by another app.</string>
   <key>NSLocationUsageDescription</key>
   <string>NotchCenter uses your location only to look up local weather. Leave it denied and type a city instead.</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>NotchCenter's album blocks show photos you pick from your library in the drawer. It only reads photos you choose; it never edits, deletes, or uploads them.</string>
 </dict>
 </plist>

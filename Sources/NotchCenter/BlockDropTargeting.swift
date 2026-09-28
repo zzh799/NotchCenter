@@ -293,6 +293,8 @@ extension NotchPanelController {
     /// 这条路径由**设置窗口**的组件目录触发，而设置窗口打开期间抽屉常驻
     /// （`DrawerStayConditions.isSettingsPresented`），因此模态提示不会遇到
     /// 「抽屉先收起、弹窗悬空」的问题，沿用 `NSAlert` 即可（与删页确认不同）。
+    /// 但必须经 `HostAlert` 抬到设置域之上：`NSAlert` 自己会退回
+    /// `NSModalPanelWindowLevel`（8），不抬就被设置窗（101）压住。
     private func warnDrawerPagesFull() {
         let alert = NSAlert()
         alert.messageText = L("panel.page.add.fullTitle")
@@ -302,7 +304,7 @@ extension NotchPanelController {
         )
         alert.alertStyle = .warning
         alert.addButton(withTitle: L("common.ok"))
-        alert.runModal()
+        HostAlert.runModal(alert)
     }
 
     /// 「组件」页快捷按钮卡的快捷添加路径：追加一个快捷动作槽位到快速区

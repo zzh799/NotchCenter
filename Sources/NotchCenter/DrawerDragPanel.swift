@@ -33,7 +33,7 @@ final class DrawerDragPanel {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.popUpMenuWindow)) + 2)
+        panel.level = HostWindowLevel.dragPreview
         panel.ignoresMouseEvents = true
         panel.isReleasedWhenClosed = false
         panel.isMovable = false

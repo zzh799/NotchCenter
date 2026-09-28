@@ -177,7 +177,7 @@ public final class BlockPopover {
             backing: .buffered,
             defer: false
         )
-        panel.level = .statusBar + 2
+        panel.level = HostWindowLevel.popover
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true

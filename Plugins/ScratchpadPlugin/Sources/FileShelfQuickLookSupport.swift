@@ -1,4 +1,5 @@
 import AppKit
+import NotchCenterKit
 // QLThumbnailRepresentation is not annotated Sendable; @preconcurrency downgrades
 // its false-positive diagnostics so the async overload can hand the thumbnail
 // straight back to us without a TIFF encode/decode round-trip.
@@ -35,6 +36,10 @@ final class FileShelfPreviewController: NSObject, ObservableObject,
             panel.currentPreviewItemIndex = 0
         }
         panel.makeKeyAndOrderFront(nil)
+        // Quick Look 每次显示都会把层级重置回系统默认值（实测 9），低于抽屉（25）与
+        // 块浮窗（27），预览会被自己的界面压住。**必须在 orderFront 之后设**——之前设
+        // 会被它覆盖（实测），之后再设则生效且不再被重置。
+        panel.level = HostWindowLevel.drawerAuxiliary
         onVisibilityChanged(true)
     }
 

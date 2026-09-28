@@ -3,35 +3,11 @@ import NotchCenterKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: - 插件管理窗口（文档 §8）
-
-@MainActor
-final class PluginManagerWindowController: NSWindowController {
-    init(controller: NotchPanelController) {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = L("manager.window.title")
-        window.minSize = NSSize(width: 720, height: 440)
-        window.isReleasedWhenClosed = false
-        super.init(window: window)
-        window.contentView = NSHostingView(
-            rootView: PluginManagerView(controller: controller)
-        )
-        window.center()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-}
+// MARK: - 插件管理视图（文档 §8）
 
 /// 插件管理视图：发现列表 + 启用开关 + 安装/卸载 + 说明文档展示（文档 §8.1 / §8.2 / 附录 A-29）。
 /// 插件设置不在这里内嵌：统一走编辑模式齿轮触发的 SettingPopover 浮窗。
+/// 宿主把它挂在设置窗口的「插件」页（`SettingsWindow.swift`），自己不开独立窗口。
 struct PluginManagerView: View {
     /// 宿主控制器：移除摆放后要它重裁抽屉（`refreshAfterEdit`）——摆放数量变了
     /// 抽屉自然高度就变，只 `rebuildContent` 会留一截空白。
@@ -307,7 +283,7 @@ struct PluginManagerView: View {
         // 文件、可以从别处重装；这里删的是用户攒出来的摆放，没有备份也重建不出来。
         alert.addButton(withTitle: L("common.cancel"))
         alert.addButton(withTitle: L("manager.disable.confirmAction"))
-        return alert.runModal() == .alertSecondButtonReturn
+        return HostAlert.runModal(alert) == .alertSecondButtonReturn
     }
 
     private func uninstall(_ entry: PluginEntry) {
@@ -317,7 +293,7 @@ struct PluginManagerView: View {
         alert.alertStyle = .warning
         alert.addButton(withTitle: L("manager.uninstall"))
         alert.addButton(withTitle: L("common.cancel"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard HostAlert.runModal(alert) == .alertFirstButtonReturn else { return }
         do {
             try pluginManager.uninstall(pluginID: entry.id)
         } catch {
@@ -333,13 +309,16 @@ struct PluginManagerView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowedContentTypes = [.bundle]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            let entry = try pluginManager.installBundle(from: url)
-            selectedPluginID = entry.id
-        } catch {
-            errorMessage = error.localizedDescription
+        // 非模态 + 抬层级 + 长寿命持有者三条都由收口负责（见 `SystemFilePanelPresenter`）：
+        // 本视图活在设置窗内，锚点域是 `.utility`——文件面板默认层级 0，不抬会被设置窗压住。
+        SystemFilePanelPresenter.shared.present(panel, anchor: .utility) { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                let entry = try pluginManager.installBundle(from: url)
+                selectedPluginID = entry.id
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -386,18 +365,6 @@ struct PluginReadmeSection: View {
 }
 
 extension NotchPanelController {
-    /// 打开插件管理窗口（懒加载，缓存实例）。
-    func showPluginManager() {
-        let controller = pluginManagerWindowController ?? {
-            let controller = PluginManagerWindowController(controller: self)
-            pluginManagerWindowController = controller
-            return controller
-        }()
-        controller.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        controller.window?.makeKeyAndOrderFront(nil)
-    }
-
     #if DEBUG
     /// 开发期调试：块尺寸对照实验室（同一组件在全部跨度档下的批量并排对比）。
     func showSizeLab() {

@@ -1,0 +1,70 @@
+/* AlbumPlugin 中文文案 */
+
+/* 块名 */
+"block.carousel.name" = "相册轮播";
+"block.photo.name" = "单张照片";
+
+/* 无障碍 */
+"a11y.carousel" = "相册轮播，%@";
+"a11y.photo" = "单张照片，%@";
+
+/* 交互提示 */
+"help.carousel.next" = "点击看下一张";
+"help.carousel.previous" = "上一张";
+"help.carousel.pause" = "暂停轮播";
+"help.carousel.play" = "继续轮播";
+"help.photo.refresh" = "重新载入照片";
+"help.photo.openFile" = "点击用默认应用打开原图";
+"help.photo.openLibrary" = "点击打开照片.app";
+
+/* 空态与降级态 */
+"empty.unconfigured.title" = "还没选来源";
+"empty.unconfigured.message" = "用左上角齿轮选择文件夹、图片或照片图库相册。";
+"empty.noItems.title" = "这里没有照片";
+"empty.noItems.message" = "这个文件夹里没有可显示的图片。";
+"empty.noAlbums.message" = "图库里没有可读的相册。若你只授权了部分照片，可在「权限管理」里改为完全访问。";
+"source.missing.title" = "来源已不在原位";
+"source.missing.message" = "文件夹或文件已被移动或删除。";
+"source.unreadable.title" = "读不了这个文件夹";
+"source.unreadable.message" = "macOS 拒绝了访问。请在「系统设置 → 隐私与安全性 → 文件与文件夹」中放行，或换一个文件夹。";
+"item.failed.title" = "这张照片显示不了";
+"item.failed.message" = "文件无法解码。";
+
+/* 权限引导 */
+"gate.photos.title" = "需要照片访问权限";
+"gate.photos.message" = "读取照片图库需要授权。";
+"gate.photos.denied.title" = "照片访问权限已关闭";
+"gate.photos.denied.message" = "请在「系统设置 → 隐私与安全性 → 照片」中放行。";
+"gate.photos.action" = "打开权限设置";
+"gate.photos.action.help" = "打开「权限管理」卡片，授权按钮在那里";
+
+/* 说明带 */
+"caption.position" = "第 %@ / %@ 张";
+"caption.photos" = "照片";
+
+/* 设置面板 */
+"settings.title" = "相册";
+"settings.section.source" = "来源";
+"settings.source.local" = "本地";
+"settings.source.photos" = "照片";
+"settings.source.chooseFolder" = "选择文件夹…";
+"settings.source.chooseFile" = "选择图片…";
+"settings.source.clear" = "清除";
+"settings.source.recursive" = "包含子文件夹";
+"settings.source.none" = "未设置";
+"settings.source.current" = "当前：%@";
+"settings.section.albums" = "相册";
+"settings.album.count" = "%d 张";
+"settings.section.slideshow" = "轮播";
+"settings.interval" = "间隔";
+"settings.interval.value" = "%d 秒";
+"settings.order" = "顺序";
+"settings.order.sequential" = "按顺序";
+"settings.order.random" = "随机";
+"settings.section.display" = "显示";
+"settings.fillsFrame" = "填满组件";
+"settings.showsCaption" = "显示说明";
+"settings.assetPick.title" = "选择一张照片";
+"settings.assetPick.hint" = "点缩略图即可让本块显示它。";
+"settings.assetPick.back" = "相册";
+"settings.assetPick.empty" = "这个相册里没有照片。";

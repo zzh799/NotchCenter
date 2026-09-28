@@ -1,4 +1,5 @@
 import AppKit
+import NotchCenterKit
 import SwiftUI
 
 // MARK: - 窗口类型
@@ -157,7 +158,7 @@ extension NotchPanelController {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
-        panel.level = .statusBar
+        panel.level = HostWindowLevel.drawer
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.isMovable = false
         panel.isReleasedWhenClosed = false

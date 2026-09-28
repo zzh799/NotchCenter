@@ -15,8 +15,10 @@ import SwiftUI
 final class PermissionGuidePanel: NSObject, NSWindowDelegate {
     static let shared = PermissionGuidePanel()
 
-    /// 卡片尺寸：6 行权限（每行 44pt）+ 标题栏 + 底部说明。
-    static let cardSize = CGSize(width: 420, height: 470)
+    /// 卡片尺寸：7 行权限（每行 44pt，见 `SystemPermission.allCases`）+ 标题栏 + 底部说明。
+    /// 行容器是可滚动的，所以尺寸偏小只会让末行需要滚一下；偏大则留白，两处都不致命——
+    /// 但新增权限项时仍应同步抬高，保持"一屏列全、页脚不被挤走"的原始口径。
+    static let cardSize = CGSize(width: 420, height: 514)
 
     private var panel: NSPanel?
     /// 点击窗外 / ESC 关闭。
@@ -48,7 +50,7 @@ final class PermissionGuidePanel: NSObject, NSWindowDelegate {
             defer: false
         )
         panel.isFloatingPanel = true
-        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.popUpMenuWindow)))
+        panel.level = HostWindowLevel.utility
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false

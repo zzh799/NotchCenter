@@ -82,7 +82,6 @@ final class NotchPanelController: NSObject {
     var mousePollingTimer: Timer?
     var globalMouseDownMonitor: Any?
     var globalMouseUpMonitor: Any?
-    var pluginManagerWindowController: PluginManagerWindowController?
     var settingsWindowController: SettingsWindowController?
 
     /// 上一次内容重建的视图复用键（紧凑按槽位下标、抽屉按 placementID）：

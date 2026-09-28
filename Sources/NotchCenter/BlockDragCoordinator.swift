@@ -588,7 +588,7 @@ final class DragPreviewPanel: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.popUpMenuWindow)) + 2)
+        level = HostWindowLevel.dragPreview
         ignoresMouseEvents = true
         isReleasedWhenClosed = false
         isMovable = false

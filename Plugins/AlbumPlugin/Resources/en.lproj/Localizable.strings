@@ -1,0 +1,70 @@
+/* AlbumPlugin 英文文案（开发基准语言，键缺失时兜底） */
+
+/* 块名 */
+"block.carousel.name" = "Album Carousel";
+"block.photo.name" = "Photo";
+
+/* 无障碍 */
+"a11y.carousel" = "Album carousel, %@";
+"a11y.photo" = "Photo, %@";
+
+/* 交互提示 */
+"help.carousel.next" = "Click for the next photo";
+"help.carousel.previous" = "Previous photo";
+"help.carousel.pause" = "Pause the slideshow";
+"help.carousel.play" = "Resume the slideshow";
+"help.photo.refresh" = "Reload the photo";
+"help.photo.openFile" = "Click to open the original file";
+"help.photo.openLibrary" = "Click to open Photos";
+
+/* 空态与降级态 */
+"empty.unconfigured.title" = "No source yet";
+"empty.unconfigured.message" = "Use the gear to pick a folder, an image, or a Photos album.";
+"empty.noItems.title" = "No photos here";
+"empty.noItems.message" = "This folder has no images the block can show.";
+"empty.noAlbums.message" = "Nothing readable in your library. If you allowed only selected photos, switch to full access in Permissions.";
+"source.missing.title" = "Source not found";
+"source.missing.message" = "The folder or file was moved or deleted.";
+"source.unreadable.title" = "Cannot read this folder";
+"source.unreadable.message" = "macOS denied access. Allow it under System Settings > Privacy & Security > Files and Folders, or pick another folder.";
+"item.failed.title" = "Cannot show this photo";
+"item.failed.message" = "The file could not be decoded.";
+
+/* 权限引导 */
+"gate.photos.title" = "Photos access needed";
+"gate.photos.message" = "Reading your library needs permission.";
+"gate.photos.denied.title" = "Photos access is off";
+"gate.photos.denied.message" = "Allow it under System Settings > Privacy & Security > Photos.";
+"gate.photos.action" = "Open Permissions";
+"gate.photos.action.help" = "Opens the Permissions card, where the request button lives";
+
+/* 说明带 */
+"caption.position" = "%@ of %@";
+"caption.photos" = "Photos";
+
+/* 设置面板 */
+"settings.title" = "Album";
+"settings.section.source" = "Source";
+"settings.source.local" = "Local";
+"settings.source.photos" = "Photos";
+"settings.source.chooseFolder" = "Choose Folder…";
+"settings.source.chooseFile" = "Choose Image…";
+"settings.source.clear" = "Clear";
+"settings.source.recursive" = "Include subfolders";
+"settings.source.none" = "Not set";
+"settings.source.current" = "Current: %@";
+"settings.section.albums" = "Albums";
+"settings.album.count" = "%d photos";
+"settings.section.slideshow" = "Slideshow";
+"settings.interval" = "Interval";
+"settings.interval.value" = "%ds";
+"settings.order" = "Order";
+"settings.order.sequential" = "In order";
+"settings.order.random" = "Shuffle";
+"settings.section.display" = "Display";
+"settings.fillsFrame" = "Fill the block";
+"settings.showsCaption" = "Show caption";
+"settings.assetPick.title" = "Pick a photo";
+"settings.assetPick.hint" = "Tap a thumbnail to use it in this block.";
+"settings.assetPick.back" = "Albums";
+"settings.assetPick.empty" = "No photos in this album.";
