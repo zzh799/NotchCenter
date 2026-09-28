@@ -816,4 +816,24 @@ final class DisplayPluginTests: XCTestCase {
         SingleDisplayInstanceConfigLogic.save(SingleDisplayInstanceConfig(displayID: nil), to: placement)
         XCTAssertNil(SingleDisplayInstanceConfigLogic.load(from: placement).displayID)
     }
+
+    @MainActor
+    func testDiscardForgetsModelButKeepsDiskBinding() {
+        // 删实例后内存注册表须忘掉该模型（下次拖出重建），而 discard 本身
+        // 只清内存：持久化绑定留给插件入口 placementWasRemoved 清。
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SingleDisplayRemovalTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = StateStore(rootDirectory: root)
+        let id = "removal-\(UUID().uuidString)"
+
+        let m1 = SingleDisplayInstanceRegistry.model(placementID: id, stateStore: store)
+        m1.update(SingleDisplayInstanceConfig(displayID: 1))
+
+        SingleDisplayInstanceRegistry.discard(placementID: id)
+
+        let m2 = SingleDisplayInstanceRegistry.model(placementID: id, stateStore: store)
+        XCTAssertFalse(m1 === m2, "内存模型已被遗忘并重建")
+        XCTAssertEqual(m2.config.displayID, 1, "磁盘绑定仍在，discard 只清内存模型")
+    }
 }

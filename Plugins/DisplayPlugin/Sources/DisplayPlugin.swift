@@ -85,11 +85,16 @@ public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugin
         ]
     }
 
+    /// 宿主注入的作用域存储：删实例时定位该 placement 的 placementScope
+    /// （区间等插件级共享数据在同一 store 的根，不受影响）。
+    private var stateStore: StateStore?
+
     public override init() {
         super.init()
     }
 
     public func attachServices(stateStore: StateStore, hostController: any HostController) {
+        self.stateStore = stateStore
         // 区间先载入再恢复通道：设置界面读的是同一份内存值。
         BrightnessController.shared.configure(store: stateStore)
         // 重新启用时恢复写入通道（禁用时 suspend 收掉）。
@@ -100,6 +105,15 @@ public final class DisplayPlugin: NSObject, NotchCenterPlugin, NotchCenterPlugin
     public func pluginWasDisabled() {
         stopObservingScreenChanges()
         BrightnessController.shared.suspend()
+    }
+
+    /// 单屏条实例被删除：只清该实例的绑定（内存模型 + 磁盘 config.display），
+    /// 插件级 DDC 区间存储不受影响。宿主会先逐个 placementWasRemoved 再停用。
+    public func placementWasRemoved(blockID _: String, placementID: String) {
+        SingleDisplayInstanceRegistry.discard(placementID: placementID)
+        if let scope = stateStore?.placementScope(placementID: placementID) {
+            scope.removeValue(forKey: SingleDisplayInstanceConfigLogic.storeKey)
+        }
     }
 
     // MARK: 显示器热插拔
