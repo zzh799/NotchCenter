@@ -1,5 +1,6 @@
 import AppKit
 import Metal
+import NotchCenterKit
 import QuartzCore
 
 /// 一个盖在一切之上(含菜单栏与全屏空间)的无边框窗口。它从不获取焦点、从不接点击。
@@ -12,10 +13,8 @@ final class DepthOverlayWindow: NSWindow {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    /// 覆盖窗层级。宿主面板是 `.statusBar`,这里取屏保层下一档,留出余量。
-    static var overlayLevel: NSWindow.Level {
-        NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.screenSaverWindow)) - 1)
-    }
+    /// 覆盖窗层级：层级阶梯里的 `effectOverlay`（屏保层下一档），高于宿主全部界面。
+    static var overlayLevel: NSWindow.Level { HostWindowLevel.effectOverlay }
 }
 
 private final class MetalHostView: NSView {

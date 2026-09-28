@@ -50,7 +50,7 @@ final class PermissionGuidePanel: NSObject, NSWindowDelegate {
             defer: false
         )
         panel.isFloatingPanel = true
-        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.popUpMenuWindow)))
+        panel.level = HostWindowLevel.utility
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false

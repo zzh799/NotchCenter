@@ -114,6 +114,15 @@ public struct APIVersionRange: Sendable, CustomStringConvertible, Equatable {
 /// **本枚举是版本号的唯一真源**：`docs/api-changelog/` 的条目按 `currentVersion`
 /// 标注版本，不再各自写口号式大版本（2026-09-10 起；此前 09-07 两条误标 v2.0.0）。
 public enum NotchCenterKitAPI {
+    /// v1.7.0：新增 `HostWindowLevel`（宿主界面层级阶梯的唯一真源：`drawer` /
+    /// `popover` / `drawerAuxiliary` / `utility` / `utilityAuxiliary` /
+    /// `dragPreview` / `effectOverlay`）、`HostWindowLevel.Anchor` 与
+    /// `auxiliary(above:)`（系统辅助窗口按锚点域抬层级的唯一判定），以及
+    /// `SystemFilePanelPresenter`（系统文件面板的「非模态 + 抬层级 + 长寿命持有者」
+    /// 三合一收口）。纯新增，对既有插件零影响；插件从此不必再手挑层级字面量——
+    /// 层级是全局排序，低层级窗口会被自己的界面压住。明细见
+    /// docs/api-changelog/HostWindowLevel.md（Agent Note 2026-09-28-host-window-level-ladder）。
+    ///
     /// v1.6.0：`SystemPermission` 新增 `case photos`（照片图库读取，PhotoKit）。
     /// 新增枚举 case 对**穷举 `switch SystemPermission`** 的插件是源码级破坏
     /// （补 `@unknown default` 即可免疫），对只做 `==` 比较的插件零影响；宿主侧
@@ -145,5 +154,5 @@ public enum NotchCenterKitAPI {
     /// 移除枚举 case 只对"穷举 `switch BlockKind`"的插件是源码级破坏——只做
     /// `== .drawer` 比较的插件零影响。明细见 docs/api-changelog/NotchBlock.md
     /// （Agent Note 2026-09-10-drop-exclusive-page-blocks）。
-    public static let currentVersion = SemanticVersion(major: 1, minor: 6, patch: 0)
+    public static let currentVersion = SemanticVersion(major: 1, minor: 7, patch: 0)
 }

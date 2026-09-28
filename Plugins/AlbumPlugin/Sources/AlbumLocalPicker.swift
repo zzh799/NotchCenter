@@ -4,28 +4,14 @@ import UniformTypeIdentifiers
 
 // MARK: - 本地文件 / 文件夹选择
 
-/// 系统文件面板的调用收口。
+/// 相册设置卡里的「选文件夹 / 选图片」入口。
 ///
-/// 两件在这里必须做对的事（都踩过）：
-///
-/// 1. **不能用 `runModal()`**。模态循环会阻塞主线程，抽屉的收起动画与悬停判定都
-///    推进不了，弹窗就悬在一个即将收起的抽屉上方——这是面板与抽屉领域文档的红线
-///    （确认与提示要用内联浮窗）。文件面板没有内联替代品，所以改用 `begin` 的
-///    **非模态**形态：主线程继续跑，抽屉该收就收，面板独立存在等用户作答。
-/// 2. **必须抬层级**。`NSOpenPanel` 默认层级是 `NSModalPanelWindowLevel`（8），
-///    而宿主抽屉面板在 `.statusBar`（25）、块浮窗在 `.statusBar + 2`（27）——
-///    默认层级下文件面板会被我们自己的界面整个压住，点不到也看不见。
-///    取 `.statusBar + 3`：正好高过上述两者，又低于菜单/Dock 层级（菜单位菜单
-///    仍能正常盖在它上面）。
-///
-/// 面板还必须被**本类型**强引用着：设置卡会随抽屉收起被拆掉，视图里的 `@State`
-/// 一释放，没人持有的面板会跟着消失。
+/// 三条规矩（非模态 + 抬层级 + 长寿命持有者）全在 `SystemFilePanelPresenter` 里，
+/// 本类型只负责按块类型把面板配好。面板被收起抽屉拆掉也不怕——持有者在 Kit 的
+/// 收口单例上，不在视图里。
 @MainActor
 final class AlbumLocalPicker {
     static let shared = AlbumLocalPicker()
-
-    /// 正在显示的面板（配置阶段之外的面板由 AppKit 显示，但没人持有就会被销毁）。
-    private var activePanel: NSOpenPanel?
 
     private init() {}
 
@@ -38,9 +24,6 @@ final class AlbumLocalPicker {
         title: String,
         onPicked: @escaping (URL) -> Void
     ) {
-        // 已经有一个在等用户作答：忽略重复触发，不叠第二个面板。
-        guard activePanel == nil else { return }
-
         let panel = NSOpenPanel()
         panel.title = title
         panel.allowsMultipleSelection = false
@@ -51,17 +34,10 @@ final class AlbumLocalPicker {
         if !choosingDirectory {
             panel.allowedContentTypes = [.image]
         }
-        panel.level = .statusBar + 3
-
-        activePanel = panel
-        panel.begin { [weak self] response in
-            // 回调由 AppKit 在主线程上调用（`NSSavePanel` 的既定契约）。
-            let url = response == .OK ? panel.url : nil
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.activePanel = nil
-                if let url { onPicked(url) }
-            }
+        // 锚点在抽屉里的块设置卡：抬到抽屉域之上（抽屉 25 / 块浮窗 27）。
+        SystemFilePanelPresenter.shared.present(panel, anchor: .drawer) { response in
+            guard response == .OK, let url = panel.url else { return }
+            onPicked(url)
         }
     }
 }

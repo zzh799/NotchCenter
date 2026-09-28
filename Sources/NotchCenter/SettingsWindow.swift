@@ -55,7 +55,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // 拿不到落点）。窗口拖动仍可经透明 titlebar 完成。
         panel.isMovableByWindowBackground = false
         // 置顶：高于抽屉（statusBar 级），不被其他应用窗口遮挡。
-        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.popUpMenuWindow)))
+        panel.level = HostWindowLevel.utility
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
         // 面板内的开关/输入框需要正常接收键盘，不能只在需要时才成为 key。
