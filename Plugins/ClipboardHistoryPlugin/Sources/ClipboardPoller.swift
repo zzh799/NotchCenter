@@ -77,6 +77,22 @@ final class ClipboardPollState: @unchecked Sendable {
     }
 }
 
+/// 采集重活（内容哈希 + 媒体落盘）的结果。
+///
+/// 这些活儿在 `pollOnce()` 的**调用线程**上完成：生产路径是轮询专用队列，主线程
+/// 只拿结果做状态机记账（旧实现把哈希/落盘/缩略图解码留在主线程，复制大图会卡宿主）；
+/// 测试直注路径 `pollNow()` 仍在调用线程同步完成。
+///
+/// 媒体是**预写**：图片载荷一律先落盘拿文件名，`record` 判定为重复/超预算时再回收
+/// 那个刚写的文件——代价是重复图片多一次写盘，换主线程不阻塞。
+struct PreparedCapture: Equatable, Sendable {
+    var payload: ClipboardPayload
+    /// 图片载荷原始字节的 SHA256；非图片 / 无载荷为 nil。
+    var imageHash: String?
+    /// 已预落盘的原图名；图片载荷才会非 nil。
+    var storedMediaName: String?
+}
+
 /// 采集器：在专用串行队列上跑「探测 → 门控 → 读载荷」，把结论交回主线程。
 final class ClipboardPoller: @unchecked Sendable {
     /// 一拍结论。
@@ -84,7 +100,7 @@ final class ClipboardPoller: @unchecked Sendable {
         case unchanged
         case selfLoop
         case clearHighlight
-        case captured(ClipboardPayload)
+        case captured(PreparedCapture)
     }
 
     /// 固定节拍。0.5s 是"甜点档"（0.3s 为实用下限）：远快于人手连续复制的间隔，
@@ -100,6 +116,10 @@ final class ClipboardPoller: @unchecked Sendable {
 
     /// 采集结论回主线程的唯一出口（在主线程被调用）。
     var onOutcome: (@MainActor @Sendable (Outcome) -> Void)?
+
+    /// 采集重活的注入点：在 `pollOnce()` 的调用线程上执行（生产＝轮询专用队列）。
+    /// 未注入时退化为只带原始载荷。
+    var prepareCapture: (@Sendable (ClipboardPayload) -> PreparedCapture)?
 
     init(reader: any ClipboardReading, state: ClipboardPollState) {
         self.reader = reader
@@ -161,7 +181,9 @@ final class ClipboardPoller: @unchecked Sendable {
             let payload = reader.readPayload()
             // 读取期间剪贴板又变了：丢弃这次，交给下一拍收新内容，避免把新内容贴旧计数。
             guard reader.probe().changeCount == changeCount else { return .unchanged }
-            return .captured(payload)
+            // 重活（哈希 + 媒体落盘）就地在本线程完成，别留到主线程。
+            let prepared = prepareCapture?(payload) ?? PreparedCapture(payload: payload)
+            return .captured(prepared)
         }
     }
 

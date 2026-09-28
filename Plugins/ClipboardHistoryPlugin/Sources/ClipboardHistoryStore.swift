@@ -319,6 +319,8 @@ final class ClipboardHistoryStore: ObservableObject {
     func attach(stateStore: StateStore, startPolling: Bool = true) {
         self.stateStore = stateStore
         mediaStore = try? ClipboardMediaStore(stateStore: stateStore)
+        // 采集重活（哈希 + 媒体落盘）下沉到轮询队列，主线程只做记账。
+        poller.prepareCapture = Self.makeCapturePreparer(mediaStore: mediaStore)
         entries = ClipboardHistoryLogic.sanitized(
             stateStore.object([ClipboardEntry].self, forKey: Self.historyStoreKey) ?? []
         )
@@ -372,8 +374,24 @@ final class ClipboardHistoryStore: ObservableObject {
             // 剪贴板变了但这次变化不会被记录（暂停 / transient）：当前内容已不可知、
             // 不再对应任何条目，持续高亮随之消失。
             currentClipboardEntryID = nil
-        case .captured(let payload):
-            record(payload)
+        case .captured(let prepared):
+            record(prepared)
+        }
+    }
+
+    /// 采集重活的底座：算图片哈希 + 把原图与缩略图预落盘。
+    ///
+    /// 返回的闭包由 `ClipboardPoller` 在轮询专用队列上调用，因此 SHA256、
+    /// `CGImageSource` 缩略图解码与磁盘写入都不落主线程。
+    private static func makeCapturePreparer(
+        mediaStore: ClipboardMediaStore?
+    ) -> @Sendable (ClipboardPayload) -> PreparedCapture {
+        { payload in
+            var prepared = PreparedCapture(payload: payload)
+            guard let data = payload.imageData else { return prepared }
+            prepared.imageHash = ClipboardMediaStore.contentHash(of: data)
+            prepared.storedMediaName = mediaStore?.store(data: data, uti: payload.imageUTI)
+            return prepared
         }
     }
 
@@ -383,30 +401,35 @@ final class ClipboardHistoryStore: ObservableObject {
     }
 
     /// 消化一次值得记录的载荷（internal 供测试直注）。
-    func record(_ payload: ClipboardPayload) {
+    ///
+    /// 哈希与媒体落盘已在采集队列上完成（见 `PreparedCapture`），这里只剩主线程记账。
+    func record(_ prepared: PreparedCapture) {
         guard isActive, !isPaused else { return }
+        let payload = prepared.payload
         var capture = ClipboardCapture(
             text: payload.text,
             filePaths: payload.filePaths,
             imageData: payload.imageData,
             imageUTI: payload.imageUTI
         )
-        if let data = payload.imageData {
-            capture.imageHash = ClipboardMediaStore.contentHash(of: data)
-        }
+        capture.imageHash = prepared.imageHash
         guard var entry = ClipboardHistoryLogic.makeEntry(from: capture) else {
-            // 载荷无可用内容（如剪贴板被清空）：当前内容不对应任何条目。
+            // 载荷无可用内容（如剪贴板被清空）：预写的媒体文件无人引用，就地回收。
+            if let written = prepared.storedMediaName {
+                mediaStore?.remove(storedNames: [written])
+            }
             currentClipboardEntryID = nil
             return
         }
         var writtenMediaName: String?
         if entry.kind == .image, !ClipboardHistoryLogic.contains(entry, in: entries) {
-            // 先落盘再入库：反过来会留下指向不存在文件的条目。重复内容不进这一步
-            // （`makeEntry` 已给出哈希，命中判定不需要文件）。
-            guard let mediaStore, let data = payload.imageData,
-                  let name = mediaStore.store(data: data, uti: entry.mediaUTI) else { return }
+            // 媒体已在采集队列上预落盘，这里只认领。落盘失败则与旧行为一致：不入库。
+            guard let name = prepared.storedMediaName else { return }
             entry.storedMediaName = name
             writtenMediaName = name
+        } else if let speculative = prepared.storedMediaName {
+            // 重复内容（图片去重命中）不需要新文件，回收预写的那份。
+            mediaStore?.remove(storedNames: [speculative])
         }
         let next = ClipboardHistoryLogic.recording(entry, into: entries)
         guard next != entries else {

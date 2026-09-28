@@ -51,6 +51,10 @@ final class ClipboardMediaStore: @unchecked Sendable {
     /// 先写原图再写缩略图：缩略图失败不算致命（列表退化成占位图），原图失败才放弃
     /// ——那意味着写回时拿不到数据，条目留着也是废的。
     func store(data: Data, uti: String?) -> String? {
+        // 与同文件其它 IO 一致加锁：本方法现在从轮询专用队列调用，与主线程的
+        // 读取/写回/对账并发（决策见 2026-09-28-plugin-audit-backlog-fixes）。
+        lock.lock()
+        defer { lock.unlock() }
         let name = "\(UUID().uuidString).\(Self.fileExtension(for: uti, data: data))"
         do {
             try data.write(to: originalURL(forStoredName: name), options: .atomic)
