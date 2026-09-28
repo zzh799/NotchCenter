@@ -61,6 +61,17 @@ final class LidDepthController: ObservableObject {
     private var builtInLayout = LidScreenLayout()
     private var isRunning = false
 
+    /// 系统事件观察者 token。block 版 `addObserver` 只返回 token，必须自己摘除。
+    private var systemObservers: [NSObjectProtocol] = []
+    /// `preferences.isEnabled` 订阅：驱动采样门控。
+    private var enabledCancellable: AnyCancellable?
+    /// 采样定时器所在队列。传感器读取是同步阻塞的 `IOHIDDeviceGetReport`，
+    /// 库注释明确要求别放主线程高频路径（活动档 30Hz）。
+    private let sensorQueue = DispatchQueue(
+        label: "com.notchcenter.lidangle.sensor",
+        qos: .userInitiated
+    )
+
     private static let fadeInDuration: TimeInterval = 0.07
     /// 高于预热区多少度时轮询提速。
     private static let fastPollMargin: Double = 20
@@ -137,13 +148,16 @@ final class LidDepthController: ObservableObject {
         lidState = reading.state
 
         monitor.onReading = { [weak self] reading in
-            MainActor.assumeIsolated { self?.handle(reading) }
+            // 采样在 sensorQueue 上完成，回主线程再驱动 UI/覆盖窗。
+            Task { @MainActor in self?.handle(reading) }
         }
-        monitor.setInterval(LidAngleMonitor.idleInterval)
 
         builtInLayout = LidScreenLayout(displayID: NSScreen.builtIn?.displayID, frame: NSScreen.builtIn?.frame)
         observeSystemEvents()
+        observeEnabledChanges()
         overlay.warmUp()
+        // 采样门控：默认关总开关时不起表（旧实现无条件 8Hz 常驻轮询）。
+        updatePollingState()
         // 抓帧预热只在已授权时做:预热会枚举窗口(`SCShareableContent`),未授权时
         // 那次调用本身就是系统授权窗的触发点,装载期预热等于每次开机弹一次。
         // 授权后需重启 App 生效,重启即预热,手感不受影响。
@@ -173,8 +187,15 @@ final class LidDepthController: ObservableObject {
         isStreaming = false
         preview = nil
         isCapturePending = false
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
-        NotificationCenter.default.removeObserver(self)
+        enabledCancellable = nil
+        // block 版 addObserver 只能凭 token 摘除。旧实现调 `removeObserver(self)`
+        // （只对 selector 版生效）而 token 又没存 → 停用后唤醒仍会 resume 并重建
+        // 定时器，反复启停叠加观察者。两个 center 各摘一次，摘错的是无操作。
+        for observer in systemObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            NotificationCenter.default.removeObserver(observer)
+        }
+        systemObservers.removeAll()
     }
 
     /// 在当前屏幕内容上把效果演一遍。
@@ -186,7 +207,7 @@ final class LidDepthController: ObservableObject {
             open: min(preferences.thresholdAngle + 35, 130),
             shut: max(preferences.thresholdAngle - preferences.blurSpan * 1.15, 5)
         )
-        monitor.setInterval(LidAngleMonitor.activeInterval)
+        updatePollingState()
     }
 
     /// 效果是否正在播放(供快捷按钮/摘要展示)。
@@ -201,6 +222,7 @@ final class LidDepthController: ObservableObject {
         if let run = preview {
             guard let scripted = run.angle(at: CACurrentMediaTime()) else {
                 preview = nil
+                updatePollingState()
                 return
             }
             angle = scripted
@@ -214,10 +236,28 @@ final class LidDepthController: ObservableObject {
         updateVelocity(with: angle)
         publish(angle: angle)
         reconcile(angle: angle)
+        updatePollingState()
+    }
 
+    /// 采样表唯一的门控点：只在「插件在跑、传感器可用、未睡眠、且（效果已开启 或
+    /// 正在预览 或 效果在屏）」时轮询；按触发角远近切换空闲/活动档。
+    ///
+    /// 刻意**不**按 `\.isDrawerPresented` 门控：本插件的效果场景恰恰是"抽屉收起、
+    /// 用户合盖"，按抽屉收起停表会直接废掉核心功能（与 Dsh/Calibre 的服务探测不同源）。
+    private func updatePollingState() {
+        guard isRunning, isSensorAvailable else { return }
+        let shouldPoll = !isSuspended
+            && (preferences.isEnabled || preview != nil || isActive)
+        guard shouldPoll else {
+            monitor.stop()
+            return
+        }
         let prewarmZone = preferences.thresholdAngle + prewarmCeiling
-        let wantsFastPolling = preview != nil || isActive || angle <= prewarmZone + Self.fastPollMargin
-        monitor.setInterval(wantsFastPolling ? LidAngleMonitor.activeInterval : LidAngleMonitor.idleInterval)
+        let wantsFastPolling = preview != nil || isActive || rawAngle <= prewarmZone + Self.fastPollMargin
+        monitor.start(
+            on: sensorQueue,
+            interval: wantsFastPolling ? LidAngleMonitor.activeInterval : LidAngleMonitor.idleInterval
+        )
     }
 
     /// 这一次角度下,画面该不该在屏上。释放角被放宽,并让停在小角度上的盖子继续显示。
@@ -481,19 +521,32 @@ final class LidDepthController: ObservableObject {
 
     private func observeSystemEvents() {
         let workspace = NSWorkspace.shared.notificationCenter
-        workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+        systemObservers.append(workspace.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
             MainActor.assumeIsolated { self?.suspend() }
-        }
-        workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+        })
+        systemObservers.append(workspace.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
             MainActor.assumeIsolated { self?.resume() }
-        }
-        NotificationCenter.default.addObserver(
+        })
+        systemObservers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.handleScreenParametersChange() }
-        }
+        })
+    }
+
+    /// 总开关变化 → 重新评估采样门控（关掉即停表）。
+    private func observeEnabledChanges() {
+        guard enabledCancellable == nil else { return }
+        enabledCancellable = preferences.$isEnabled
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.updatePollingState() }
+            }
     }
 
     private func handleScreenParametersChange() {
@@ -530,6 +583,7 @@ final class LidDepthController: ObservableObject {
         preview = nil
         isActive = false
         isCapturePending = false
+        updatePollingState()
     }
 
     private func resume() {
@@ -545,6 +599,6 @@ final class LidDepthController: ObservableObject {
             rawAngle = angle
             visualAngle.reset(to: angle)
         }
-        monitor.setInterval(LidAngleMonitor.idleInterval)
+        updatePollingState()
     }
 }
