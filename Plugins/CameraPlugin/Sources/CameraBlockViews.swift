@@ -55,10 +55,14 @@ struct CameraMirrorBlockView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L("a11y.mirror"))
         .onAppear { store.refreshAuthorization(hostController: context.hostController) }
-        .onDisappear { store.stopSession() }
+        .onDisappear {
+            // 过渡副本护栏：滑动切页的预览副本卸载不得停掉真实会话。
+            guard !context.layoutInfo.isPreview else { return }
+            store.stopSession()
+        }
         .onChange(of: isDrawerPresented) { _, presented in
             // 幂等（stopSession 自带 isRunning 闸门）：收起与卸载各会碰到一次。
-            guard !presented else { return }
+            guard !presented, !context.layoutInfo.isPreview else { return }
             store.stopSession()
         }
     }
@@ -279,14 +283,55 @@ struct CameraPreviewLayer: NSViewRepresentable {
 
 // MARK: - 摄像头会话 store
 
-/// `AVCaptureSession` 的跨线程搬运盒。
+// MARK: - 摄像头会话驱动器
+
+/// `AVCaptureSession` 的串行驱动器。
 ///
-/// `AVCaptureSession` 未标 `Sendable`（它是 Objective-C 遗留类型），但 Apple 的
-/// 文档明确 start/stopRunning 可从任意线程调用。这里做一次显式豁免，
-/// 把"我知道我在做什么"写进类型名而不是散在调用点。
-private struct SessionBox: @unchecked Sendable {
-    let session: AVCaptureSession
-    init(_ session: AVCaptureSession) { self.session = session }
+/// 旧实现每次启停各派一个 `Task.detached`：并发队列上的两个任务没有顺序保证，
+/// 快速「开→关」时 `stopRunning()` 可能先跑完（此时会话还没开始跑，直接返回），
+/// 随后 `startRunning()` 才真正启动——会话在跑而 UI 已认为停止，指示灯常亮且
+/// 再也停不掉（`stopSession` 的 `isRunning` 闸门挡住了后续收尾）。
+///
+/// 这里把 `configure / startRunning / stopRunning` 全部收敛到**同一条串行队列**：
+/// 最后一个意图必然最后执行。`AVCaptureSession` 未标 `Sendable`，用 `@unchecked
+/// Sendable` 显式豁免（Apple 明确它可在任意线程安全地启停）。
+final class CameraSessionDriver: @unchecked Sendable {
+    let session = AVCaptureSession()
+
+    private let queue = DispatchQueue(label: "com.notchcenter.camera.session")
+    private let stateLock = NSLock()
+    private var configured = false
+
+    /// 采集输入是否已成功建过。失败（取不到设备）不置位，下次启动会重试。
+    var isConfigured: Bool { stateLock.withLock { configured } }
+
+    /// 应用一个运行意图。幂等：重复 intent 只是重放同一结果。
+    func setRunning(_ running: Bool) {
+        queue.async { [self] in
+            configureIfNeeded()
+            if running {
+                if !session.isRunning { session.startRunning() }
+            } else if session.isRunning {
+                session.stopRunning()
+            }
+        }
+    }
+
+    /// 首次真的要采集时才建输入（`AVCaptureDeviceInput(device:)` 会碰 TCC，
+    /// 提前到装载期等于每次启动 App 弹一次系统授权窗）。只在串行队列上调用。
+    /// 只有成功才置位——取不到设备时下次启动重试，而不是永远放弃。
+    private func configureIfNeeded() {
+        guard !isConfigured else { return }
+        guard let device = CameraDevices.preferredDevice(),
+              let input = try? AVCaptureDeviceInput(device: device) else { return }
+        session.beginConfiguration()
+        session.sessionPreset = .high
+        if session.canAddInput(input) {
+            session.addInput(input)
+        }
+        session.commitConfiguration()
+        stateLock.withLock { configured = true }
+    }
 }
 
 /// 摄像头会话与授权状态的唯一持有者。
@@ -298,11 +343,13 @@ final class CameraStore: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var isPaused = false
 
+    private let driver = CameraSessionDriver()
+
     /// 会话实例（跨视图副本共享同一个）。
-    let session = AVCaptureSession()
+    var session: AVCaptureSession { driver.session }
 
     /// 采集输入是否已建。只读暴露给回归测试：装载期不得为 true。
-    private(set) var isConfigured = false
+    var isConfigured: Bool { driver.isConfigured }
     private weak var hostController: (any HostController)?
     /// 激活观察（单例全程存活，无需摘除）。
     private var activationObserver: NSObjectProtocol?
@@ -348,45 +395,18 @@ final class CameraStore: ObservableObject {
 
     func startSession() {
         guard authorization == .authorized else { return }
-        // 采集输入到这一刻才建：`AVCaptureDeviceInput(device:)` 会碰 TCC，提前到
-        // 装载期就等于每次启动 App 弹一次系统授权窗。
-        configureIfNeeded()
-        // `startRunning()` 是阻塞调用，必须离开主线程。`AVCaptureSession` 未标
-        // `Sendable`，但 Apple 明确它可在任意线程安全地启停；用 `SessionBox`
-        // 的 `@unchecked Sendable` 承载（与 NotesImageStore 同族的显式豁免）。
-        let box = SessionBox(session)
-        Task.detached(priority: .userInitiated) {
-            if !box.session.isRunning {
-                box.session.startRunning()
-            }
-        }
+        // 采集输入到这一步才建（`AVCaptureDeviceInput(device:)` 会碰 TCC）。
+        // 会话的 configure / start / stop 全在驱动器的串行队列上执行，快速切停
+        // 不会错序（见 `CameraSessionDriver`）。
         isRunning = true
         isPaused = false
+        driver.setRunning(true)
     }
 
     func stopSession() {
         guard isRunning else { return }
-        let box = SessionBox(session)
-        Task.detached(priority: .utility) {
-            if box.session.isRunning { box.session.stopRunning() }
-        }
         isRunning = false
         isPaused = true
-    }
-
-    /// 首次真的要采集时配置输入（只需一次）。只在已授权后调用。
-    func configureIfNeeded() {
-        guard !isConfigured else { return }
-        isConfigured = true
-        guard let device = CameraDevices.preferredDevice(),
-              let input = try? AVCaptureDeviceInput(device: device) else {
-            return
-        }
-        session.beginConfiguration()
-        session.sessionPreset = .high
-        if session.canAddInput(input) {
-            session.addInput(input)
-        }
-        session.commitConfiguration()
+        driver.setRunning(false)
     }
 }
