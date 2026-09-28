@@ -3,6 +3,7 @@ import AVFoundation
 import EventKit
 import Foundation
 import NotchCenterKit
+import Photos
 
 // MARK: - 权限中心（宿主侧唯一权限门面）
 
@@ -48,6 +49,10 @@ final class PermissionCenter: PermissionStatusProviding, PermissionRequesting, P
             // 定位状态由 CoreLocation 的异步授权流管理，宿主未接 CoreLocation
             // 委托中心；此处按"未请求"上报（天气插件默认走手填城市，零权限）。
             return .notDetermined
+        case .photos:
+            // 只读图库用 `.readWrite` 档：PhotoKit 没有"纯读"授权级别，
+            // 读图库就是 readWrite 档（addOnly 只够写入，读不了）。
+            return Self.map(PHPhotoLibrary.authorizationStatus(for: .readWrite))
         }
     }
 
@@ -71,6 +76,22 @@ final class PermissionCenter: PermissionStatusProviding, PermissionRequesting, P
     private static func map(_ status: AVAuthorizationStatus) -> PermissionStatus {
         switch status {
         case .authorized: return .authorized
+        case .denied: return .denied
+        case .restricted: return .restricted
+        case .notDetermined: return .notDetermined
+        @unknown default: return .notDetermined
+        }
+    }
+
+    /// PhotoKit 的授权状态 → Kit 的四态。
+    ///
+    /// `.limited`（用户只授权了部分照片）并入 `.authorized`：Kit 的四态里没有
+    /// "受限选集"这一档，而受限选集**确实可读**——判成不可用会让块错误地退回
+    /// 引导态，把能用的功能锁死。用户选中的那些照片正常显示，没选中的取不到
+    /// 图时由插件侧落到"取图失败"降级态（不报错、不留空洞）。
+    private static func map(_ status: PHAuthorizationStatus) -> PermissionStatus {
+        switch status {
+        case .authorized, .limited: return .authorized
         case .denied: return .denied
         case .restricted: return .restricted
         case .notDetermined: return .notDetermined
@@ -115,6 +136,17 @@ final class PermissionCenter: PermissionStatusProviding, PermissionRequesting, P
         case .location:
             // 宿主不持有 CoreLocation 授权流（见 status(of:) 的说明）。
             return .failed(L("permission.error.locationUnsupported"))
+        case .photos:
+            // 请求是 async 非抛出（SDK 的 `NS_SWIFT_ASYNC` 导入），所以没有
+            // `.failed` 分支可走。结果复用 status 的四态口径——请求完仍是
+            // `.notDetermined` 只可能是系统没给出结论，按"没拿到授权"处理。
+            let granted = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            switch Self.map(granted) {
+            case .authorized: return .authorized
+            case .denied: return .denied
+            case .restricted: return .restricted
+            case .notDetermined: return .denied
+            }
         }
     }
 

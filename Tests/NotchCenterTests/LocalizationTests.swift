@@ -35,6 +35,7 @@ struct LocalizationTests {
     /// 参与本地化键位奇偶校验的模块：宿主 + 全部官方插件目录名。
     static let modules = [
         "Sources/NotchCenter",
+        "Plugins/AlbumPlugin",
         "Plugins/NotesPlugin",
         "Plugins/ScratchpadPlugin",
         "Plugins/CaffeinatePlugin",
@@ -69,6 +70,7 @@ struct LocalizationTests {
     }
 
     @Test(arguments: [
+        "AlbumPlugin",
         "NotesPlugin", "ScratchpadPlugin", "CaffeinatePlugin", "DshPlugin", "CalibrePlugin",
         "PomodoroPlugin", "DisplayPlugin",
         "ClipboardHistoryPlugin", "CameraPlugin",

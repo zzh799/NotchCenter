@@ -193,3 +193,5 @@
 "permission.purpose.accessibility" = "控制其它应用的窗口（窗口管理）。";
 "permission.name.location" = "定位";
 "permission.purpose.location" = "可选：用当前位置获取本地天气。";
+"permission.name.photos" = "照片";
+"permission.purpose.photos" = "在相册块里显示你从图库中挑选的照片。";

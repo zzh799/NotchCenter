@@ -22,6 +22,7 @@ final class PermissionTests: XCTestCase {
             .screenRecording: "Privacy_ScreenCapture",
             .accessibility: "Privacy_Accessibility",
             .location: "Privacy_LocationServices",
+            .photos: "Privacy_Photos",
         ]
         XCTAssertEqual(expected.count, SystemPermission.allCases.count, "清单新增权限时必须同步本用例")
         for (permission, pane) in expected {
@@ -41,7 +42,7 @@ final class PermissionTests: XCTestCase {
     // MARK: 清单元数据一致性
 
     func testUsageDescriptionKeysMatchTheInfoPlistWhitelist() {
-        // 屏幕录制与辅助功能的 TCC 不读用途字符串，必须为 nil；其余四项必须有键。
+        // 屏幕录制与辅助功能的 TCC 不读用途字符串，必须为 nil；其余各项必须有键。
         let withoutKey: Set<SystemPermission> = [.screenRecording, .accessibility]
         for permission in SystemPermission.allCases {
             if withoutKey.contains(permission) {
@@ -56,13 +57,15 @@ final class PermissionTests: XCTestCase {
             SystemPermission.reminders.usageDescriptionKey, "NSRemindersFullAccessUsageDescription")
         XCTAssertEqual(SystemPermission.camera.usageDescriptionKey, "NSCameraUsageDescription")
         XCTAssertEqual(SystemPermission.location.usageDescriptionKey, "NSLocationUsageDescription")
+        XCTAssertEqual(
+            SystemPermission.photos.usageDescriptionKey, "NSPhotoLibraryUsageDescription")
     }
 
     func testRelaunchRequirementOnlyForScreenRecordingAndAccessibility() {
         // 屏幕录制走 replayd 缓存、辅助功能有进程级 AX 缓存，两者授权后都要重启。
         XCTAssertTrue(SystemPermission.screenRecording.requiresRelaunch)
         XCTAssertTrue(SystemPermission.accessibility.requiresRelaunch)
-        for permission in [SystemPermission.calendar, .reminders, .camera, .location] {
+        for permission in [SystemPermission.calendar, .reminders, .camera, .location, .photos] {
             XCTAssertFalse(permission.requiresRelaunch)
         }
     }
@@ -76,7 +79,10 @@ final class PermissionTests: XCTestCase {
         }
         XCTAssertEqual(
             Set(SystemPermission.allCases.map(\.rawValue)),
-            ["calendar", "reminders", "camera", "screenRecording", "accessibility", "location"]
+            [
+                "calendar", "reminders", "camera", "screenRecording", "accessibility", "location",
+                "photos",
+            ]
         )
     }
 

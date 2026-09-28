@@ -22,6 +22,8 @@ public enum SystemPermission: String, CaseIterable, Sendable, Hashable, Codable 
     case accessibility
     /// 定位（CoreLocation，天气用）。用途字符串 `NSLocationUsageDescription`。
     case location
+    /// 照片图库读取（PhotoKit，相册插件用）。用途字符串 `NSPhotoLibraryUsageDescription`。
+    case photos
 
     /// 「系统设置 → 隐私与安全性」面板名（`x-apple.systempreferences:` URL 的锚点）。
     public var privacyPane: String {
@@ -32,6 +34,7 @@ public enum SystemPermission: String, CaseIterable, Sendable, Hashable, Codable 
         case .screenRecording: return "Privacy_ScreenCapture"
         case .accessibility: return "Privacy_Accessibility"
         case .location: return "Privacy_LocationServices"
+        case .photos: return "Privacy_Photos"
         }
     }
 
@@ -45,6 +48,7 @@ public enum SystemPermission: String, CaseIterable, Sendable, Hashable, Codable 
         case .screenRecording: return nil
         case .accessibility: return nil
         case .location: return "NSLocationUsageDescription"
+        case .photos: return "NSPhotoLibraryUsageDescription"
         }
     }
 
@@ -57,6 +61,7 @@ public enum SystemPermission: String, CaseIterable, Sendable, Hashable, Codable 
         case .screenRecording: return "rectangle.dashed.badge.record"
         case .accessibility: return "accessibility"
         case .location: return "location"
+        case .photos: return "photo.on.rectangle"
         }
     }
 
@@ -65,10 +70,12 @@ public enum SystemPermission: String, CaseIterable, Sendable, Hashable, Codable 
     /// TCC 的屏幕录制授权走独立进程（`replayd`）缓存，已运行进程拿到新授权
     /// 前必须重启；辅助功能的 AX API 同理有进程级缓存。两者都要在 UI 里明说，
     /// 否则用户会以为"授权了但没生效"。
+    ///
+    /// 照片图库不在其中：`PHPhotoLibrary` 的授权结果当次进程即时生效。
     public var requiresRelaunch: Bool {
         switch self {
         case .screenRecording, .accessibility: return true
-        case .calendar, .reminders, .camera, .location: return false
+        case .calendar, .reminders, .camera, .location, .photos: return false
         }
     }
 }

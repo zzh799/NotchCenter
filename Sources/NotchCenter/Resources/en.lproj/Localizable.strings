@@ -193,3 +193,5 @@
 "permission.purpose.accessibility" = "Control other apps' windows (window management).";
 "permission.name.location" = "Location";
 "permission.purpose.location" = "Optional: use your current position for local weather.";
+"permission.name.photos" = "Photos";
+"permission.purpose.photos" = "Show photos you pick from your library in the album blocks.";

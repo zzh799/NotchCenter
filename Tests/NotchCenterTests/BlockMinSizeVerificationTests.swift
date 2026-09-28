@@ -1,6 +1,7 @@
 import CoreGraphics
 import NotchCenterKit
 import XCTest
+@testable import AlbumPlugin
 @testable import CalibrePlugin
 @testable import CalendarPlugin
 @testable import CameraPlugin
@@ -38,6 +39,7 @@ final class BlockMinSizeVerificationTests: XCTestCase {
     /// 全部官方块（插件模块已逐一 @testable import）。
     private static let officialBlocks: [(plugin: String, block: NotchBlock)] = {
         [
+            ("AlbumPlugin", AlbumPlugin.blocks),
             ("CalibrePlugin", CalibrePlugin.blocks),
             ("CalendarPlugin", CalendarPlugin.blocks),
             ("CameraPlugin", CameraPlugin.blocks),
