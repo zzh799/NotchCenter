@@ -7,8 +7,9 @@ import SwiftUI
 /// 单行版式的常量源：打包期探针与块视图都从这里推导，禁止各写一份。探针语义是
 /// 「意图契约」，与视图布局漂移即门禁失效，所以两组数字必须同源。
 enum MediaControlsMetrics {
-    /// 内容区四周内边距。
-    static let inset: CGFloat = 12
+    /// 内容区四周内边距：取块内容标准内边距（`Space.cardPadding`，DESIGN.md §5），
+    /// 与其余抽屉块的块内边距同源，不再自留一份字面量。
+    static let inset: CGFloat = NotchTokens.Space.cardPadding
     /// 应用图标圆角方块边长。
     static let tileSize: CGFloat = 40
     /// 方块内应用图标的渲染边长。
@@ -46,22 +47,28 @@ enum MediaControlsMetrics {
 ///
 /// 数据全部来自插件级单例 `MediaPlayerController.shared`（媒体播放是系统级瞬态，
 /// 与放置实例无关）；本视图只负责版式与可见性登记。
+///
+/// 卡片表面（近白填充 + 发丝描边）归 Kit `BlockCard`：宿主 `DrawerBlockContainer`
+/// 只做裁剪与编辑态压暗，不自绘卡片壳（DESIGN.md §9）。悬停微亮不开：本卡自己不可点，
+/// 反馈由三个控制键各自给（同 Notes / 命令调度 / 剪贴板）。
 struct MediaControlsBlockView: View {
     let context: BlockContext
     @ObservedObject private var controller = MediaPlayerController.shared
     @Environment(\.isDrawerPresented) private var isDrawerPresented
 
     var body: some View {
-        // 单行版式在窄盒里无处可折：按声明下限等比缩到盒内，而不是把内容顶出去
-        // 压到邻居块上（宿主卡片不裁切）。盒 ≥ 声明下限时恒为 1:1，绝不放大。
-        GeometryReader { proxy in
-            row
-                .frame(
-                    width: proxy.size.width / fitScale(in: proxy.size),
-                    height: MediaControlsMetrics.totalHeight
-                )
-                .scaleEffect(fitScale(in: proxy.size), anchor: .center)
-                .frame(width: proxy.size.width, height: proxy.size.height)
+        BlockCard(hoverEffect: false) { _ in
+            // 单行版式在窄盒里无处可折：按声明下限等比缩到盒内，而不是把内容顶出去
+            // 压到邻居块上（宿主卡片不裁切）。盒 ≥ 声明下限时恒为 1:1，绝不放大。
+            GeometryReader { proxy in
+                row
+                    .frame(
+                        width: proxy.size.width / fitScale(in: proxy.size),
+                        height: MediaControlsMetrics.totalHeight
+                    )
+                    .scaleEffect(fitScale(in: proxy.size), anchor: .center)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L("a11y.mediaControls"))
@@ -83,7 +90,7 @@ struct MediaControlsBlockView: View {
     }
 
     /// 幂等登记：预览副本（滑动切页的非激活页、组件目录）不登记，否则会替真正的
-    /// 块把 1s 心跳拉起来。
+    /// 块把常驻的桥子进程拉起来。
     private func syncPresentation() {
         guard !context.layoutInfo.isPreview else { return }
         controller.setPresented(isDrawerPresented, placementID: context.placementID)
@@ -96,7 +103,13 @@ struct MediaControlsBlockView: View {
             appTile
             Text(displayName)
                 .font(NotchTokens.Text.system(15, weight: .medium))
-                .foregroundStyle(NotchTokens.Foreground.body)
+                // 有可控制媒体时应用名是主信息（body）；空态 / 降级态只是一条状态说明，
+                // 降到 muted 层级，不与应用名抢同一声量（DESIGN.md §2.2）。
+                .foregroundStyle(
+                    controller.state.rendersMediaItem
+                        ? NotchTokens.Foreground.body
+                        : NotchTokens.Foreground.muted
+                )
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .padding(.leading, MediaControlsMetrics.tileToTextGap)
@@ -108,15 +121,19 @@ struct MediaControlsBlockView: View {
         .frame(height: MediaControlsMetrics.totalHeight)
     }
 
+    /// 应用图标承托方块：透明底 / 单色图标的应用也能落到同一块可见底衬上。
+    /// 底色取 `Surface.track`（块内通用内嵌底，先例：摄像头取景框 / 相册占位 /
+    /// 剪贴板图片面），而非 `fillHighlighted`（后者语义是「选中 / 强调」，
+    /// 用在常驻静态方框上会让样式阶梯失真；发丝边沿用内嵌面的 0.5。
     private var appTile: some View {
         ZStack {
             RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
-                .fill(NotchTokens.Surface.fillHighlighted)
+                .fill(NotchTokens.Surface.track)
             tileContent
         }
         .overlay {
             RoundedRectangle(cornerRadius: NotchTokens.Radius.card, style: .continuous)
-                .stroke(NotchTokens.Hairline.thumbnail, lineWidth: 1)
+                .stroke(NotchTokens.Hairline.thumbnail, lineWidth: 0.5)
         }
         .frame(width: MediaControlsMetrics.tileSize, height: MediaControlsMetrics.tileSize)
     }
