@@ -43,7 +43,6 @@
 "caption.photos" = "照片";
 
 /* 设置面板 */
-"settings.title" = "相册";
 "settings.section.source" = "来源";
 "settings.source.local" = "本地";
 "settings.source.photos" = "照片";
@@ -53,7 +52,6 @@
 "settings.source.recursive" = "包含子文件夹";
 "settings.source.none" = "未设置";
 "settings.source.current" = "当前：%@";
-"settings.section.albums" = "相册";
 "settings.album.count" = "%d 张";
 "settings.section.slideshow" = "轮播";
 "settings.interval" = "间隔";
@@ -64,7 +62,6 @@
 "settings.section.display" = "显示";
 "settings.fillsFrame" = "填满组件";
 "settings.showsCaption" = "显示说明";
-"settings.assetPick.title" = "选择一张照片";
 "settings.assetPick.hint" = "点缩略图即可让本块显示它。";
 "settings.assetPick.back" = "相册";
 "settings.assetPick.empty" = "这个相册里没有照片。";

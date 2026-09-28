@@ -7,13 +7,6 @@
 /* 抽屉块空态 */
 "shelf.empty.title" = "暂存区";
 
-/* 清空确认浮层 */
-"clear.confirm.title" = "清空暂存区";
-"clear.confirm.message" = "移除全部 %d 个条目？原文件不受影响。";
-"clear.confirm.message.one" = "移除全部条目？原文件不受影响。";
-"clear.confirm.removeAll" = "全部移除";
-"common.cancel" = "取消";
-
 /* 右键菜单 */
 "menu.open" = "打开";
 "menu.showInFinder" = "在 Finder 中显示";

@@ -16,10 +16,7 @@
 "settings.triggerMode" = "Trigger Mode";
 "trigger.hover" = "Hover to Expand";
 "trigger.click" = "Click to Expand";
-"settings.section.layout" = "Layout";
 "settings.columns" = "Drawer Columns";
-"settings.section.plugins" = "Plugins";
-"settings.pluginManager" = "Plugin Manager…";
 "settings.quit" = "Quit NotchCenter";
 
 /* Settings top-bar pages */
@@ -48,7 +45,6 @@
 "settings.components.hint" = "Click to add to the quick strip or drawer; press and drag onto the quick strip, the drawer, or a button box.";
 "settings.components.compact" = "Quick actions";
 "settings.components.empty" = "No components available. Enable a plugin first.";
-"settings.components.quickActions" = "Quick Buttons";
 "settings.components.quickActions.cardHint" = "Quick strip or button box";
 "settings.components.quickActions.boxable" = "This card can also be dragged onto a Quick Button Box. The original stays on the quick strip, sharing the same state.";
 
@@ -81,7 +77,6 @@
 "language.restartHint" = "Takes effect after relaunch.";
 
 /* 插件管理窗口 */
-"manager.window.title" = "Plugin Manager";
 "manager.header.plugins" = "Plugins";
 "manager.install.help" = "Install plugin bundle…";
 "manager.badge.builtIn" = "Built-in";
@@ -159,8 +154,6 @@
 /* Full-page blocks (2026-09-10) */
 "panel.page.add.fullTitle" = "Drawer Pages Full";
 "panel.page.add.fullBody" = "The drawer already has the maximum of %d pages and no page is free. Delete a page, or empty one, before adding a full-page component.";
-"panel.page.unavailable.title" = "%@ is disabled";
-"panel.page.unavailable.body" = "Re-enable it in Settings → Plugins to use this page again.";
 
 /* Permission management (2026-09-11) */
 "settings.section.permissions" = "Permissions";

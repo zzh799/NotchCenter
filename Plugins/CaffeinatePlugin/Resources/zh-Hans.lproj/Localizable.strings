@@ -1,7 +1,6 @@
 /* CaffeinatePlugin 简体中文文案 */
 
-/* 块与菜单 */
-"caffeinate.block.name" = "保持唤醒";
+/* 菜单 */
 "caffeinate.menu.start" = "保持 Mac 唤醒";
 "caffeinate.menu.stop" = "停止保持 Mac 唤醒";
 

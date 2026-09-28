@@ -16,10 +16,7 @@
 "settings.triggerMode" = "触发方式";
 "trigger.hover" = "悬停展开";
 "trigger.click" = "点击展开";
-"settings.section.layout" = "布局";
 "settings.columns" = "抽屉列数";
-"settings.section.plugins" = "插件";
-"settings.pluginManager" = "插件管理…";
 "settings.quit" = "退出 NotchCenter";
 
 /* 设置顶栏分页 */
@@ -48,7 +45,6 @@
 "settings.components.hint" = "单击添加到快速区或抽屉；按住拖到快速区、抽屉或按钮盒。";
 "settings.components.compact" = "快捷按钮";
 "settings.components.empty" = "没有可用组件：请先在「插件」页启用插件。";
-"settings.components.quickActions" = "快捷按钮";
 "settings.components.quickActions.cardHint" = "可放快速区，也可收纳进按钮盒";
 "settings.components.quickActions.boxable" = "此卡也可拖入「快捷按钮盒」收纳，原件仍保留在快速区，两者共享同一状态。";
 
@@ -81,7 +77,6 @@
 "language.restartHint" = "重启后生效。";
 
 /* 插件管理窗口 */
-"manager.window.title" = "插件管理";
 "manager.header.plugins" = "插件";
 "manager.install.help" = "安装插件包…";
 "manager.badge.builtIn" = "内置";
@@ -159,8 +154,6 @@
 /* 整页块（2026-09-10） */
 "panel.page.add.fullTitle" = "抽屉页已满";
 "panel.page.add.fullBody" = "抽屉页数已达上限 %d，且没有空页可占用。请先删除一个页面，或清空某一页后再添加整页组件。";
-"panel.page.unavailable.title" = "%@ 已停用";
-"panel.page.unavailable.body" = "在「插件」设置中重新启用它，即可继续使用这个页面。";
 
 /* 权限管理（2026-09-11） */
 "settings.section.permissions" = "权限";

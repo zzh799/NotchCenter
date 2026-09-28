@@ -13,7 +13,6 @@
 "dsh.conflict.block" = "⚠️ %d 个实例在监听";
 "dsh.state.stopped" = "已停止";
 "dsh.state.running" = "运行中";
-"dsh.state.runningPort" = "运行中 · 端口 %@";
 "dsh.subtitle.port" = "端口 %@";
 
 /* 动作进行中的提示文案（busy 期间显示，成功后也会短暂驻留） */

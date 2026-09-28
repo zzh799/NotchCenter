@@ -7,13 +7,6 @@
 /* 抽屉块空态 */
 "shelf.empty.title" = "Shelf";
 
-/* 清空确认浮层 */
-"clear.confirm.title" = "Clear Scratchpad";
-"clear.confirm.message" = "Remove all %d items? Original files are not affected.";
-"clear.confirm.message.one" = "Remove this item? Original files are not affected.";
-"clear.confirm.removeAll" = "Remove All";
-"common.cancel" = "Cancel";
-
 /* 右键菜单 */
 "menu.open" = "Open";
 "menu.showInFinder" = "Show in Finder";

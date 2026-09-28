@@ -1,7 +1,6 @@
 /* CaffeinatePlugin 英文文案（开发基准语言，键缺失时兜底） */
 
-/* 块与菜单 */
-"caffeinate.block.name" = "Keep Awake";
+/* 菜单 */
 "caffeinate.menu.start" = "Keep Mac Awake";
 "caffeinate.menu.stop" = "Stop Keeping Mac Awake";
 

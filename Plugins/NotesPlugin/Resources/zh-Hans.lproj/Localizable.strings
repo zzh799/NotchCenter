@@ -1,7 +1,6 @@
 /* NotesPlugin 简体中文文案 */
 
-/* 块与菜单（紧凑块名 = 具体功能；抽屉块名单组件目录下独立成立） */
-"notes.block.compact" = "新建笔记";
+/* 块与菜单 */
 "notes.block.notebook" = "笔记本";
 "notes.newNote" = "新建笔记";
 

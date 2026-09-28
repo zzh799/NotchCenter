@@ -43,7 +43,6 @@
 "caption.photos" = "Photos";
 
 /* 设置面板 */
-"settings.title" = "Album";
 "settings.section.source" = "Source";
 "settings.source.local" = "Local";
 "settings.source.photos" = "Photos";
@@ -53,7 +52,6 @@
 "settings.source.recursive" = "Include subfolders";
 "settings.source.none" = "Not set";
 "settings.source.current" = "Current: %@";
-"settings.section.albums" = "Albums";
 "settings.album.count" = "%d photos";
 "settings.section.slideshow" = "Slideshow";
 "settings.interval" = "Interval";
@@ -64,7 +62,6 @@
 "settings.section.display" = "Display";
 "settings.fillsFrame" = "Fill the block";
 "settings.showsCaption" = "Show caption";
-"settings.assetPick.title" = "Pick a photo";
 "settings.assetPick.hint" = "Tap a thumbnail to use it in this block.";
 "settings.assetPick.back" = "Albums";
 "settings.assetPick.empty" = "No photos in this album.";
