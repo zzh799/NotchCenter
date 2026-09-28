@@ -11,6 +11,9 @@ import SwiftUI
 /// 价值的展示，而宿主左侧齿轮与块内控件是重复入口（用户裁定撤掉）。不声明
 /// `settingsView` 即无齿轮、无 `SettingPopover` 入口。
 @objc(NotesPlugin) @MainActor public final class NotesPlugin: NSObject, NotchCenterPlugin, NotchCenterPluginServices {
+    /// 块 id（放置清理钩子按它过滤）。
+    static let notebookBlockID = "notes.notebook"
+
     /// 打包期最小尺寸遮挡校验探针（Kit BlockProbe；几何区带镜像 NotebookBlockView /
     /// MarkdownEditorViews 的布局常量——改动布局时同步这里）。
     /// 区带意图：顶部分页条 34pt（toolbarHeight）+ 间隔 8（editorSpacing）+
@@ -43,7 +46,7 @@ import SwiftUI
 
     public static var blocks: [NotchBlock] = [
         NotchBlock(
-            id: "notes.notebook",
+            id: NotesPlugin.notebookBlockID,
             displayName: L("notes.block.notebook"),
             kind: .drawer,
             minSize: BlockPixelSize(width: 300, height: 240),
@@ -137,6 +140,12 @@ import SwiftUI
             NotificationCenter.default.removeObserver(terminateObserver)
             self.terminateObserver = nil
         }
+    }
+
+    /// 一个笔记本放置实例被用户移除：丢弃该实例的内存状态与持久化的标签页选择。
+    public func placementWasRemoved(blockID: String, placementID: String) {
+        guard blockID == Self.notebookBlockID else { return }
+        NotesModel.shared.forgetPlacement(placementID)
     }
 
     private func createNewNote() {
@@ -245,6 +254,15 @@ final class NotesModel {
     func rememberActiveTab(_ tabID: UUID, for placementID: String) {
         activeTabByPlacement[placementID] = tabID
         try? stateStore?.setObject(tabID, forKey: Self.activeTabKey(placementID))
+    }
+
+    /// 放置实例被移除：清掉该实例的内存状态（编辑器交互状态、标签页记忆、网格登记）
+    /// 与持久键 `activeTab.<placementID>`，避免删实例后留下孤儿。
+    func forgetPlacement(_ placementID: String) {
+        editorStateByPlacement.removeValue(forKey: placementID)
+        activeTabByPlacement.removeValue(forKey: placementID)
+        placementGridRows.removeValue(forKey: placementID)
+        stateStore?.removeValue(forKey: Self.activeTabKey(placementID))
     }
 
     /// 每个放置实例独立的编辑器交互状态。
