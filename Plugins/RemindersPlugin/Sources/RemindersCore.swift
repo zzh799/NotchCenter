@@ -360,6 +360,13 @@ final class RemindersCore {
         instances.removeAll()
         dataSource?.stopObservingExternalChanges()
         dataSource = nil
+        // 摘掉激活观察者并清宿主引用：否则停用后每次 App 激活仍会经
+        // `handleAppBecameActive` 重建 `EKEventStore`（常驻且无人使用）。
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+            self.activationObserver = nil
+        }
+        hostController = nil
     }
 
     // MARK: 权限
