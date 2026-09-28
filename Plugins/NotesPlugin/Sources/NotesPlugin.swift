@@ -105,6 +105,8 @@ import SwiftUI
     }
 
     private weak var hostController: (any HostController)?
+    /// 宿主退出通知观察者：退无可退时兜底落盘（越晚越好，插件无法预知退出）。
+    private var terminateObserver: NSObjectProtocol?
 
     public override init() {
         super.init()
@@ -113,6 +115,28 @@ import SwiftUI
     public func attachServices(stateStore: StateStore, hostController: any HostController) {
         self.hostController = hostController
         _ = NotesModel.shared.resolve(stateStore: stateStore)
+        installTerminateObserverIfNeeded()
+    }
+
+    /// 注册退出兜底落盘（幂等：重复注入不重复注册）。
+    private func installTerminateObserverIfNeeded() {
+        guard terminateObserver == nil else { return }
+        terminateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                NotesModel.shared.flushAll()
+            }
+        }
+    }
+
+    /// 插件被禁用：立即落盘，并移除退出观察者（避免重复注册）。
+    public func pluginWasDisabled() {
+        NotesModel.shared.flushAll()
+        if let terminateObserver {
+            NotificationCenter.default.removeObserver(terminateObserver)
+            self.terminateObserver = nil
+        }
     }
 
     private func createNewNote() {
@@ -196,6 +220,11 @@ final class NotesModel {
             imageStore = try? NotesImageStore(stateStore: stateStore)
         }
         return store!
+    }
+
+    /// 立即落盘当前笔记快照（插件禁用或宿主退出时由 NotesPlugin 调用）。
+    func flushAll() {
+        store?.flush()
     }
 
     /// 某放置实例当前显示的标签页；优先取内存记录，其次从持久化恢复，

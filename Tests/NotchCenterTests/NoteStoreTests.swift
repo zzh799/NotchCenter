@@ -40,6 +40,37 @@ final class NoteStoreTests: XCTestCase {
         )
     }
 
+    /// 连续输入期间必须落盘：旧实现每次输入都取消上一个待执行保存并重排，
+    /// 只要两次输入的间隔一直短于去抖窗口，待执行保存被无限推迟、整段零落盘，
+    /// 进程被强退即丢稿。此用例按 0.05s 间隔连打 10 次（每次都 < 0.18s 去抖窗口），
+    /// 在输入尚未停止时读取落盘快照，断言非空。
+    func testContinuousTypingPersistsBeforeInputStops() async throws {
+        let directory = makeRoot()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let stateStore = StateStore(rootDirectory: directory)
+        let store = NotesStore(stateStore: stateStore)
+
+        var typed = ""
+        for _ in 0..<10 {
+            typed += "x"
+            store.updateText(typed)
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        // 此刻仍处于「连续输入」语义内：末次输入后的 0.18s 去抖窗口尚未走完。
+        // 新实现的首次保存已在 ~0.18s 处落盘；旧实现要到输入停止后才写。
+        let midway = NotesStore(stateStore: stateStore)
+        XCTAssertFalse(
+            midway.text.isEmpty,
+            "连续输入期间应有保存落盘（旧实现会把待执行保存一直推迟到输入停止）"
+        )
+
+        // 等待末次输入的保存窗口结束，确认最终内容完整落盘。
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let restored = NotesStore(stateStore: stateStore)
+        XCTAssertEqual(restored.text, typed)
+    }
+
     func testDeletedNoteCanBeRestoredWithoutLosingContent() {
         let directory = makeRoot()
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -20,7 +20,7 @@ struct NoteTab: Identifiable, Codable, Equatable {
 
 /// 笔记数据层（官方 NotesPlugin）。
 /// 多标签 Markdown 笔记；状态经 StateStore 持久化（文档 §4.6，键值单快照）。
-/// 保存去抖 0.18s；需要可靠落盘时调用 `flush()`。
+/// 保存去抖 0.18s，且连续编辑至多 0.18s 必落盘一次；需要可靠落盘时调用 `flush()`。
 @MainActor
 final class NotesStore: ObservableObject {
     @Published private(set) var tabs: [NoteTab]
@@ -207,8 +207,11 @@ final class NotesStore: ObservableObject {
         return NSRange(location: location, length: selectionLength)
     }
 
+    /// 去抖 0.18s，且连续编辑至多 0.18s 必落盘一次。
+    /// 已有待执行保存时直接返回（不取消重排）：若像传统去抖那样每次取消重排，
+    /// 连续打字期间保存会被无限推迟而几乎不落盘；此处的合并窗口仅吸收 0.18s 内的抖动。
     private func scheduleSave() {
-        pendingSave?.cancel()
+        guard pendingSave == nil else { return }
         let save = DispatchWorkItem { [weak self] in
             self?.pendingSave = nil
             self?.persistNow()
