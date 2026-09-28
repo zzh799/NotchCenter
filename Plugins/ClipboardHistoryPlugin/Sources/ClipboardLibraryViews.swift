@@ -67,7 +67,8 @@ struct ClipboardLibraryView: View {
     /// 悬浮预览的计时与目标（组件见 `ClipboardHoverPreview.swift`）。
     @StateObject private var hover = ClipboardHoverPreviewModel()
 
-    /// 抽屉展开态：库页与抽屉块共享同一份"被观察"登记，收起即注销（幂等）。
+    /// 抽屉展开态：库页与抽屉块共享同一份"被观察"登记，但登记只随视图挂载生命周期走
+    /// ——抽屉温存使收起后视图仍挂载、仍算"被放置"，档位切换由 occlusion 探针负责。
     @Environment(\.isDrawerPresented) private var isDrawerPresented
 
     init(context: BlockContext) {
@@ -76,15 +77,17 @@ struct ClipboardLibraryView: View {
 
     private var isPreview: Bool { context.layoutInfo.isPreview }
 
-    /// 登记/注销本页对应放置实例的观察关系；预览副本一律不参与。
-    private func syncLibraryObservation(presented: Bool) {
+    /// 登记本页对应放置实例的观察关系（幂等）；预览副本一律不参与。登记随**视图挂载**
+    /// 生命周期走：抽屉温存使收起后视图仍挂载，收起期间仍须保持被观察以继续记录。
+    private func registerLibraryObservation() {
         guard !isPreview else { return }
-        let placement = context.placementID
-        if presented {
-            store.viewDidAppear(placementID: placement)
-        } else {
-            store.viewDidDisappear(placementID: placement)
-        }
+        store.viewDidAppear(placementID: context.placementID)
+    }
+
+    /// 注销本页对应放置实例的观察关系（幂等）。只有视图真正卸载才注销。
+    private func unregisterLibraryObservation() {
+        guard !isPreview else { return }
+        store.viewDidDisappear(placementID: context.placementID)
     }
 
     /// 筛选 + 搜索后的结果，再切置顶/最近两段。
@@ -118,10 +121,9 @@ struct ClipboardLibraryView: View {
         .padding(ClipboardLibraryMetrics.padding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background { visibilityProbeLayer }
-        .onAppear { syncLibraryObservation(presented: isDrawerPresented) }
-        .onDisappear { syncLibraryObservation(presented: false) }
+        .onAppear { registerLibraryObservation() }
+        .onDisappear { unregisterLibraryObservation() }
         .onChange(of: isDrawerPresented) { _, presented in
-            syncLibraryObservation(presented: presented)
             // 抽屉收起后视图树仍在（温存），悬浮卡必须跟着"用户看不见了"这个事实收掉。
             if !presented { hover.cancel() }
         }

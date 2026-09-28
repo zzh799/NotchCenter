@@ -164,8 +164,8 @@ struct ClipboardHistoryBlockView: View {
     /// 悬浮预览的计时与目标（组件见 `ClipboardHoverPreview.swift`）。
     @StateObject private var hover = ClipboardHoverPreviewModel()
 
-    /// 抽屉是否展开。温存让 `onDisappear` 不再表示"用户看不到了"，而"被观察"
-    /// 语义（决定轮询表起停）必须跟着真实可见性走。
+    /// 抽屉是否展开。温存让 `onDisappear` 不再表示"用户看不到了"，但登记只随视图挂载
+    /// 生命周期走，收起后视图仍挂载、仍算"被放置"；档位切换交给 occlusion 探针。
     @Environment(\.isDrawerPresented) private var isDrawerPresented
 
     init(instance: ClipboardInstanceModel, placementID: String, isPreview: Bool) {
@@ -214,10 +214,9 @@ struct ClipboardHistoryBlockView: View {
             }
         }
         .onHover { isHovering = $0 }
-        .onAppear { syncObservation(presented: isDrawerPresented) }
-        .onDisappear { syncObservation(presented: false) }
+        .onAppear { registerObservation() }
+        .onDisappear { unregisterObservation() }
         .onChange(of: isDrawerPresented) { _, presented in
-            syncObservation(presented: presented)
             // 抽屉收起后视图树仍在（温存），悬浮卡必须跟着"用户看不见了"这个事实收掉。
             if !presented { hover.cancel() }
         }
@@ -374,15 +373,18 @@ struct ClipboardHistoryBlockView: View {
         searchFocused = false
     }
 
-    /// 按真实可见性登记/注销本实例（幂等，收起与卸载会各来一次）。
-    private func syncObservation(presented: Bool) {
+    /// 登记本实例的观察关系（幂等：重复挂载不会重复计数）。登记随**视图挂载**生命周期
+    /// 走——抽屉温存使收起后视图仍挂载，收起期间仍须保持被观察以继续记录；档位
+    /// （active/idle）由 occlusion 探针按真实可见性切换，不在此处起停轮询表。
+    private func registerObservation() {
         guard !isPreview else { return }
-        let placement = placementID
-        if presented {
-            store.viewDidAppear(placementID: placement)
-        } else {
-            store.viewDidDisappear(placementID: placement)
-        }
+        store.viewDidAppear(placementID: placementID)
+    }
+
+    /// 注销本实例的观察关系（幂等）。只有视图真正卸载才注销；抽屉收起不算卸载。
+    private func unregisterObservation() {
+        guard !isPreview else { return }
+        store.viewDidDisappear(placementID: placementID)
     }
 
     private var pausedBanner: some View {

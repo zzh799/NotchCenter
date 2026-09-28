@@ -118,7 +118,8 @@ final class ClipboardHistoryTests: XCTestCase {
             try? stateStore.setObject(true, forKey: ClipboardHistoryStore.pausedStoreKey)
         }
         let store = ClipboardHistoryStore(reader: clipboard)
-        // 测试不登记 placement（isObserved 为假故无 timer），只验证 ingest 状态机。
+        // 本工厂刻意不登记 placement：状态机用例只验证 ingest，不关心轮询表起停。
+        // 登记与节拍档的契约由 testObservationKeepsIdleTickerWhileUnseen 专门覆盖。
         store.attach(stateStore: stateStore)
         return (store, clipboard, root)
     }
@@ -374,6 +375,26 @@ final class ClipboardHistoryTests: XCTestCase {
         ingest(store, clipboard)
         store.clearUnpinned()
         XCTAssertTrue(store.entries.isEmpty)
+    }
+
+    // MARK: 观察登记与节拍档（收起期间仍记录）
+
+    /// 登记随视图挂载走：只有视图真正卸载（或无放置实例）才停表；无可见探针＝抽屉
+    /// 收起态，仍须走 idle 档继续轮询——这正是"关闭抽屉期间复制的内容不能丢"的支点。
+    /// 若把登记绑在可见性上，收起即清空 livePlacements → 停表 → 收起期复制全丢。
+    func testObservationKeepsIdleTickerWhileUnseen() {
+        let (store, _, root) = makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        store.viewDidAppear(placementID: "p-contract")
+        XCTAssertTrue(store.isObserved)
+        XCTAssertEqual(
+            store.currentInterval,
+            ClipboardHistoryStore.idleInterval,
+            "无可见探针（抽屉收起）应走 idle 档而非停表"
+        )
+        store.viewDidDisappear(placementID: "p-contract")
+        XCTAssertFalse(store.isObserved)
+        XCTAssertNil(store.currentInterval, "无放置实例才停表")
     }
 
     // MARK: 诊断压帽（剪贴板行数归因）
