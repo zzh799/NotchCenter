@@ -2,7 +2,6 @@ import AppKit
 import Combine
 import Foundation
 import NotchCenterKit
-import SwiftUI
 import UniformTypeIdentifiers
 
 // MARK: - 文件载荷的取舍（纯函数，可单测；不触碰剪贴板）
@@ -50,8 +49,9 @@ enum ClipboardFilePayloadPolicy {
 // 采集刻意分成两段（决策记录 2026-09-20-clipboard-media-types 的 D3）：
 // `probe()` 只读变化计数与类型名表，**不读任何载荷字节**；只有确认这是一次值得
 // 记录的复制（计数变了、非自循环、未暂停、非 transient）之后才走 `readPayload()`
-// 读重数据。富媒体落地后这一步是硬要求而非优化——每拍直接读图像数据，等于常年
-// 挂着的宿主每秒拷贝数 MB。
+// 读重数据。富媒体落地后这一步是硬要求而非优化——每拍直接读图像数据，等于给常驻
+// 的宿主每 0.5 秒拷贝数 MB。门控判定见 `ClipboardHistoryLogic.pollDecision`，
+// 两段的编排见 `ClipboardPoller`。
 
 /// 轻探测结果：变化计数 + 类型名表（transient / concealed 判定用）。
 struct ClipboardProbe: Equatable, Sendable {
@@ -242,22 +242,23 @@ final class SystemClipboardReader: ClipboardReading, @unchecked Sendable {
 // 与 SystemMonitor/Pomodoro 同构：插件级**单例** ObservableObject，全部块视图
 // 观察同一份历史（剪贴板历史与放置实例无关；多屏多副本零额外轮询）。
 //
-// 节奏（共识 Q6）：抽屉可见 → activeInterval，收起 → idleInterval；无已放置实例
-// 或插件禁用 → 停表。可见性经块视图内嵌的 ClipboardVisibilityProbe 上报
-// （SystemMonitorStore.WindowVisibilityProbe 同款 occlusion 机制）。
+// 采集**常驻**：随插件启用（attach）到禁用（suspend）之间持续轮询，节拍与线程细节
+// 全在 ClipboardPoller（专用后台队列 + 固定 0.5s）。刻意不再按抽屉可见性 / 放置实例
+// 分档或停表——2026-09-28 事故：登记绑在块视图挂载上，而抽屉温存只 300s，收起满 300s
+// 视图卸载即停表、复制全丢；从未展开抽屉则从不开始。决策见
+// `docs/agent-notes/implemented/2026-09-28-clipboard-resident-fast-polling.md`。
 //
-// 另有**不随可见性起伏**的自动清理检查表（60s 一次日期比较，attach → suspend），
+// 另有**独立于轮询**的自动清理检查表（60s 一次日期比较，attach → suspend），
 // 理由见 `startCleanupTimer`。
 //
 // 隐私（共识 Q2）：transient 启发式跳过 + 全局暂停 + 暂停期不补记；暂停态持久化，
-// 重启后保持暂停（避免重启瞬间把用户不想记的内容记下来）。
+// 重启后保持暂停（避免重启瞬间把用户不想记的内容记下来）。门控在轮询队列上、
+// 读载荷之前完成（见 `ClipboardHistoryLogic.pollDecision`）。
 
 @MainActor
 final class ClipboardHistoryStore: ObservableObject {
     static let shared = ClipboardHistoryStore()
 
-    static let activeInterval: TimeInterval = 1.0
-    static let idleInterval: TimeInterval = 2.5
     /// 落盘键（插件级 stateStore，单文件有序数组）。
     static let historyStoreKey = "history.entries.v1"
     static let pausedStoreKey = "history.paused"
@@ -275,54 +276,47 @@ final class ClipboardHistoryStore: ObservableObject {
     @Published private(set) var autoCleanupPeriod: ClipboardAutoCleanupPeriod = .defaultPeriod
     /// 当前剪贴板内容对应的历史条目 id（持续高亮语义：高亮始终标记"内容等于
     /// 当前剪贴板的那条"，对不上任何条目时为 nil）。由离散事件维护，见
-    /// `copyBack` / `ingest` / `attach`；不做内容级轮询（两段式轮询红线）。
+    /// `copyBack` / `handle` / `attach`；不做内容级轮询。
     @Published private(set) var currentClipboardEntryID: UUID?
     /// 最近一次**写回被拒**的条目 id（文件条目的原路径已失效；视图据此显示失效态）。
     @Published private(set) var copyFailedID: UUID?
 
     private let reader: any ClipboardReading
+    /// 与轮询队列共享的采集状态（计数 / 写回快照 / 暂停 / 运行）。
+    private let pollState: ClipboardPollState
+    /// 轮询引擎（专用后台队列）。
+    private let poller: ClipboardPoller
     private var stateStore: StateStore?
     /// 富媒体磁盘存储；初始化失败时为 nil，此时富媒体一律不记录（正文仍照常）。
     private var mediaStore: ClipboardMediaStore?
-    private var tickTimer: Timer?
     private var isActive = false
-    /// 自动清理检查表（独立于可见性 tick，见 startCleanupTimer）。
+    /// 自动清理检查表（独立于轮询，见 startCleanupTimer）。
     private var cleanupTimer: Timer?
     /// 上次自动清理时刻；nil 表示本次会话尚未起算（attach 会落到"此刻起算"）。
     private var lastAutoCleanupAt: Date?
 
-    /// 上次见到的 changeCount：只在"消费了一次变化"后更新；自循环跳过靠
-    /// writeBackSnapshot（写回后记快照，本轮 tick 见到相同 count 直接认领）。
-    private var lastSeenChangeCount: Int?
-    /// 写回快照：下一轮 tick 见到该 count 时只认领、不记录。
-    private var writeBackSnapshot: Int?
-    /// 第一段**放行**后待消化的计数：第二段必须对上它才消化。
-    ///
-    /// 不能拿 `lastSeenChangeCount` 当门票——那个值在第一段无论是否放行都会被更新
-    /// （暂停、transient、自循环都要认领计数，否则下一拍会反复读同一次变化），
-    /// 所以它证明不了"这一次变化被放行了"。少了这张票，暂停期间或 transient 的载荷
-    /// 会在恢复记录后被补记进来，正好违反"暂停期不补记"的既定契约。
-    private var pendingRecordChangeCount: Int?
     /// 失效闪示（copyFailedID）的清除任务。
     private var highlightTask: Task<Void, Never>?
 
-    /// 活跃放置实例（视图 appear 登记 / disappear 注销 / 移除回调强制注销）。
-    private var livePlacements: Set<String> = []
-    private var probeCounts: [ObjectIdentifier: Int] = [:]
-    private var visibleWindows: Set<ObjectIdentifier> = []
-
-    /// 当前节拍；nil = 未在运行。internal 供测试断言。
-    private(set) var currentInterval: TimeInterval?
-
     init(reader: any ClipboardReading = SystemClipboardReader()) {
         self.reader = reader
+        let pollState = ClipboardPollState()
+        self.pollState = pollState
+        self.poller = ClipboardPoller(reader: reader, state: pollState)
+        // 采集结论回主线程的唯一入口（poller 已在主线程上回调）。
+        poller.onOutcome = { [weak self] outcome in self?.handle(outcome) }
     }
 
-    var isObserved: Bool { !livePlacements.isEmpty }
+    /// 采集表是否在跑（internal 供测试断言）。
+    var isPolling: Bool { poller.isRunning }
 
     // MARK: 生命周期
 
-    func attach(stateStore: StateStore) {
+    /// 装载插件数据并（默认）启动常驻轮询。
+    ///
+    /// `startPolling: false` 仅供测试：状态机用例要确定性，不能被后台表在跑用例期间
+    /// 偷偷记录污染。
+    func attach(stateStore: StateStore, startPolling: Bool = true) {
         self.stateStore = stateStore
         mediaStore = try? ClipboardMediaStore(stateStore: stateStore)
         entries = ClipboardHistoryLogic.sanitized(
@@ -342,12 +336,12 @@ final class ClipboardHistoryStore: ObservableObject {
         // 孤儿对账必须在 entries 定型之后：净化可能淘汰掉带媒体的条目，那些文件
         // 此刻正好变成无人引用的孤儿。顺序反了会把仍被引用的文件删掉。
         mediaStore?.reconcile(referenced: Set(entries.compactMap(\.storedMediaName)))
-        // 启动即认领当前计数：避免把宿主启动前的旧剪贴板当"新复制"记一条，
-        // 睡眠 / 锁屏唤醒同理收敛（共识 Q6：唤醒后最多记一条）。
-        lastSeenChangeCount = reader.probe().changeCount
-        pendingRecordChangeCount = nil
+        // 轮询引擎与用户状态对齐：暂停态 + 启动即认领当前计数（避免把宿主启动前的
+        // 旧剪贴板当"新复制"记一条；睡眠 / 锁屏唤醒同理收敛）。
+        pollState.setPaused(isPaused)
+        poller.reseed()
         isActive = true
-        recomputeTimer()
+        if startPolling { poller.start() }
         // 启动对齐：把"当前剪贴板内容"对上历史条目（持续高亮语义），见
         // `syncCurrentEntryMatch`。
         syncCurrentEntryMatch()
@@ -359,139 +353,38 @@ final class ClipboardHistoryStore: ObservableObject {
 
     func suspend() {
         isActive = false
-        stopTicking()
+        poller.stop()
         stopCleanupTimer()
-        livePlacements.removeAll()
-        probeCounts.removeAll()
-        visibleWindows.removeAll()
         highlightTask?.cancel()
         highlightTask = nil
     }
 
-    // MARK: 实例登记与可见性（SystemMonitorStore 同款）
+    // MARK: 轮询与记录（采集在 ClipboardPoller 的专用队列上完成，本层只消化结论）
 
-    func viewDidAppear(placementID: String) {
-        guard !placementID.isEmpty else { return }
-        livePlacements.insert(placementID)
-        recomputeTimer()
-    }
-
-    func viewDidDisappear(placementID: String) {
-        livePlacements.remove(placementID)
-        recomputeTimer()
-    }
-
-    func placementRemoved(placementID: String) {
-        livePlacements.remove(placementID)
-        recomputeTimer()
-    }
-
-    func probeAttached(windowID: ObjectIdentifier, isVisible: Bool) {
-        probeCounts[windowID, default: 0] += 1
-        if isVisible { visibleWindows.insert(windowID) }
-        recomputeTimer()
-    }
-
-    func probeDetached(windowID: ObjectIdentifier) {
-        if let count = probeCounts[windowID] {
-            if count <= 1 {
-                probeCounts.removeValue(forKey: windowID)
-                visibleWindows.remove(windowID)
-            } else {
-                probeCounts[windowID] = count - 1
-            }
-        }
-        recomputeTimer()
-    }
-
-    func probeVisibilityChanged(windowID: ObjectIdentifier, isVisible: Bool) {
-        guard probeCounts[windowID] != nil else { return }
-        if isVisible { visibleWindows.insert(windowID) } else { visibleWindows.remove(windowID) }
-        recomputeTimer()
-    }
-
-    // MARK: 节拍
-
-    private func recomputeTimer() {
-        guard isActive, isObserved else {
-            stopTicking()
-            return
-        }
-        let interval = visibleWindows.isEmpty ? Self.idleInterval : Self.activeInterval
-        if tickTimer != nil, currentInterval == interval { return }
-        stopTicking()
-        currentInterval = interval
-        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.poll()
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        tickTimer = timer
-        poll()
-    }
-
-    private func stopTicking() {
-        tickTimer?.invalidate()
-        tickTimer = nil
-        currentInterval = nil
-    }
-
-    // MARK: 轮询与记录（两段式，见文件头 ClipboardReading 的说明）
-
-    /// 拉一次剪贴板（ticker 与测试共用入口）。轻探测在后台线程，门在主线程。
-    func poll() {
-        guard isActive, isObserved else { return }
-        let captured = reader
-        Task.detached(priority: .utility) { [weak self] in
-            let probe = captured.probe()
-            await self?.ingest(probe)
-        }
-    }
-
-    /// 第一段收口：轻探测的门。**这里不读任何载荷字节**（internal 供测试直注）。
-    func ingest(_ probe: ClipboardProbe) {
+    /// 消化采集结论（internal 供测试直注）。
+    func handle(_ outcome: ClipboardPoller.Outcome) {
         guard isActive else { return }
-        defer { lastSeenChangeCount = probe.changeCount }
-        // 自循环跳过：这是我们自己写回的那一次变化。
-        if let writeBack = writeBackSnapshot, writeBack == probe.changeCount {
-            writeBackSnapshot = nil
-            return
-        }
-        guard probe.changeCount != lastSeenChangeCount else { return }
-        // 剪贴板变了但这次变化不会被记录（暂停 / transient）：当前内容已不可知、
-        // 不再对应任何条目，持续高亮随之消失（自循环认领在上面已提前返回，不误清）。
-        guard !isPaused else {
+        switch outcome {
+        case .unchanged, .selfLoop:
+            // 自循环（我们自己的写回）已在采集层认领，高亮由 copyBack 直接维护，不动。
+            break
+        case .clearHighlight:
+            // 剪贴板变了但这次变化不会被记录（暂停 / transient）：当前内容已不可知、
+            // 不再对应任何条目，持续高亮随之消失。
             currentClipboardEntryID = nil
-            return
-        }
-        guard !Self.isTransient(typeNames: probe.typeNames) else {
-            currentClipboardEntryID = nil
-            return
-        }
-        pendingRecordChangeCount = probe.changeCount
-        readPayload(changeCount: probe.changeCount)
-    }
-
-    /// 第二段：门全过之后才读重数据（图像字节可能数 MB）。
-    private func readPayload(changeCount: Int) {
-        let captured = reader
-        Task.detached(priority: .utility) { [weak self] in
-            let payload = captured.readPayload()
-            await self?.ingest(payload, changeCount: changeCount)
+        case .captured(let payload):
+            record(payload)
         }
     }
 
-    /// 第二段收口：载荷回主线程消化（internal 供测试直注）。
-    ///
-    /// `changeCount` 是**发起读取时**的计数：只有它还等同于第一段放行时留的票，
-    /// 这份载荷才算数。用户在读取的这几十毫秒里又复制了别的东西时，票已被新的
-    /// 放行覆盖（或仍是旧票而计数已变），这次投递自然落空——不会把旧内容按新顺序
-    /// 记进去。
-    func ingest(_ payload: ClipboardPayload, changeCount: Int) {
-        // 门票在放行后只消费一次：并发 / 重复投递的同一份载荷不会再记一遍。
-        guard isActive, changeCount == pendingRecordChangeCount, !isPaused else { return }
-        pendingRecordChangeCount = nil
+    /// 同步跑一拍采集并作用到状态机（**仅供测试直注**；生产由 poller 的计时器驱动）。
+    func pollNow() {
+        handle(poller.pollOnce())
+    }
+
+    /// 消化一次值得记录的载荷（internal 供测试直注）。
+    func record(_ payload: ClipboardPayload) {
+        guard isActive, !isPaused else { return }
         var capture = ClipboardCapture(
             text: payload.text,
             filePaths: payload.filePaths,
@@ -542,11 +435,11 @@ final class ClipboardHistoryStore: ObservableObject {
     ///
     /// 启动时剪贴板里大概率是历史里已有的内容（上次会话复制的），不读一次载荷的
     /// 话，直到下一次复制前都没有高亮，违背"始终高亮当前内容"的语义。只读这一次：
-    /// 常规轮询仍是两段式（每 tick 只读计数）。transient / concealed 内容刻意不读
+    /// 常规轮询在专用队列上完成门控与读载荷。transient / concealed 内容刻意不读
     /// （隐私红线与轮询同源），直接无高亮。
     private func syncCurrentEntryMatch() {
         let probe = reader.probe()
-        guard !Self.isTransient(typeNames: probe.typeNames) else {
+        guard !ClipboardHistoryLogic.isTransient(typeNames: probe.typeNames) else {
             currentClipboardEntryID = nil
             return
         }
@@ -562,9 +455,9 @@ final class ClipboardHistoryStore: ObservableObject {
 
     /// 由载荷对齐"当前剪贴板内容"的高亮条（internal 供测试直注；生产走
     /// `syncCurrentEntryMatch` 的异步壳）。`changeCount` 是发起读取时见到的计数：
-    /// 读载荷期间剪贴板又变了的话，这份快照过期，直接丢弃，交给后续 ingest 收口。
+    /// 读载荷期间剪贴板又变了的话，这份快照过期，直接丢弃，交给后续轮询收口。
     func applyCurrentEntryMatch(from payload: ClipboardPayload, changeCount: Int) {
-        guard lastSeenChangeCount == changeCount else { return }
+        guard pollState.latestChangeCount == changeCount else { return }
         var capture = ClipboardCapture(
             text: payload.text,
             filePaths: payload.filePaths,
@@ -583,16 +476,19 @@ final class ClipboardHistoryStore: ObservableObject {
 
     // MARK: 用户操作
 
-    /// 点击写回：按类型把内容放回剪贴板 + 记快照跳过自循环 + 高亮该条。
+    /// 点击写回：按类型把内容放回剪贴板 + 请轮询认作自循环 + 高亮该条。
     /// 返回 false 表示写回被拒（文件条目的原路径已全部失效）。
     @discardableResult
     func copyBack(_ entry: ClipboardEntry) -> Bool {
+        // 写回期间置互斥标记：免得这一拍把宿主自己的写回当成一次外部复制记下来。
+        pollState.beginWrite()
         guard let count = writeToPasteboard(entry) else {
+            pollState.cancelWrite()
             flashCopyFailure(entry.id)
             return false
         }
-        writeBackSnapshot = count
-        lastSeenChangeCount = count
+        // 置写回快照 + 前移计数：轮询下一拍凭它认出这次变化是自循环、只认领不记录。
+        poller.acknowledgeWriteBack(count)
         copyFailedID = nil
         // 持续高亮：写回成功后该条就是"当前剪贴板内容"，直到内容再变。
         currentClipboardEntryID = entry.id
@@ -645,12 +541,9 @@ final class ClipboardHistoryStore: ObservableObject {
         guard isPaused != paused else { return }
         isPaused = paused
         try? stateStore?.setObject(paused, forKey: Self.pausedStoreKey)
-        // 恢复记录时重新认领计数：暂停期间的变化不补记（共识 Q10）。同时**作废**第一
-        // 段可能留下的票，否则恢复后那份被暂停挡下的载荷会被补记进来。
-        if !paused {
-            pendingRecordChangeCount = nil
-            lastSeenChangeCount = reader.probe().changeCount
-        }
+        // 暂停期不补记（共识 Q10）：采集门控读的是这个镜像，暂停期间每一拍都只认领
+        // 计数、不读载荷；恢复后从"当前计数"往后记，不会把暂停期间的变化补进来。
+        pollState.setPaused(paused)
     }
 
     // MARK: 自动清理（档位语义见 ClipboardAutoCleanupPeriod）
@@ -748,10 +641,10 @@ final class ClipboardHistoryStore: ObservableObject {
         try? stateStore?.setObject(entries, forKey: Self.historyStoreKey)
     }
 
-    /// 自动清理检查表：挂在 attach → suspend 之间，与 `isObserved` **无关**。
+    /// 自动清理检查表：挂在 attach → suspend 之间，与采集轮询相互独立。
     ///
-    /// 刻意不走 `recomputeTimer` 那条可见性驱动的路：清理是全局房间整理，不该等
-    /// 用户把抽屉打开；也没有"没有放置实例就不需要清"这一说（历史还在磁盘上）。
+    /// 刻意不与轮询共用节拍：清理是全局房间整理（粒度是天），60s 一次的日期比较
+    /// 成本可忽略；也没有"用户看不看得到"这一说（历史还在磁盘上）。
     private func startCleanupTimer() {
         guard cleanupTimer == nil else { return }
         let timer = Timer(timeInterval: Self.cleanupCheckInterval, repeats: true) { [weak self] _ in
@@ -780,89 +673,5 @@ final class ClipboardHistoryStore: ObservableObject {
             currentClipboardEntryID = nil
         }
         if let id = copyFailedID, !next.contains(where: { $0.id == id }) { copyFailedID = nil }
-    }
-
-    /// transient 启发式：类型名含 transient / concealed / password / secret 即跳过。
-    /// 尽力而为（README 已声明局限）：密码管理器的自动清除型复制通常带此类标记
-    /// 或存活极短；后者靠"变化过快"的下一轮覆盖自然收敛——本函数只处理前者。
-    static func isTransient(typeNames: [String]) -> Bool {
-        let markers = ["transient", "concealed", "password", "secret"]
-        return typeNames.contains { name in
-            let lower = name.lowercased()
-            return markers.contains { lower.contains($0) }
-        }
-    }
-}
-
-// MARK: - 窗口可见性探针（SystemMonitorStore.WindowVisibilityProbe 同款语义）
-
-/// 可见性感知机制同 SystemMonitorStore.WindowVisibilityProbe（见其 MARK 节）；isPreview 副本不插探针。
-struct ClipboardVisibilityProbe: NSViewRepresentable {
-    let onAttach: (_ windowID: ObjectIdentifier, _ isVisible: Bool) -> Void
-    let onDetach: (_ windowID: ObjectIdentifier) -> Void
-    let onVisibilityChange: (_ windowID: ObjectIdentifier, _ isVisible: Bool) -> Void
-
-    func makeNSView(context _: Context) -> ProbeView {
-        let view = ProbeView()
-        view.onAttach = onAttach
-        view.onDetach = onDetach
-        view.onVisibilityChange = onVisibilityChange
-        return view
-    }
-
-    func updateNSView(_: ProbeView, context _: Context) {}
-
-    final class ProbeView: NSView {
-        var onAttach: ((_ windowID: ObjectIdentifier, _ isVisible: Bool) -> Void)?
-        var onDetach: ((_ windowID: ObjectIdentifier) -> Void)?
-        var onVisibilityChange: ((_ windowID: ObjectIdentifier, _ isVisible: Bool) -> Void)?
-
-        private var observedWindowID: ObjectIdentifier?
-        private var isObserving = false
-
-        deinit {
-            if isObserving {
-                NotificationCenter.default.removeObserver(self)
-            }
-        }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            if let window {
-                let windowID = ObjectIdentifier(window)
-                guard observedWindowID != windowID else { return }
-                stopObserving()
-                observedWindowID = windowID
-                startObserving(window)
-                onAttach?(windowID, window.occlusionState.contains(.visible))
-            } else {
-                stopObserving()
-                if let windowID = observedWindowID {
-                    observedWindowID = nil
-                    onDetach?(windowID)
-                }
-            }
-        }
-
-        private func startObserving(_ window: NSWindow) {
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(occlusionDidChange(_:)),
-                name: NSWindow.didChangeOcclusionStateNotification,
-                object: window
-            )
-            isObserving = true
-        }
-
-        private func stopObserving() {
-            guard isObserving else { return }
-            NotificationCenter.default.removeObserver(self)
-            isObserving = false
-        }
-
-        @objc private func occlusionDidChange(_: Notification) {
-            guard let windowID = observedWindowID, let window else { return }
-            onVisibilityChange?(windowID, window.occlusionState.contains(.visible))
-        }
     }
 }

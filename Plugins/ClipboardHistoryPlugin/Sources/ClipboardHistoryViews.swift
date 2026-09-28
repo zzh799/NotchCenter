@@ -153,8 +153,6 @@ final class ClipboardImageCache {
 struct ClipboardHistoryBlockView: View {
     @ObservedObject var store: ClipboardHistoryStore
     @ObservedObject var instance: ClipboardInstanceModel
-    let placementID: String
-    let isPreview: Bool
 
     @State private var query = ""
     @State private var isSearchExpanded = false
@@ -164,15 +162,13 @@ struct ClipboardHistoryBlockView: View {
     /// 悬浮预览的计时与目标（组件见 `ClipboardHoverPreview.swift`）。
     @StateObject private var hover = ClipboardHoverPreviewModel()
 
-    /// 抽屉是否展开。温存让 `onDisappear` 不再表示"用户看不到了"，但登记只随视图挂载
-    /// 生命周期走，收起后视图仍挂载、仍算"被放置"；档位切换交给 occlusion 探针。
+    /// 抽屉展开态。只用于收起时收掉悬浮卡（`hover.cancel()`）；采集不依赖它——
+    /// 轮询随插件启停常驻（见 ClipboardPoller）。
     @Environment(\.isDrawerPresented) private var isDrawerPresented
 
-    init(instance: ClipboardInstanceModel, placementID: String, isPreview: Bool) {
+    init(instance: ClipboardInstanceModel) {
         self.store = ClipboardHistoryStore.shared
         self.instance = instance
-        self.placementID = placementID
-        self.isPreview = isPreview
     }
 
     var body: some View {
@@ -194,9 +190,6 @@ struct ClipboardHistoryBlockView: View {
             .coordinateSpace(name: ClipboardHoverSpace.list)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            visibilityProbeLayer
-        }
         // 搜索 / 清空角标：与编辑模式角标同一交互——默认隐藏，鼠标悬浮组件才显示；
         // 左搜索、右清空，对称镜像编辑模式的左上齿轮 / 右上移除。搜索展开时隐藏。
         .overlay(alignment: .topLeading) {
@@ -214,8 +207,6 @@ struct ClipboardHistoryBlockView: View {
             }
         }
         .onHover { isHovering = $0 }
-        .onAppear { registerObservation() }
-        .onDisappear { unregisterObservation() }
         .onChange(of: isDrawerPresented) { _, presented in
             // 抽屉收起后视图树仍在（温存），悬浮卡必须跟着"用户看不见了"这个事实收掉。
             if !presented { hover.cancel() }
@@ -265,25 +256,6 @@ struct ClipboardHistoryBlockView: View {
             } else {
                 historyList(items)
             }
-        }
-    }
-
-    @ViewBuilder
-    private var visibilityProbeLayer: some View {
-        // 可见性探针：isPreview 副本不插（预览层随时整层消失，不得认领共享状态）。
-        if !isPreview, ClipboardHistoryLogic.diagnosticMode != .probeOff {
-            ClipboardVisibilityProbe(
-                onAttach: { windowID, isVisible in
-                    store.probeAttached(windowID: windowID, isVisible: isVisible)
-                },
-                onDetach: { windowID in
-                    store.probeDetached(windowID: windowID)
-                },
-                onVisibilityChange: { windowID, isVisible in
-                    store.probeVisibilityChanged(windowID: windowID, isVisible: isVisible)
-                }
-            )
-            .frame(width: 0, height: 0)
         }
     }
 
@@ -371,20 +343,6 @@ struct ClipboardHistoryBlockView: View {
         isSearchExpanded = false
         query = ""
         searchFocused = false
-    }
-
-    /// 登记本实例的观察关系（幂等：重复挂载不会重复计数）。登记随**视图挂载**生命周期
-    /// 走——抽屉温存使收起后视图仍挂载，收起期间仍须保持被观察以继续记录；档位
-    /// （active/idle）由 occlusion 探针按真实可见性切换，不在此处起停轮询表。
-    private func registerObservation() {
-        guard !isPreview else { return }
-        store.viewDidAppear(placementID: placementID)
-    }
-
-    /// 注销本实例的观察关系（幂等）。只有视图真正卸载才注销；抽屉收起不算卸载。
-    private func unregisterObservation() {
-        guard !isPreview else { return }
-        store.viewDidDisappear(placementID: placementID)
     }
 
     private var pausedBanner: some View {

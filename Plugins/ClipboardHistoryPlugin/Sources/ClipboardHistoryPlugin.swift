@@ -78,11 +78,7 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
                     Self.clipboardLayoutProbes(for: info.frame.size)
                 },
                 makeView: { context in
-                    AnyView(ClipboardHistoryBlockView(
-                        instance: instanceModel(for: context),
-                        placementID: context.placementID,
-                        isPreview: context.layoutInfo.isPreview
-                    ))
+                    AnyView(ClipboardHistoryBlockView(instance: instanceModel(for: context)))
                 }
             ),
             // 大组件形态：常驻搜索 + 置顶看板 + 类型筛选 + 全文预览。与上面的
@@ -99,8 +95,8 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
                 probes: { info in
                     Self.clipboardLibraryLayoutProbes(for: info.frame.size)
                 },
-                makeView: { context in
-                    AnyView(ClipboardLibraryView(context: context))
+                makeView: { _ in
+                    AnyView(ClipboardLibraryView())
                 }
             ),
         ]
@@ -153,7 +149,6 @@ public final class ClipboardHistoryPlugin: NSObject, NotchCenterPlugin, NotchCen
 
     public func placementWasRemoved(blockID _: String, placementID: String) {
         ClipboardInstanceRegistry.shared.discard(placementID: placementID)
-        ClipboardHistoryStore.shared.placementRemoved(placementID: placementID)
         // 只清该实例的显示偏好，全局历史不受影响（共识 Q7）。
         if let scope = stateStore?.placementScope(placementID: placementID) {
             scope.removeValue(forKey: ClipboardInstanceConfigLogic.storeKey)

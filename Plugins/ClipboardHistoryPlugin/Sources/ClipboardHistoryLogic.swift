@@ -301,9 +301,6 @@ enum ClipboardHistoryLogic {
     ///
     /// 与压帽同族：只读环境变量、不进实例配置、默认 nil 时生产路径逐字节不变。
     enum DiagnosticMode: String {
-        /// 不装可见性探针（`ClipboardVisibilityProbe`，每块一个 NSViewRepresentable
-        /// + 一次 `probeAttached` → 轮询表重算 → 剪贴板读取）。
-        case probeOff = "probe-off"
         /// 不渲染列表内容（一律空态）：摘掉行物化、逐行 `blockPopoverTrigger` /
         /// `contextMenu` / a11y 标签，但保留块壳（BlockCard、搜索行、筛选行）。
         case contentOff = "content-off"
@@ -667,6 +664,59 @@ enum ClipboardHistoryLogic {
     /// 新条 / 重排条的插入位：置顶落置顶区末尾，普通落置顶区之后（普通区首位）。
     private static func insertionIndex(forPinned _: Bool, in entries: [ClipboardEntry]) -> Int {
         entries.prefix(while: \.pinned).count
+    }
+}
+
+// MARK: - 轮询门控（纯逻辑，可单测）
+//
+// 采集在专用后台队列上跑「探测 → 门控 → 读载荷」（见 ClipboardPoller）。一拍该不该
+// 读载荷、该不该记录，全由这里判定——放到纯逻辑层是为了能脱离线程与真实剪贴板单测。
+// 判定顺序即优先级：自循环（我们自己的写回）→ 计数未变 → 暂停 → transient → 记录。
+// 只有最后一档才允许去读重数据（图像可能数 MB），这是富媒体落地后的硬要求。
+//
+// 刻意只吃 `changeCount` / `typeNames` 两个标量与历史状态，不接受 `ClipboardProbe`
+// 之类定义在 AppKit 文件里的类型，好让本文件保持"无 AppKit 依赖"。
+
+/// 一拍轮询的决策。
+enum ClipboardPollDecision: Equatable {
+    /// 计数未变：什么也不做。
+    case unchanged
+    /// 变化来自我们自己的写回：认领计数、不动"当前内容"高亮。
+    case selfLoop
+    /// 变化了但不记录（暂停 / transient）：清掉"当前内容"高亮（当前内容已不可知）。
+    case clearHighlight
+    /// 值得记录：去读载荷。
+    case capture(changeCount: Int)
+}
+
+extension ClipboardHistoryLogic {
+    /// 轻探测结果 + 历史状态 → 一拍决策。
+    ///
+    /// `lastSeen` / `writeBack` 由调用方（轮询引擎）持有；`nil` 表示尚未认领过任何计数 /
+    /// 当前没有待认领的写回快照。
+    static func pollDecision(
+        changeCount: Int,
+        typeNames: [String],
+        lastSeen: Int?,
+        writeBack: Int?,
+        isPaused: Bool
+    ) -> ClipboardPollDecision {
+        if let writeBack, writeBack == changeCount { return .selfLoop }
+        guard changeCount != lastSeen else { return .unchanged }
+        guard !isPaused else { return .clearHighlight }
+        guard !isTransient(typeNames: typeNames) else { return .clearHighlight }
+        return .capture(changeCount: changeCount)
+    }
+
+    /// transient 启发式：类型名含 transient / concealed / password / secret 即跳过。
+    /// 尽力而为（README 已声明局限）：密码管理器的自动清除型复制通常带此类标记
+    /// 或存活极短；后者靠"变化过快"的下一轮覆盖自然收敛——本函数只处理前者。
+    static func isTransient(typeNames: [String]) -> Bool {
+        let markers = ["transient", "concealed", "password", "secret"]
+        return typeNames.contains { name in
+            let lower = name.lowercased()
+            return markers.contains { lower.contains($0) }
+        }
     }
 }
 

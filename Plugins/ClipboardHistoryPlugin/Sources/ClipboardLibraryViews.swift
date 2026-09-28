@@ -57,8 +57,6 @@ enum ClipboardLibraryMetricsProbe {
 private typealias ClipboardLibraryMetrics = ClipboardLibraryMetricsProbe
 
 struct ClipboardLibraryView: View {
-    let context: BlockContext
-
     @ObservedObject private var store = ClipboardHistoryStore.shared
 
     @State private var query = ""
@@ -67,28 +65,9 @@ struct ClipboardLibraryView: View {
     /// 悬浮预览的计时与目标（组件见 `ClipboardHoverPreview.swift`）。
     @StateObject private var hover = ClipboardHoverPreviewModel()
 
-    /// 抽屉展开态：库页与抽屉块共享同一份"被观察"登记，但登记只随视图挂载生命周期走
-    /// ——抽屉温存使收起后视图仍挂载、仍算"被放置"，档位切换由 occlusion 探针负责。
+    /// 抽屉展开态。只用于收起时收掉悬浮卡（`hover.cancel()`）；采集不依赖它——
+    /// 轮询随插件启停常驻（见 ClipboardPoller）。
     @Environment(\.isDrawerPresented) private var isDrawerPresented
-
-    init(context: BlockContext) {
-        self.context = context
-    }
-
-    private var isPreview: Bool { context.layoutInfo.isPreview }
-
-    /// 登记本页对应放置实例的观察关系（幂等）；预览副本一律不参与。登记随**视图挂载**
-    /// 生命周期走：抽屉温存使收起后视图仍挂载，收起期间仍须保持被观察以继续记录。
-    private func registerLibraryObservation() {
-        guard !isPreview else { return }
-        store.viewDidAppear(placementID: context.placementID)
-    }
-
-    /// 注销本页对应放置实例的观察关系（幂等）。只有视图真正卸载才注销。
-    private func unregisterLibraryObservation() {
-        guard !isPreview else { return }
-        store.viewDidDisappear(placementID: context.placementID)
-    }
 
     /// 筛选 + 搜索后的结果，再切置顶/最近两段。
     private var sections: (pinned: [ClipboardEntry], recent: [ClipboardEntry]) {
@@ -120,9 +99,6 @@ struct ClipboardLibraryView: View {
         .coordinateSpace(name: ClipboardHoverSpace.list)
         .padding(ClipboardLibraryMetrics.padding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background { visibilityProbeLayer }
-        .onAppear { registerLibraryObservation() }
-        .onDisappear { unregisterLibraryObservation() }
         .onChange(of: isDrawerPresented) { _, presented in
             // 抽屉收起后视图树仍在（温存），悬浮卡必须跟着"用户看不见了"这个事实收掉。
             if !presented { hover.cancel() }
@@ -574,23 +550,6 @@ struct ClipboardLibraryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
-    private var visibilityProbeLayer: some View {
-        if !isPreview, ClipboardHistoryLogic.diagnosticMode != .probeOff {
-            ClipboardVisibilityProbe(
-                onAttach: { windowID, isVisible in
-                    store.probeAttached(windowID: windowID, isVisible: isVisible)
-                },
-                onDetach: { windowID in
-                    store.probeDetached(windowID: windowID)
-                },
-                onVisibilityChange: { windowID, isVisible in
-                    store.probeVisibilityChanged(windowID: windowID, isVisible: isVisible)
-                }
-            )
-            .frame(width: 0, height: 0)
-        }
-    }
 }
 
 /// 库页长按预览：图片给原图（不裁切），其余给全文 + 色块（颜色条目）+ 内嵌滚动 + 可选中复制。

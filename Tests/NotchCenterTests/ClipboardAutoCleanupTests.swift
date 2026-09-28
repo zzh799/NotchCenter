@@ -71,7 +71,7 @@ final class ClipboardAutoCleanupTests: XCTestCase {
         }
         let clipboard = StubClipboard()
         let store = ClipboardHistoryStore(reader: clipboard)
-        store.attach(stateStore: stateStore)
+        store.attach(stateStore: stateStore, startPolling: false)
         return Harness(store: store, clipboard: clipboard, root: root)
     }
 
@@ -89,11 +89,9 @@ final class ClipboardAutoCleanupTests: XCTestCase {
         ClipboardEntry(text: text, pinned: pinned)
     }
 
-    /// 走完两段式采集（生产路径第二段在后台，这里同步补上）。
-    private func ingest(_ store: ClipboardHistoryStore, _ clipboard: StubClipboard) {
-        let probe = clipboard.probe()
-        store.ingest(probe)
-        store.ingest(clipboard.readPayload(), changeCount: probe.changeCount)
+    /// 走完一拍采集（生产由 ClipboardPoller 的后台队列驱动，这里同步直注）。
+    private func ingest(_ store: ClipboardHistoryStore, _: StubClipboard) {
+        store.pollNow()
     }
 
     private func mediaDirectory(_ root: URL) -> URL {
@@ -182,7 +180,7 @@ final class ClipboardAutoCleanupTests: XCTestCase {
         XCTAssertEqual(harness.store.entries.map(\.text), ["pinned"])
 
         let restored = ClipboardHistoryStore(reader: StubClipboard())
-        restored.attach(stateStore: StateStore(rootDirectory: harness.root))
+        restored.attach(stateStore: StateStore(rootDirectory: harness.root), startPolling: false)
         XCTAssertEqual(restored.entries.map(\.text), ["pinned"])
         restored.suspend()
 
@@ -224,7 +222,7 @@ final class ClipboardAutoCleanupTests: XCTestCase {
         defer { cleanup(harness) }
         XCTAssertEqual(harness.store.autoCleanupPeriod, .monthly)
         let restored = ClipboardHistoryStore(reader: StubClipboard())
-        restored.attach(stateStore: StateStore(rootDirectory: harness.root))
+        restored.attach(stateStore: StateStore(rootDirectory: harness.root), startPolling: false)
         XCTAssertEqual(restored.autoCleanupPeriod, .monthly)
         restored.suspend()
     }

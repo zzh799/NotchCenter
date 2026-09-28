@@ -73,15 +73,13 @@ final class ClipboardHistoryTests: XCTestCase {
         }
     }
 
-    /// 走完两段式采集：轻探测的门 + 载荷消化。
+    /// 走完一拍采集：探测 → 门控 → 读载荷 → 消化（同步直注，跳过计时器）。
     ///
-    /// 生产路径的第二段挂在后台任务上，这里同步补上——测试要的是确定性，
+    /// 生产路径由 ClipboardPoller 的专用队列驱动，这里同步补上——测试要的是确定性，
     /// 不是跨线程等待。重复触发是幂等的：同 changeCount 的载荷第二次进来会被
     /// 内容去重吃掉，不会记第二条，也不会重复落盘。
-    private func ingest(_ store: ClipboardHistoryStore, _ clipboard: FakeClipboard) {
-        let probe = clipboard.probe()
-        store.ingest(probe)
-        store.ingest(clipboard.readPayload(), changeCount: probe.changeCount)
+    private func ingest(_ store: ClipboardHistoryStore, _: FakeClipboard) {
+        store.pollNow()
     }
 
     /// 造一张真的可解码 PNG——缩略图生成要有真图才走得通。
@@ -118,9 +116,10 @@ final class ClipboardHistoryTests: XCTestCase {
             try? stateStore.setObject(true, forKey: ClipboardHistoryStore.pausedStoreKey)
         }
         let store = ClipboardHistoryStore(reader: clipboard)
-        // 本工厂刻意不登记 placement：状态机用例只验证 ingest，不关心轮询表起停。
-        // 登记与节拍档的契约由 testObservationKeepsIdleTickerWhileUnseen 专门覆盖。
-        store.attach(stateStore: stateStore)
+        // 刻意不启动常驻轮询：状态机用例靠 pollNow() 同步直注，要是后台表在跑会
+        // 在用例中途自行采集、污染断言。轮询表的起停契约由
+        // testPollingStartsOnAttachAndStopsOnSuspend 专门覆盖。
+        store.attach(stateStore: stateStore, startPolling: false)
         return (store, clipboard, root)
     }
 
@@ -230,11 +229,11 @@ final class ClipboardHistoryTests: XCTestCase {
     // MARK: transient 判定（Q2）
 
     func testTransientTypeNamesAreSkipped() {
-        XCTAssertTrue(ClipboardHistoryStore.isTransient(typeNames: ["org.nspasteboard.TransientType"]))
-        XCTAssertTrue(ClipboardHistoryStore.isTransient(typeNames: ["com.1password.concealed"]))
-        XCTAssertTrue(ClipboardHistoryStore.isTransient(typeNames: ["public.password"]))
-        XCTAssertFalse(ClipboardHistoryStore.isTransient(typeNames: ["public.utf8-plain-text"]))
-        XCTAssertFalse(ClipboardHistoryStore.isTransient(typeNames: []))
+        XCTAssertTrue(ClipboardHistoryLogic.isTransient(typeNames: ["org.nspasteboard.TransientType"]))
+        XCTAssertTrue(ClipboardHistoryLogic.isTransient(typeNames: ["com.1password.concealed"]))
+        XCTAssertTrue(ClipboardHistoryLogic.isTransient(typeNames: ["public.password"]))
+        XCTAssertFalse(ClipboardHistoryLogic.isTransient(typeNames: ["public.utf8-plain-text"]))
+        XCTAssertFalse(ClipboardHistoryLogic.isTransient(typeNames: []))
     }
 
     // MARK: store 状态机（假剪贴板驱动）
@@ -377,24 +376,68 @@ final class ClipboardHistoryTests: XCTestCase {
         XCTAssertTrue(store.entries.isEmpty)
     }
 
-    // MARK: 观察登记与节拍档（收起期间仍记录）
+    // MARK: 常驻轮询的起停与节拍
 
-    /// 登记随视图挂载走：只有视图真正卸载（或无放置实例）才停表；无可见探针＝抽屉
-    /// 收起态，仍须走 idle 档继续轮询——这正是"关闭抽屉期间复制的内容不能丢"的支点。
-    /// 若把登记绑在可见性上，收起即清空 livePlacements → 停表 → 收起期复制全丢。
-    func testObservationKeepsIdleTickerWhileUnseen() {
-        let (store, _, root) = makeStore()
+    /// 采集随插件启用（attach）→ 禁用（suspend）起停，与放置实例、抽屉可见性无关。
+    /// 这正是"冷启动从不记录"与"收起 300s 后温存到期停表"两个丢记窗口的修复点；
+    /// 节拍固定 0.5s，不再是按可见性切换的 1.0s / 2.5s。
+    func testPollingStartsOnAttachAndStopsOnSuspend() {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ClipboardPoll-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        store.viewDidAppear(placementID: "p-contract")
-        XCTAssertTrue(store.isObserved)
+        let store = ClipboardHistoryStore(reader: FakeClipboard())
+        store.attach(stateStore: StateStore(rootDirectory: root))
+        XCTAssertTrue(store.isPolling, "attach 默认起常驻表")
+        XCTAssertEqual(ClipboardPoller.interval, 0.5)
+        store.suspend()
+        XCTAssertFalse(store.isPolling, "suspend 停表")
+    }
+
+    // MARK: 轮询门控（纯函数，五态）
+
+    func testPollDecisionCoversAllStates() {
+        // 自循环优先于一切：写回快照对上就不读载荷。
         XCTAssertEqual(
-            store.currentInterval,
-            ClipboardHistoryStore.idleInterval,
-            "无可见探针（抽屉收起）应走 idle 档而非停表"
+            ClipboardHistoryLogic.pollDecision(
+                changeCount: 7, typeNames: [], lastSeen: 5, writeBack: 7, isPaused: false
+            ),
+            .selfLoop
         )
-        store.viewDidDisappear(placementID: "p-contract")
-        XCTAssertFalse(store.isObserved)
-        XCTAssertNil(store.currentInterval, "无放置实例才停表")
+        // 计数未变。
+        XCTAssertEqual(
+            ClipboardHistoryLogic.pollDecision(
+                changeCount: 5, typeNames: [], lastSeen: 5, writeBack: nil, isPaused: false
+            ),
+            .unchanged
+        )
+        // 暂停：变化不记录、清高亮。
+        XCTAssertEqual(
+            ClipboardHistoryLogic.pollDecision(
+                changeCount: 6, typeNames: ["public.utf8-plain-text"], lastSeen: 5, writeBack: nil, isPaused: true
+            ),
+            .clearHighlight
+        )
+        // transient：同上。
+        XCTAssertEqual(
+            ClipboardHistoryLogic.pollDecision(
+                changeCount: 6, typeNames: ["org.nspasteboard.TransientType"], lastSeen: 5, writeBack: nil, isPaused: false
+            ),
+            .clearHighlight
+        )
+        // 正常：去读载荷。
+        XCTAssertEqual(
+            ClipboardHistoryLogic.pollDecision(
+                changeCount: 6, typeNames: ["public.utf8-plain-text"], lastSeen: 5, writeBack: nil, isPaused: false
+            ),
+            .capture(changeCount: 6)
+        )
+        // 从未认领（lastSeen == nil）也算变化。
+        XCTAssertEqual(
+            ClipboardHistoryLogic.pollDecision(
+                changeCount: 1, typeNames: [], lastSeen: nil, writeBack: nil, isPaused: false
+            ),
+            .capture(changeCount: 1)
+        )
     }
 
     // MARK: 诊断压帽（剪贴板行数归因）
@@ -436,15 +479,13 @@ final class ClipboardHistoryTests: XCTestCase {
     /// 否则一个手误的诊断变量会静默改掉用户看到的块内容。
     func testDiagnosticModeReadsEnvOverrideAndRejectsJunk() {
         XCTAssertNil(ClipboardHistoryLogic.diagnosticMode, "套件内默认不得开诊断")
-        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "probe-off", 1)
-        defer { unsetenv("NOTCHCENTER_CLIPBOARD_DIAG") }
-        XCTAssertEqual(ClipboardHistoryLogic.diagnosticMode, .probeOff)
         setenv("NOTCHCENTER_CLIPBOARD_DIAG", "content-off", 1)
+        defer { unsetenv("NOTCHCENTER_CLIPBOARD_DIAG") }
         XCTAssertEqual(ClipboardHistoryLogic.diagnosticMode, .contentOff)
         setenv("NOTCHCENTER_CLIPBOARD_DIAG", "text-off", 1)
         XCTAssertEqual(ClipboardHistoryLogic.diagnosticMode, .textOff)
         XCTAssertEqual(ClipboardHistoryLogic.diagnosticText("很长很长的正文"), "文本")
-        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "PROBE-OFF", 1)
+        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "CONTENT-OFF", 1)
         XCTAssertNil(ClipboardHistoryLogic.diagnosticMode)
         setenv("NOTCHCENTER_CLIPBOARD_DIAG", "no-probe", 1)
         XCTAssertNil(ClipboardHistoryLogic.diagnosticMode)
@@ -464,13 +505,13 @@ final class ClipboardHistoryTests: XCTestCase {
     /// 两把开关彼此正交：压帽不该被分量开关影响，反之亦然。
     func testDiagnosticSwitchesAreIndependent() {
         setenv("NOTCHCENTER_CLIPBOARD_ROW_CAP", "5", 1)
-        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "probe-off", 1)
+        setenv("NOTCHCENTER_CLIPBOARD_DIAG", "content-off", 1)
         defer {
             unsetenv("NOTCHCENTER_CLIPBOARD_ROW_CAP")
             unsetenv("NOTCHCENTER_CLIPBOARD_DIAG")
         }
         XCTAssertEqual(ClipboardHistoryLogic.diagnosticRowCap, 5)
-        XCTAssertEqual(ClipboardHistoryLogic.diagnosticMode, .probeOff)
+        XCTAssertEqual(ClipboardHistoryLogic.diagnosticMode, .contentOff)
         XCTAssertEqual(ClipboardHistoryLogic.effectiveDisplayCount(50), 5)
     }
 
