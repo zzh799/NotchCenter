@@ -49,6 +49,8 @@
 #     Contents/Frameworks/libLaunchdControlKit.dylib（本脚本补齐：宿主不直接链接）
 #     Contents/Frameworks/libLidAngleKit.dylib（同上；盖角传感器复用库）
 #     Contents/PlugIns/<Name>.bundle/{Contents/Info.plist, Contents/MacOS/<Name>}
+#     Contents/PlugIns/<Name>.bundle/Contents/Resources/Bridge/（白名单插件才有：
+#       MediaRemote helper framework + mediaremote-adapter.pl，由 /usr/bin/perl 加载）
 #     Contents/Resources/{en,zh-Hans}.lproj（Xcode 本地化变体组自动嵌入）
 #
 # 依赖的 install_name 均为 @rpath 形式（DYLIB_INSTALL_NAME_BASE=@rpath，见 Project.swift），
@@ -67,6 +69,28 @@ NATIVE_ARCH="$(uname -m)"
 # Plugins/ 下的可复用动态库目录（不是插件，不参与发现与打包）。
 # 与 Project.swift 的 sharedLibraryDirNames 必须保持一致。
 SHARED_LIBRARY_DIR_NAMES="LidAngleKit"
+
+# 需要随包附带 MediaRemote 桥的插件 ID 白名单（按 PluginID 匹配）。
+#
+# 为什么需要桥：宿主进程读不到私有框架 MediaRemote——macOS 15.4 起系统只放行 bundle id
+# 以 com.apple.* 开头的进程，本仓无沙盒 / ad-hoc 签名的进程实测查询恒返回空。可用的
+# 绕行方式是让 /usr/bin/perl（bundle id 恰好是 com.apple.perl）加载一个 helper 动态库
+# 代跑查询，再把 JSON 打到 stdout 给宿主读。
+#
+# 桥的源码 vendored 在 Vendor/mediaremote-adapter（BSD-3，见该目录 LICENSE 与
+# Plugins/MediaControlsPlugin/NOTICE）；编译产物不参与任何 target 的链接，只随 bundle
+# 分发，因此与 Project.swift 的 target 白名单无关——这里是一份独立的插件 ID 白名单。
+BRIDGE_PLUGIN_IDS="com.notchcenter.media-controls"
+BRIDGE_SRC_DIR="$ROOT_DIR/Vendor/mediaremote-adapter"
+BRIDGE_BUILD_DIR="$ROOT_DIR/.build/bridge"
+BRIDGE_FRAMEWORK_NAME="MediaRemoteAdapter"
+# 桥的目标架构（空格分隔；留空 = 本机架构）。发布打包要通用二进制，dev/test 不必。
+BRIDGE_ARCHS=""
+# 桥版本号：上游 CMake 的 0.1.0 + 本仓固定的上游 commit 短哈希（出问题时能直接溯源）。
+BRIDGE_VERSION="0.1.0"
+if [[ -f "$BRIDGE_SRC_DIR/UPSTREAM_COMMIT" ]]; then
+  BRIDGE_VERSION="0.1.0+$(cut -c1-7 < "$BRIDGE_SRC_DIR/UPSTREAM_COMMIT")"
+fi
 
 # 插件 API 版本全局默认值；个别插件可在其 Plugin.plist 的 APIVersionRange 覆盖。
 API_RANGE="1.0..<2.0"
@@ -328,21 +352,103 @@ discover_plugins() {
   (( ${#PLUGIN_NAMES[@]} > 0 )) || die "$PLUGINS_SRC_DIR 下没有发现任何插件目录"
 }
 
+# ---- MediaRemote 桥（Vendor/mediaremote-adapter）--------------------------------
+# 用途与「为什么必须绕」见 BRIDGE_PLUGIN_IDS 处的说明。这里只做两件事：把 vendored
+# 源码编成 helper framework 落到 .build/bridge，以及回答「某插件要不要带桥」。
+
+# 桥编译指纹：源码内容 + 编译器版本。任一变化即重编。
+bridge_fingerprint() {
+  {
+    find "$BRIDGE_SRC_DIR/src" "$BRIDGE_SRC_DIR/include" -type f \
+      \( -name '*.m' -o -name '*.h' \) -print0 2>/dev/null \
+      | sort -z | xargs -0 shasum -a 256
+    shasum -a 256 "$BRIDGE_SRC_DIR/bin/mediaremote-adapter.pl"
+    clang --version | head -1
+  } 2>/dev/null | shasum -a 256 | awk '{print $1}'
+}
+
+# 编译 helper framework（幂等：指纹与架构都没变即复用，编译一次约 2s）。
+build_mediaremote_bridge() {
+  [[ -d "$BRIDGE_SRC_DIR/src" ]] || die "缺少 MediaRemote 桥源码：$BRIDGE_SRC_DIR"
+  local fw="$BRIDGE_BUILD_DIR/$BRIDGE_FRAMEWORK_NAME.framework"
+  local binary="$fw/$BRIDGE_FRAMEWORK_NAME"
+  local state_file="$BRIDGE_BUILD_DIR/.fingerprint"
+  local want have=""
+  want="$(bridge_fingerprint)|archs:${BRIDGE_ARCHS:-native}"
+  [[ -f "$state_file" ]] && have="$(cat "$state_file")"
+  if [[ "$have" == "$want" && -x "$binary" ]]; then
+    return 0
+  fi
+
+  local sources=("$BRIDGE_SRC_DIR"/src/adapter/*.m "$BRIDGE_SRC_DIR"/src/private/*.m "$BRIDGE_SRC_DIR"/src/utility/*.m)
+  local arch_flags="" a
+  for a in ${BRIDGE_ARCHS:-}; do
+    arch_flags="$arch_flags -arch $a"
+  done
+
+  echo "Building MediaRemote bridge (${BRIDGE_ARCHS:-native})..."
+  rm -rf "$fw"
+  mkdir -p "$fw/Resources"
+  # -fvisibility=default 是必须的：Perl 侧靠 dlsym 按名字取 adapter_* 符号，符号被隐藏
+  # 就直接「加载成功但找不到函数」。arch_flags 刻意不加引号（空格分隔的参数列表）。
+  # shellcheck disable=SC2086
+  clang -dynamiclib -fobjc-arc -fvisibility=default $arch_flags \
+    -I "$BRIDGE_SRC_DIR/include" -I "$BRIDGE_SRC_DIR/src" \
+    -framework Foundation -framework AppKit -framework UniformTypeIdentifiers \
+    "${sources[@]}" -o "$binary" \
+    || die "MediaRemote 桥编译失败"
+  cat > "$fw/Resources/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 仅作 framework 目录的元数据；宿主不加载它，加载方是 /usr/bin/perl。 -->
+  <key>CFBundleExecutable</key>
+  <string>$BRIDGE_FRAMEWORK_NAME</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.vandenbe.$BRIDGE_FRAMEWORK_NAME</string>
+  <key>CFBundleName</key>
+  <string>$BRIDGE_FRAMEWORK_NAME</string>
+  <key>CFBundlePackageType</key>
+  <string>FMWK</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$BRIDGE_VERSION</string>
+</dict>
+</plist>
+PLIST
+  # arm64 对无效签名零容忍：DynaLoader 加载未签名动态库会直接失败。
+  codesign --force --sign - "$fw" >/dev/null 2>&1 || die "MediaRemote 桥签名失败"
+  mkdir -p "$BRIDGE_BUILD_DIR"
+  printf '%s\n' "$want" > "$state_file"
+}
+
+# 该插件是否在白名单里、需要随包附带桥。
+plugin_uses_bridge() { # $1=插件索引
+  local id="${PLUGIN_IDS[$1]:-}"
+  [[ -n "$id" && " $BRIDGE_PLUGIN_IDS " == *" $id "* ]]
+}
+
 # 单个插件 bundle 的组装指纹。以下任一项变化都必须重建该 bundle：
 #   - dylib 内容（插件代码改了）
 #   - Plugin.plist 内容（版本 / DisplayName / Description / NSPrincipalClass /
 #     APIVersionRange / 中文元数据，全部直接决定组装出的 Info.plist 与 InfoPlist.strings）
 #   - Resources/**（本地化 .strings 改了但代码没动，同样要重建）
 #   - README.md（设置面板「插件」分区读它渲染使用说明）
+#   - MediaRemote 桥的产物与 Perl 入口（白名单插件才有；桥重编了必须重打 bundle）
 #   - API_RANGE 全局默认值（本脚本常量；改动影响未显式声明 APIVersionRange 的插件）
-bundle_fingerprint() { # $1=插件名 $2=dylib路径
-  local name="$1" dylib="$2" lproj_src="$PLUGINS_SRC_DIR/$name/Resources"
+bundle_fingerprint() { # $1=插件索引 $2=dylib路径
+  local i="$1" dylib="$2"
+  local name="${PLUGIN_NAMES[$i]}" lproj_src="$PLUGINS_SRC_DIR/$name/Resources"
   {
     printf 'api-default:%s\n' "$API_RANGE"
     shasum -a 256 "$dylib" "$PLUGINS_SRC_DIR/$name/Plugin.plist"
     find "$lproj_src" -type f -print0 2>/dev/null | sort -z | xargs -0 shasum -a 256
     if [[ -f "$PLUGINS_SRC_DIR/$name/README.md" ]]; then
       shasum -a 256 "$PLUGINS_SRC_DIR/$name/README.md"
+    fi
+    if plugin_uses_bridge "$i"; then
+      shasum -a 256 "$BRIDGE_BUILD_DIR/$BRIDGE_FRAMEWORK_NAME.framework/$BRIDGE_FRAMEWORK_NAME" \
+        "$BRIDGE_SRC_DIR/bin/mediaremote-adapter.pl"
     fi
   } 2>/dev/null | shasum -a 256 | awk '{print $1}'
 }
@@ -384,6 +490,18 @@ assemble_bundle() { # $1=目标PlugIns目录 $2=索引 $3=dylib路径
   local readme_src="$PLUGINS_SRC_DIR/$name/README.md"
   if [[ -f "$readme_src" ]]; then
     cp "$readme_src" "$resources_dir/README.md"
+  fi
+
+  # MediaRemote 桥（白名单插件）：helper framework + Perl 入口随包分发到
+  # Contents/Resources/Bridge/，插件运行期按这个相对路径去找。缺失硬失败——
+  # 桥没带上时插件会永远显示空态，静默降级很难被发现。
+  if plugin_uses_bridge "$i"; then
+    local bridge_src="$BRIDGE_BUILD_DIR/$BRIDGE_FRAMEWORK_NAME.framework"
+    [[ -x "$bridge_src/$BRIDGE_FRAMEWORK_NAME" ]] \
+      || die "插件 $name 需要 MediaRemote 桥但桥未构建：$bridge_src"
+    mkdir -p "$resources_dir/Bridge"
+    cp -R "$bridge_src" "$resources_dir/Bridge/"
+    cp "$BRIDGE_SRC_DIR/bin/mediaremote-adapter.pl" "$resources_dir/Bridge/"
   fi
 
   # 本地化元数据：DisplayNameLocales / DescriptionLocales 生成 InfoPlist.strings。
@@ -470,7 +588,7 @@ assemble_app() { # $1=products_dir
     known_bundles+="$name.bundle "
     stamp="$assembled_state_dir/$name.sha"
     bundle_dir="$plugins_out/$name.bundle"
-    fingerprint="$(bundle_fingerprint "$name" "$dylib")"
+    fingerprint="$(bundle_fingerprint "$i" "$dylib")"
     if [[ -f "$stamp" ]] \
        && [[ "$(cat "$stamp")" == "$fingerprint" ]] \
        && [[ -f "$bundle_dir/Contents/MacOS/$name" ]]; then
@@ -588,6 +706,7 @@ run_dev_build() {
 
   cd "$ROOT_DIR"
   discover_plugins
+  build_mediaremote_bridge
 
   if (( ! full )); then
     input_hash="$(build_inputs_hash)"
@@ -851,6 +970,10 @@ cmd_package() {
   local dmg_checksum_path="$dmg_path.sha256"
   local sign_identity="${SIGN_IDENTITY:--}"
   local notary_profile="${NOTARY_PROFILE:-}"
+
+  # 桥随包分发，必须与宿主同架构：只出 arm64 的话 Intel 机器上插件会永远空转。
+  BRIDGE_ARCHS="arm64 x86_64"
+  build_mediaremote_bridge
 
   echo "Building universal (release)..."
   # 这里刻意不复用 run_xcodebuild：发布要 clean build（两段动作形式，run_xcodebuild 只接

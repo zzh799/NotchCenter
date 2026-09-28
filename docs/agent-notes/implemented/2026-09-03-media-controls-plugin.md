@@ -4,7 +4,7 @@ status: implemented
 date: 2026-09-03
 deciders: zhouzihang
 replaces: <无>
-superseded-by: <无>
+superseded-by: [2026-09-28-media-controls-plugin-restore](2026-09-28-media-controls-plugin-restore.md)（版式由「封面 + 曲目 + 进度 + 三键」改为参考图的单行「应用图标 + 应用名 + 三键」；摘要通道与快捷按钮不再提供）
 
 ## Context(背景与约束)
 

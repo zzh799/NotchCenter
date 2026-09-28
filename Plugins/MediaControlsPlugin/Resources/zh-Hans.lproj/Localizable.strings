@@ -1,0 +1,17 @@
+/* MediaControlsPlugin 简体中文文案（键集合必须与 en 基准一致，LocalizationTests 校验） */
+
+/* 块 */
+"block.drawer.name" = "媒体控制";
+
+/* 抽屉块状态。文案长度受单行宽度约束：块最小宽度下应用名只剩约 90pt，
+   这几条必须短到不被截断，否则空态一上来就是「当前没…的内容」。 */
+"drawer.nothing" = "暂无播放";
+"drawer.unavailable" = "暂不可用";
+"drawer.unknownApp" = "正在播放";
+
+/* 控制按钮帮助与无障碍 */
+"help.previous" = "上一首";
+"help.play" = "播放";
+"help.pause" = "暂停";
+"help.next" = "下一首";
+"a11y.mediaControls" = "媒体控制";

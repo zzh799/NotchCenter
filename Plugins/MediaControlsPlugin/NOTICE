@@ -1,0 +1,20 @@
+Media Controls (NotchCenter plugin)
+Copyright 2026 zhouzihang
+
+This plugin ships the prebuilt helper framework and the driver script of
+mediaremote-adapter, and invokes them from /usr/bin/perl at runtime.
+
+mediaremote-adapter
+Copyright (c) 2025 Jonas van den Berg
+https://github.com/ungive/mediaremote-adapter
+
+Licensed under the BSD 3-Clause License; the full license text is in
+Vendor/mediaremote-adapter/LICENSE, and the original copyright headers are
+kept verbatim in every vendored source file.
+
+Nothing is copied into this directory: the framework is compiled from
+Vendor/mediaremote-adapter by scripts/build.sh and the driver script is copied
+from the same place, both landing in the plugin bundle under
+Contents/Resources/Bridge/ at packaging time. See
+Vendor/mediaremote-adapter/VENDORED.md for the exact file subset taken, what was
+deliberately left out, and the upgrade procedure.

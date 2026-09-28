@@ -10,6 +10,7 @@ import XCTest
 @testable import DisplayPlugin
 @testable import DshPlugin
 @testable import LidAngleDepthPlugin
+@testable import MediaControlsPlugin
 @testable import NotesPlugin
 @testable import PomodoroPlugin
 @testable import QuickButtonBoxPlugin
@@ -47,6 +48,7 @@ final class BlockMinSizeVerificationTests: XCTestCase {
             ("DisplayPlugin", DisplayPlugin.blocks),
             ("DshPlugin", DshPlugin.blocks),
             ("LidAngleDepthPlugin", LidAngleDepthPlugin.blocks),
+            ("MediaControlsPlugin", MediaControlsPlugin.blocks),
             ("NotesPlugin", NotesPlugin.blocks),
             ("PomodoroPlugin", PomodoroPlugin.blocks),
             ("QuickButtonBoxPlugin", QuickButtonBoxPlugin.blocks),
