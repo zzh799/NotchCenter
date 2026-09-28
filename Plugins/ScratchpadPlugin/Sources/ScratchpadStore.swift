@@ -53,10 +53,13 @@ final class ScratchpadStore: ObservableObject {
     }
 
     /// 旧版插件级数据的实例迁移入口：仅当当前为空时整体接管。
-    func seedIfEmpty(_ newItems: [FileShelfItem]) {
-        guard items.isEmpty else { return }
+    /// - Returns: 是否真的接管了（false = 本实例已有条目，调用方不得删除旧记录）。
+    @discardableResult
+    func seedIfEmpty(_ newItems: [FileShelfItem]) -> Bool {
+        guard items.isEmpty else { return false }
         items = newItems
         save()
+        return true
     }
 
     @discardableResult
@@ -140,7 +143,16 @@ final class ScratchpadStore: ObservableObject {
 final class ScratchpadInstanceRegistry {
     static let shared = ScratchpadInstanceRegistry()
 
+    /// 已见 placementID 集合的持久键。
+    ///
+    /// 为什么需要它：宿主不提供"枚举某插件的 placement"能力，而 `storesByID` 只在
+    /// 视图挂载时才建条目。紧凑入口的计数与「清空」却必须覆盖**本次会话尚未打开**
+    /// 的实例（上次会话写过数据、这次还没开抽屉）——否则角标恒 0、快速动作静默
+    /// 无动作，清空也删不掉那些磁盘数据。视图挂载过的实例都会被记进来。
+    private static let seenPlacementsKey = "shelf.seenPlacements.v1"
+
     private var storesByID: [String: ScratchpadStore] = [:]
+    private var seenPlacementIDs: Set<String> = []
 
     /// 插件级共享存储：迁移旧版全局暂存数据，placementWasRemoved 时清理实例目录。
     private(set) var pluginStateStore: StateStore?
@@ -149,16 +161,20 @@ final class ScratchpadInstanceRegistry {
 
     func attach(pluginStateStore: StateStore) {
         self.pluginStateStore = pluginStateStore
+        let stored = pluginStateStore.object([String].self, forKey: Self.seenPlacementsKey) ?? []
+        seenPlacementIDs.formUnion(stored)
+        // 预热已见实例的 store：紧凑角标计数与「清空」因此覆盖得到未挂载实例。
+        for placementID in seenPlacementIDs {
+            _ = makeStore(placementID: placementID, fallbackStore: nil)
+        }
     }
 
-    /// 取（或创建）某放置实例的暂存区。stateStore 是插件级共享存储，
-    /// 内部派生出该实例的 placementScope。
+    /// 取（或创建）某放置实例的暂存区。`fallbackStore` 仅用于 attach 尚未注入
+    /// 插件级 store 的兜底（正常路径恒走 `pluginStateStore`）。
     func store(placementID: String, stateStore: StateStore) -> ScratchpadStore {
         if let store = storesByID[placementID] { return store }
-        let store = ScratchpadStore(stateStore: stateStore.placementScope(placementID: placementID))
-        migrateLegacyItemsIfNeeded(into: store)
-        storesByID[placementID] = store
-        return store
+        remember(placementID)
+        return makeStore(placementID: placementID, fallbackStore: stateStore)
     }
 
     /// 紧凑角标：全部实例条目之和 + 尚未迁移的旧版插件级残留。
@@ -177,9 +193,32 @@ final class ScratchpadInstanceRegistry {
     /// 实例被移除时丢弃内存缓存并删除其持久化数据（只移除路径记录，原文件不受影响）。
     func discard(placementID: String) {
         storesByID.removeValue(forKey: placementID)
+        if seenPlacementIDs.remove(placementID) != nil {
+            persistSeenPlacements()
+        }
         pluginStateStore?
             .placementScope(placementID: placementID)?
             .removeValue(forKey: ScratchpadStore.storageKey)
+    }
+
+    // MARK: 内部
+
+    private func remember(_ placementID: String) {
+        guard seenPlacementIDs.insert(placementID).inserted else { return }
+        persistSeenPlacements()
+    }
+
+    private func persistSeenPlacements() {
+        try? pluginStateStore?.setObject(seenPlacementIDs.sorted(), forKey: Self.seenPlacementsKey)
+    }
+
+    private func makeStore(placementID: String, fallbackStore: StateStore?) -> ScratchpadStore {
+        if let existing = storesByID[placementID] { return existing }
+        let scope = (pluginStateStore ?? fallbackStore)?.placementScope(placementID: placementID)
+        let store = ScratchpadStore(stateStore: scope)
+        migrateLegacyItemsIfNeeded(into: store)
+        storesByID[placementID] = store
+        return store
     }
 
     // MARK: 旧版迁移
@@ -192,10 +231,9 @@ final class ScratchpadInstanceRegistry {
     /// 旧版本把暂存项存在插件级 store（所有块共享一份）。首个新实例创建时
     /// 一次性搬进该实例并删除旧记录；后续实例自然从空开始。
     private func migrateLegacyItemsIfNeeded(into store: ScratchpadStore) {
-        guard let pluginStateStore, let legacyItems, !legacyItems.isEmpty else { return }
-        defer { pluginStateStore.removeValue(forKey: ScratchpadStore.storageKey) }
-        if store.items.isEmpty {
-            store.seedIfEmpty(legacyItems)
-        }
+        guard let pluginStateStore, let legacy = legacyItems, !legacy.isEmpty else { return }
+        // 只在真的接管成功后才删旧记录：store 非空（本实例已有条目）时删掉等于静默丢数据。
+        guard store.seedIfEmpty(legacy) else { return }
+        pluginStateStore.removeValue(forKey: ScratchpadStore.storageKey)
     }
 }

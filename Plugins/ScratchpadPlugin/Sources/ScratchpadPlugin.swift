@@ -74,7 +74,6 @@ import SwiftUI
         let registry = ScratchpadInstanceRegistry.shared
         guard registry.totalItemCount > 0 else { return }
         registry.removeAll()
-        NotificationCenter.default.post(name: .scratchpadItemsDidChange, object: nil)
     }
 
     public override init() {
@@ -89,65 +88,7 @@ import SwiftUI
         // 只清理该实例私有的暂存记录（只移除路径记录，原文件不受影响）。
         guard blockID == Self.shelfBlockID else { return }
         ScratchpadInstanceRegistry.shared.discard(placementID: placementID)
-        NotificationCenter.default.post(name: .scratchpadItemsDidChange, object: nil)
     }
-}
-
-/// 紧凑块：暂存图标 + 条目数量角标；点击/长按 = 弹出「清空暂存区」确认浮窗
-/// （Kit 的 BlockPopover：单例互斥、点击外部关闭、收回抽屉时随之消失）。
-private struct ScratchpadCompactView: View {
-    let context: BlockContext
-    @State private var itemCount = -1
-
-    var body: some View {
-        let slot = context.layoutInfo.frame.size
-        return ZStack(alignment: .topTrailing) {
-            Image(systemName: "tray")
-                .font(NotchTokens.Text.system(13, weight: .medium))
-                .foregroundStyle(NotchTokens.Foreground.secondary)
-                .frame(width: slot.width, height: slot.height)
-                .contentShape(Rectangle())
-
-            if itemCount > 0 {
-                Text("\(itemCount)")
-                    .font(NotchTokens.Text.system(8, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .padding(.horizontal, 3.5)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(.white.opacity(0.18)))
-                    .offset(x: -2, y: 2)
-            }
-        }
-        .onAppear {
-            itemCount = ScratchpadInstanceRegistry.shared.totalItemCount
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .scratchpadItemsDidChange)) { _ in
-            itemCount = ScratchpadInstanceRegistry.shared.totalItemCount
-        }
-        .contentShape(Rectangle())
-        // 锚点追踪与手势分类统一走 Kit 触发器；点击与长按都弹同一确认浮窗。
-        .blockPopoverTrigger(
-            onTap: { frame in presentClearConfirmation(anchoredTo: frame) },
-            onLongPress: { frame in presentClearConfirmation(anchoredTo: frame) }
-        )
-    }
-
-    /// 仅在暂存区有内容时弹确认；空区点击无操作。不再先展开抽屉——
-    /// 浮窗贴在本图标下方弹出（紧凑图标位于屏幕最顶端），独立于抽屉开合。
-    private func presentClearConfirmation(anchoredTo frameInWindow: CGRect) {
-        guard itemCount > 0 else { return }
-        BlockPopover.shared.present(
-            anchoredTo: frameInWindow,
-            cardSize: ClearConfirmationPopoverContentView.cardSize,
-            placement: .below
-        ) {
-            ClearConfirmationPopoverContentView(registry: .shared)
-        }
-    }
-}
-
-extension Notification.Name {
-    static let scratchpadItemsDidChange = Notification.Name("ScratchpadPlugin.itemsDidChange")
 }
 
 /// 抽屉块：几何自适应尺寸的文件暂存区。每个放置实例持有独立条目
@@ -174,80 +115,5 @@ private struct ScratchpadShelfBlockView: View {
             )
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .onAppear {
-            NotificationCenter.default.post(name: .scratchpadItemsDidChange, object: nil)
-        }
-        .onChange(of: store.items.count) { _, _ in
-            NotificationCenter.default.post(name: .scratchpadItemsDidChange, object: nil)
-        }
-    }
-}
-
-/// 清空确认浮窗内容（窗口、外观与弹出动画由 Kit 的 BlockPopover 统一提供，
-/// 这里只排布内容）。确认后清空全部实例的暂存引用——只移除路径记录，原文件不受影响。
-private struct ClearConfirmationPopoverContentView: View {
-    let registry: ScratchpadInstanceRegistry
-
-    /// 卡片尺寸（BlockPopover 需要定值；高度留足双行提示文案的余量）。
-    static let cardSize = CGSize(width: 220, height: 184)
-
-    var body: some View {
-        let totalCount = registry.totalItemCount
-        VStack(spacing: 12) {
-            Image(systemName: "tray.and.trash")
-                .font(NotchTokens.Text.system(20, weight: .medium))
-                .foregroundStyle(NotchTokens.Foreground.hover)
-
-            Text(L("clear.confirm.title"))
-                .font(NotchTokens.Text.system(13, weight: .semibold))
-                .foregroundStyle(.white)
-
-            // 中英复数习惯不同：en 单数走独立键（无占位符），zh 两键同文。
-            Group {
-                if totalCount == 1 {
-                    Text(L("clear.confirm.message.one"))
-                } else {
-                    Text(LF("clear.confirm.message", totalCount))
-                }
-            }
-            .font(NotchTokens.Text.system(11))
-            .foregroundStyle(NotchTokens.Foreground.muted)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 8) {
-                Button(action: { BlockPopover.shared.dismiss() }) {
-                    Text(L("common.cancel"))
-                        .font(NotchTokens.Text.system(11, weight: .medium))
-                        .foregroundStyle(NotchTokens.Foreground.secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule().fill(.white.opacity(0.1))
-                        )
-                }
-                .buttonStyle(.plain)
-
-                Button(action: clearAll) {
-                    Text(L("clear.confirm.removeAll"))
-                        .font(NotchTokens.Text.toolbarSmall)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule().fill(Color.red.opacity(0.75))
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(14)
-    }
-
-    private func clearAll() {
-        registry.removeAll()
-        // 抽屉块可能不在屏（收起态直接清空）：主动广播，紧凑角标立即刷新。
-        NotificationCenter.default.post(name: .scratchpadItemsDidChange, object: nil)
-        BlockPopover.shared.dismiss()
     }
 }
