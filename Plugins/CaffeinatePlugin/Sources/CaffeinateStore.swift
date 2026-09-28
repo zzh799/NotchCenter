@@ -24,17 +24,32 @@ final class KeepAwakeStore: ObservableObject {
 
         let ownsSleepDisabled = stateStore.object(Bool.self, forKey: Self.ownsSleepDisabledKey) ?? false
         let hasCompletedRecovery = stateStore.object(Bool.self, forKey: Self.completedSleepGuardRecoveryKey) ?? false
-        let needsLegacyRecovery = !hasCompletedRecovery && SystemSleepGuard.isSleepDisabled()
 
+        // 首次探测要跑 pmset（同步 spawn 数十毫秒），整体放后台，别卡主线程。
+        isChangingKeepAwake = ownsSleepDisabled || !hasCompletedRecovery
+        keepAwakeTask = Task { [weak self] in
+            await self?.resolveInitialSleepState(
+                ownsSleepDisabled: ownsSleepDisabled,
+                hasCompletedRecovery: hasCompletedRecovery
+            )
+        }
+    }
+
+    /// 启动时的状态收敛：读一次真实 SleepDisabled，决定是否需要崩溃恢复。
+    private func resolveInitialSleepState(ownsSleepDisabled: Bool, hasCompletedRecovery: Bool) async {
+        let sleepDisabled = await SystemSleepGuard.isSleepDisabled()
+        guard !Task.isCancelled else { return }
+
+        let needsLegacyRecovery = !hasCompletedRecovery && sleepDisabled
         if ownsSleepDisabled || needsLegacyRecovery {
-            isKeepingAwake = SystemSleepGuard.isSleepDisabled()
+            isKeepingAwake = sleepDisabled
             isChangingKeepAwake = true
-            keepAwakeTask = Task { [weak self] in
-                await self?.recoverSleepAfterUnexpectedExit()
-            }
+            await recoverSleepAfterUnexpectedExit()
         } else {
             try? stateStore.setObject(true, forKey: Self.completedSleepGuardRecoveryKey)
             try? stateStore.setObject(false, forKey: Self.ownsSleepDisabledKey)
+            isChangingKeepAwake = false
+            keepAwakeTask = nil
         }
     }
 
@@ -72,8 +87,9 @@ final class KeepAwakeStore: ObservableObject {
             let didStop = await self.systemSleepGuard.resetSleepIfNeeded()
             guard !Task.isCancelled else { return }
 
+            let sleepDisabled = await SystemSleepGuard.isSleepDisabled()
             self.setOwnsSleepDisabled(!didStop)
-            self.isKeepingAwake = !didStop && SystemSleepGuard.isSleepDisabled()
+            self.isKeepingAwake = !didStop && sleepDisabled
             self.isChangingKeepAwake = false
             if !didStop {
                 self.keepAwakeErrorMessage = L("caffeinate.error.adminRequired.restore")
@@ -111,8 +127,9 @@ final class KeepAwakeStore: ObservableObject {
 
             guard isReady, self.startCaffeinate() else {
                 let didReset = await self.systemSleepGuard.resetSleepIfNeeded()
+                let sleepDisabled = await SystemSleepGuard.isSleepDisabled()
                 self.setOwnsSleepDisabled(!didReset)
-                self.isKeepingAwake = !didReset && SystemSleepGuard.isSleepDisabled()
+                self.isKeepingAwake = !didReset && sleepDisabled
                 self.isChangingKeepAwake = false
                 self.keepAwakeErrorMessage = L("caffeinate.error.adminRequired.lidClosed")
                 self.keepAwakeTask = nil
@@ -154,7 +171,8 @@ final class KeepAwakeStore: ObservableObject {
         if didReset {
             try? stateStore.setObject(true, forKey: Self.completedSleepGuardRecoveryKey)
         }
-        isKeepingAwake = !didReset && SystemSleepGuard.isSleepDisabled()
+        let sleepDisabled = await SystemSleepGuard.isSleepDisabled()
+        isKeepingAwake = !didReset && sleepDisabled
         isChangingKeepAwake = false
         if !didReset {
             keepAwakeErrorMessage = L("caffeinate.error.adminRequired.restore")

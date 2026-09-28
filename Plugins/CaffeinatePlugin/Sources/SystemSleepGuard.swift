@@ -176,8 +176,12 @@ final class SystemSleepGuard {
         return didReset
     }
 
-    static func isSleepDisabled() -> Bool {
-        pmsetProbe() == true
+    /// 读系统当前的 `SleepDisabled` 标志。
+    ///
+    /// pmset 是**同步 spawn**（数十毫秒），调用点都在 `@MainActor` 上，直接同步跑
+    /// 会卡刘海动画，因此这里内部派到 detached 任务执行。
+    static func isSleepDisabled() async -> Bool {
+        await Task.detached(priority: .utility) { pmsetProbe() }.value == true
     }
 
     /// Async variant used by polling loops: each synchronous pmset spawn costs
