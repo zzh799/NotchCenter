@@ -17,6 +17,7 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 
 ## 下载与安装
 
+- [产品主页](https://zzh799.github.io/NotchCenter/)
 - [下载最新版（dmg）](https://github.com/zzh799/NotchCenter/releases/latest/download/NotchCenter.dmg)
 - [下载最新版（zip）](https://github.com/zzh799/NotchCenter/releases/latest/download/NotchCenter.zip)
 
@@ -37,13 +38,14 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 
 启动后，将鼠标移到或点击屏幕顶部中央展开抽屉。已启用插件的块显示在刘海下方的紧凑区（槽位数随图标增减，不固定）与抽屉网格中；点击状态栏图标可进入“插件管理…”启用/禁用插件、安装第三方 `.bundle`，或通过“编辑布局”拖拽重排、缩放与添加块。
 
-官方插件（16 个，随 `Contents/PlugIns/` 内置）：
+官方插件（18 个，随 `Contents/PlugIns/` 内置，清单由 `Plugins/*/Plugin.plist` 生成，主页同样引用这份清单）：
 
 **信息与记录**
 
 - **Notes（笔记）**：基于 TextKit 2 渲染的 Markdown 笔记，支持内嵌图片、待办与代码块。
 - **Scratchpad（暂存区）**：引用你可能稍后需要的文件的暂存架，只保留文件引用，不会移动或删除原文件，支持拖拽进出与 QuickLook。
 - **ClipboardHistory（剪贴板历史）**：记住最近复制的文本、图片与文件，点击条目即可写回剪贴板。
+- **Album（相册）**：文件夹或照片图库的轮播块与单张照片块。
 - **Calendar（日历）**：当月速览与今日农历，点击打开日历.app。
 - **Reminders（提醒事项）**：抽屉里的提醒事项清单，可就地勾选完成。
 - **Clock（时钟）**：指针表盘一瞥即知时间，点击打开时钟.app。
@@ -59,6 +61,7 @@ NotchCenter 是一款原生 macOS 刘海交互**插件宿主**应用。将鼠标
 - **SystemMonitor（系统监控）**：CPU、内存、磁盘、网络负载块与四合一总览块。
 - **Display（显示器亮度）**：内建屏走系统亮度通道，外接屏走 DDC/CI。
 - **Camera（镜子）**：开会前照一眼的摄像头镜像预览。
+- **MediaControls（媒体控制）**：单行控制系统当前播放的媒体（播放/暂停、上一首、下一首），并显示正在播放的应用。
 - **Dsh（DSH 服务）**：管理 `dsh-web` 的 launchd 服务。
 - **Calibre（Calibre 服务）**：控制 `calibre-server` launchd 服务。
 
@@ -94,9 +97,8 @@ NOTARY_PROFILE="notary-profile" \
 ## 自动发布
 
 - 每次推送 `main`，GitHub Actions 会先运行测试，再构建通用应用，并自动覆盖 `latest` Release。
-- 若有独立的下载页，把按钮固定指向 `releases/latest`，就不必随版本手动改地址。
+- 产品主页发布在 <https://zzh799.github.io/NotchCenter/>，源文件在 [`web/`](web/index.html)，由 [`pages.yml`](.github/workflows/pages.yml) 在 `web/**` 变更时自动部署；下载按钮固定指向 `releases/latest`，不必随版本手动改地址。
 - 推送 `v*` 版本标签时，仍会生成对应的版本快照 Release。
-- 目前**没有独立官网页面**：`docs/` 目录只有开发者文档，不含站点文件，下载入口以本仓库的 Releases 页为准。
 
 如果测试或构建失败，Release 不会被覆盖，用户仍会下载上一份验证通过的版本。
 
