@@ -17,7 +17,7 @@ jobs:
       # 合入之前就要红，而不是等 pages.yml 在 push main 时才暴露、让线上停在旧站。
       # 产物落在被 gitignore 的 web/docs，用完即弃；VitePress 不需要 macOS 与 plutil。
       - name: 使用 Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
