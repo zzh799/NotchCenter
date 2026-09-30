@@ -1,19 +1,24 @@
-name: 发布产品主页
+name: 发布产品主页与文档站
 
-# 把 web/ 目录发布到 GitHub Pages。
+# 把 web/ 目录发布到 GitHub Pages：主页是仓库里的静态源文件，文档站（web/docs）由 VitePress
+# 在构建期从 docs/ 生成，两者装在同一个 Pages 产物里一起上线。
 #
 # 为什么单独一个 workflow：release.yml 只负责 macOS 应用产物，docs.yml 只跑文档门禁，
-# 两者都不产出站点。主页与安装包是两条独立通道，改主页不必重跑一次 macOS 构建。
+# 两者都不产出站点。站点与安装包是两条独立通道，改站点不必重跑一次 macOS 构建。
 #
 # 为什么构建 job 用 macOS runner：web/tools/gen-plugins.mjs 靠 macOS 自带的 plutil
 # 把 Plugin.plist 转成 JSON（见该文件顶部说明），Linux runner 上没有这个工具。
-# 代价可控——只有 web/** 变更才触发，且构建本身只是几个文件操作。
+# 代价可控：只有 web/**、docs/** 与文档站依赖变更才触发。
 on:
   push:
     branches:
       - main
     paths:
       - "web/**"
+      # 文档站的内容源与工程文件：改了就要重新构建，否则线上停在旧文档。
+      - "docs/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -37,6 +42,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+
+      # VitePress 的构建产物落在 web/docs，因此必须在下面 upload 之前跑完。
+      # 死链、锚点与发布清单误配会让这一步直接失败，站点停在上一份可用版本。
+      - name: 安装文档站依赖
+        run: npm ci
+
+      - name: 构建开发文档站
+        run: npm run docs:build
 
       # 防漂移门禁：主页的插件清单必须与 Plugins/*/Plugin.plist 一致。
       # 改了 Plugin.plist 却忘了重跑生成器时，这里会红，而不是让站点静默停留在旧清单上。

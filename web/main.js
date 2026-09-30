@@ -48,6 +48,7 @@
       "nav.demos": "Demos",
       "nav.plugins": "Plugins",
       "nav.install": "Install",
+      "nav.docs": "Developer docs",
       "nav.github": "Open the repository on GitHub",
       "hero.eyebrow": "macOS 15+ · Native Swift · Apple Silicon and Intel",
       "hero.title": "Turn the notch into a control center",

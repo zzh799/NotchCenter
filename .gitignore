@@ -17,3 +17,9 @@ nohup.out
 # Tuist 生成物（源真相是 Project.swift / mise.toml）
 *.xcodeproj
 *.xcworkspace
+
+# 文档站（VitePress）：依赖与构建产物不入库，源真相是 docs/*.md
+node_modules/
+web/docs/
+docs/.vitepress/cache/
+docs/.vitepress/dist/

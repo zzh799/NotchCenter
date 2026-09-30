@@ -13,6 +13,18 @@ jobs:
           fetch-depth: 0 # note 覆盖门禁需要区间两端 commit(base/head 或 before/after)
       - run: bash scripts/run-doc-checks.sh
         shell: bash
+      # 文档站可构建门禁：docs/ 的改动若让站点构建失败（死链、锚点、发布清单误配），
+      # 合入之前就要红，而不是等 pages.yml 在 push main 时才暴露、让线上停在旧站。
+      # 产物落在被 gitignore 的 web/docs，用完即弃；VitePress 不需要 macOS 与 plutil。
+      - name: 使用 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: 安装文档站依赖
+        run: npm ci
+      - name: 校验开发文档站可构建
+        run: npm run docs:build
       - name: Verify agent-note coverage (range)
         shell: bash
         env:

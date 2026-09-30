@@ -2,6 +2,8 @@
 
 NotchCenter 的对外落地页：纯静态单页，零依赖、零构建步骤，由 [pages.yml](../.github/workflows/pages.yml) 发布到 GitHub Pages，地址 <https://zzh799.github.io/NotchCenter/>。设计决策见 [2026-09-29-product-homepage](../docs/agent-notes/implemented/2026-09-29-product-homepage.md)。
 
+同一个 Pages 站点还托管开发文档站（`/docs/`，源真相是仓库的 `docs/` 目录），那部分由 VitePress 构建，见下方「文档站」。本目录仍是零依赖静态页，不要为它引入任何构建步骤。
+
 ## 文件
 
 - [index.html](index.html)：页面结构。中文文案直接写在这里，它也是无 JS 时的基准语言。
@@ -38,6 +40,23 @@ cd web && python3 -m http.server 8000
 ## 部署
 
 push 到 main 且改动涉及 `web/**` 时自动发布。首次启用需要在仓库 Settings → Pages 把 Source 选成 `GitHub Actions`，这一步无法由代码完成。
+
+## 文档站
+
+开发文档站（`/docs/`）由 VitePress 从仓库的 `docs/` 目录生成，产物落在 `web/docs/`，与主页在同一个 Pages 产物里一次发布。设计决策见 [2026-09-30-vitepress-docs-site](../docs/agent-notes/implemented/2026-09-30-vitepress-docs-site.md)。
+
+- 项目根是 `docs/`，VitePress 配置与主题在 `docs/.vitepress/`；仓库根的 [package.json](../package.json) 只提供 `docs:dev` / `docs:build` / `docs:preview` 三个脚本。
+- 发布哪些页面由 [`docs/.vitepress/docs-manifest.mts`](../docs/.vitepress/docs-manifest.mts) 决定：新文档要进站点必须在清单里登记，否则构建时被 `srcExclude` 排除（白名单，防内部文档泄漏到公网）。
+- 指向仓库其他文件的相对链接（如 `../../AGENTS.md`、`../Sources/**`）由 [`rewrite-repo-links.mts`](../docs/.vitepress/rewrite-repo-links.mts) 在构建期改写成 GitHub 源码地址，源 Markdown 不改。
+- `web/docs/` 是构建产物，不入库（.gitignore），本地不要手工改。
+- `npm audit` 会报 esbuild 与 vite 的开发服务器告警（经 VitePress 1.x 传递依赖，1.x 线官方标记为无补丁）：只在本机跑 `docs:dev` 时有影响，构建产物与线上站点不受影响；等 VitePress 2.x 转正再升级。
+
+```bash
+npm ci                      # 安装 VitePress（需要 Node 18+）
+npm run docs:build          # 构建到 web/docs，死链会让构建直接失败
+npm run docs:preview        # 本地预览构建产物
+npm run docs:dev            # 带热更新的开发服务器
+```
 
 ## 已知事项
 

@@ -1,0 +1,57 @@
+/* NotchCenter 文档站配色
+ *
+ * 唯一事实源是 docs/DESIGN.md §2 与 Sources/NotchCenterKit/DesignTokens.swift，
+ * 这里镜像的是 web/styles.css 里同一套变量：近黑背景、白色 alpha 阶梯
+ * （正文 .92 / 次要 .76 / 静音 .58）、发丝描边 .09、系统蓝作唯一彩色。
+ * 改配色要三处同步（DESIGN.md / web/styles.css / 本文件）。
+ *
+ * 覆盖写在 html.dark 下：默认主题的深色变量定义在这一层，同层靠后加载胜出，
+ * 而 :root 会被 .dark 以更高特异性压掉。站点是 appearance: 'force-dark'，
+ * 因此不需要准备亮色值。
+ */
+
+html.dark {
+  /* 表面：抽屉主背景的近黑，层级靠极小的 RGB 差拉开 */
+  --vp-c-bg: #050506;
+  --vp-c-bg-alt: #0a0a0c;
+  --vp-c-bg-soft: #0d0d10;
+  --vp-c-bg-elv: #121215;
+
+  /* 发丝线：与 DESIGN.md §2.3 的抽屉外描边 / 编辑器分隔线同值 */
+  --vp-c-divider: rgba(255, 255, 255, 0.09);
+  --vp-c-border: rgba(255, 255, 255, 0.12);
+  --vp-c-gutter: rgba(255, 255, 255, 0.06);
+
+  /* 前景白 alpha 阶梯：DESIGN.md §2.2 */
+  --vp-c-text-1: rgba(255, 255, 255, 0.92);
+  --vp-c-text-2: rgba(255, 255, 255, 0.76);
+  --vp-c-text-3: rgba(255, 255, 255, 0.58);
+
+  /* 语义色：systemBlue（DESIGN.md §2.4 认可的链接色） */
+  --vp-c-brand-1: #0a84ff;
+  --vp-c-brand-2: #409cff;
+  --vp-c-brand-3: #0a84ff;
+  --vp-c-brand-soft: rgba(10, 132, 255, 0.16);
+
+  /* 代码块与内联代码 */
+  --vp-code-block-bg: #0a0a0c;
+  --vp-code-block-divider-color: rgba(255, 255, 255, 0.09);
+  --vp-code-copy-code-bg: rgba(255, 255, 255, 0.06);
+  --vp-code-copy-code-hover-bg: rgba(255, 255, 255, 0.1);
+
+  /* 字体族：与产品一致走系统字体栈，中英混排不换字 */
+  --vp-font-family-base:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --vp-font-family-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* 圆角统一到 DESIGN.md §3 的连续圆角（代码块与图片用 10，接近卡片） */
+html.dark .vp-doc div[class*='language-'],
+html.dark .vp-doc img {
+  border-radius: 10px;
+}
+
+html.dark ::selection {
+  background: rgba(10, 132, 255, 0.35);
+}
